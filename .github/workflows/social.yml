@@ -1,0 +1,193 @@
+# Runs the Social Media Specialist on GitHub's servers, so it works with your
+# computer off. One-time setup is in README.md ("Setup"): add the secrets
+# below, then it drafts Instagram posts each morning on its own, posts the
+# ones you approved every hour, and answers Hitta's requests every hour. Run
+# it by hand from the Actions tab to draft now, to post what's due now, to
+# preview a draft without saving it, or to test Instagram or Hitta.
+#
+# GitHub drops scheduled runs when it's busy (the CFO's 13:00 slot fired on
+# none of 2026-10-16 to 10-22). So every scheduled run checks a cache marker
+# for today's morning run and does it itself when it's due, whichever slot
+# GitHub actually fires.
+name: Social Media Specialist
+
+on:
+  schedule:
+    # 15:09 UTC is 8:09 in the morning in Arizona, away from the other
+    # employees' daily runs (CFO 13:00, CTO 13:29, CDO 14:11, Keymaster 14:53).
+    - cron: "9 15 * * *"
+    # Every hour at :29: approved posts that are due and Hitta's requests,
+    # plus the morning run if it's due (away from the COO :07, the CDO :13,
+    # the CSO :23, the CAO :37, the CFO :41 and the CTO :49).
+    - cron: "29 * * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Which command to run
+        type: choice
+        default: run
+        options: [run, publish, preview, requests, instagram-test, hitta-test]
+
+concurrency:
+  group: social
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Lets Hitta's "draft now" start this workflow again.
+  actions: write
+
+jobs:
+  social:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The Vault's Turso database (the same values as the other employees').
+      VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
+      VAULT_DATABASE_AUTH_TOKEN: ${{ secrets.VAULT_DATABASE_AUTH_TOKEN }}
+      # The Vault's public address, like https://your-vault.vercel.app. Instagram
+      # fetches each post's image from it.
+      VAULT_PUBLIC_URL: ${{ secrets.VAULT_PUBLIC_URL }}
+      # Your Claude subscription, from `claude setup-token`. Writes the drafts
+      # and answers Hitta.
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # The specialist's own Hitta key.
+      HITTA_API_KEY: ${{ secrets.HITTA_API_KEY }}
+      # Instagram (README.md, "Instagram"). The token is refreshed on its own
+      # and kept sealed in the Vault; paste a new one here to replace it.
+      INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+      INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+      # A repository variable, only for Facebook login: graph.facebook.com.
+      INSTAGRAM_GRAPH_HOST: ${{ vars.INSTAGRAM_GRAPH_HOST }}
+      GITHUB_TOKEN: ${{ github.token }}
+      # Scheduled runs start as the hourly check; the "due" step below turns
+      # one into the morning run. A run by hand does what it was asked.
+      COMMAND: ${{ github.event_name == 'schedule' && 'hourly' || inputs.command || 'run' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # One marker per UTC day, saved after the day's morning run (even a
+      # failed one, so a broken run tells Thomas once a day, not every hour).
+      - name: Today's date
+        id: today
+        run: |
+          echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          echo "hour=$(date -u +%H)" >> "$GITHUB_OUTPUT"
+
+      - name: Has today's morning run happened?
+        id: marker
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .social-daily-marker
+          key: social-daily-${{ steps.today.outputs.date }}
+          lookup-only: true
+
+      - name: Is the morning run due?
+        if: github.event_name == 'schedule' && steps.marker.outputs.cache-hit != 'true' && steps.today.outputs.hour >= 15
+        run: |
+          echo "No morning run yet today (${{ steps.today.outputs.date }}) and it's past 15:00 UTC, so this run makes it."
+          echo "COMMAND=run" >> "$GITHUB_ENV"
+
+      # Pasted secrets can pick up line breaks or spaces. Strip them.
+      - name: Clean up pasted secrets
+        run: |
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID; do
+            value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
+            [ -n "$value" ] && echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+
+      # The hourly check stops here when Hitta has nothing and no approved
+      # post is due, so it costs seconds. The due count asks the Vault's
+      # database over Turso's HTTP API; before the first morning run the table
+      # doesn't exist yet and that counts as nothing due. Anything unknown
+      # goes on. The steps below test COMMAND first: a skipped step's empty
+      # count compares equal to '0' in GitHub's expressions.
+      - name: Anything to do this hour?
+        id: work
+        if: env.COMMAND == 'hourly'
+        run: |
+          requests="$(curl -s -m 15 -H "Authorization: Bearer $HITTA_API_KEY" https://34-67-123-90.sslip.io/requests | jq -r '.requests | length' 2>/dev/null || true)"
+          now="$(date -u +%Y-%m-%dT%H:%M:%S.999+00:00)"
+          sql="SELECT COUNT(*) FROM \"SocialPost\" WHERE \"state\" = 'approved' AND \"scheduledFor\" <= '$now'"
+          body="$(jq -n --arg sql "$sql" '{requests: [{type: "execute", stmt: {sql: $sql}}, {type: "close"}]}')"
+          answer="$(curl -s -m 15 -X POST -H "Authorization: Bearer $VAULT_DATABASE_AUTH_TOKEN" -H "Content-Type: application/json" -d "$body" "${VAULT_DATABASE_URL/libsql:\/\//https://}/v2/pipeline" || true)"
+          if echo "$answer" | jq -e '.results[0].error.message | test("no such table")' >/dev/null 2>&1; then
+            due=0
+          else
+            due="$(echo "$answer" | jq -r '.results[0].response.result.rows[0][0].value' 2>/dev/null || true)"
+          fi
+          [[ "$requests" =~ ^[0-9]+$ ]] || requests=unknown
+          [[ "$due" =~ ^[0-9]+$ ]] || due=unknown
+          echo "Open requests: $requests. Approved posts due: $due."
+          echo "requests=$requests" >> "$GITHUB_OUTPUT"
+          echo "due=$due" >> "$GITHUB_OUTPUT"
+
+      - name: Should this run go on?
+        id: go
+        run: |
+          # Until the secrets are added, scheduled runs do nothing (a run by hand still says what's missing).
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -z "$VAULT_DATABASE_URL" ]; then
+            echo "Not set up yet: add the secrets in README.md. Nothing to do."
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+          elif [ "$COMMAND" != "hourly" ] || [ "${{ steps.work.outputs.requests }}" != "0" ] || [ "${{ steps.work.outputs.due }}" != "0" ]; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing to do this hour."
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.go.outputs.yes == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+        if: steps.go.outputs.yes == 'true'
+
+      # Writes the drafts and answers Hitta's requests.
+      - name: Install Claude Code
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Makes the post images (a screenshot of the product's site, then the
+      # post itself).
+      - name: Install the browser
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'run' || env.COMMAND == 'preview')
+        run: npx playwright install --with-deps chromium
+
+      # First, before anything long: Hitta waits on the phone for these
+      # answers (src/hitta-requests.ts). A failure here never stops the run.
+      - name: Answer Hitta's requests
+        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hitta-test' && env.COMMAND != 'instagram-test' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
+        continue-on-error: true
+        run: npx social requests
+
+      - name: Post what's due
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'hourly' && steps.work.outputs.due != '0'
+        run: npx social publish
+
+      - name: social ${{ env.COMMAND }}
+        id: social
+        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hourly' && env.COMMAND != 'requests'
+        run: npx social "$COMMAND"
+
+      - name: Keep the preview
+        if: env.COMMAND == 'preview' && steps.social.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: preview.jpg
+
+      - name: Mark today's morning run done
+        if: always() && env.COMMAND == 'run' && steps.social.outcome != 'skipped'
+        run: echo "${{ steps.today.outputs.date }}" > .social-daily-marker
+
+      - name: Save the marker
+        if: always() && env.COMMAND == 'run' && steps.social.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: .social-daily-marker
+          key: social-daily-${{ steps.today.outputs.date }}
