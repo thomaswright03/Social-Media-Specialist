@@ -127,7 +127,11 @@ jobs:
       - name: Should this run go on?
         id: go
         run: |
-          if [ "$COMMAND" != "hourly" ] || [ "${{ steps.work.outputs.requests }}" != "0" ] || [ "${{ steps.work.outputs.due }}" != "0" ]; then
+          # Until the secrets are added, scheduled runs do nothing (a run by hand still says what's missing).
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -z "$VAULT_DATABASE_URL" ]; then
+            echo "Not set up yet: add the secrets in README.md. Nothing to do."
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+          elif [ "$COMMAND" != "hourly" ] || [ "${{ steps.work.outputs.requests }}" != "0" ] || [ "${{ steps.work.outputs.due }}" != "0" ]; then
             echo "yes=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing to do this hour."
@@ -151,7 +155,7 @@ jobs:
       # Makes the post images (a screenshot of the product's site, then the
       # post itself).
       - name: Install the browser
-        if: env.COMMAND == 'run' || env.COMMAND == 'preview'
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'run' || env.COMMAND == 'preview')
         run: npx playwright install --with-deps chromium
 
       # First, before anything long: Hitta waits on the phone for these
@@ -162,12 +166,12 @@ jobs:
         run: npx social requests
 
       - name: Post what's due
-        if: env.COMMAND == 'hourly' && steps.work.outputs.due != '0'
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'hourly' && steps.work.outputs.due != '0'
         run: npx social publish
 
       - name: social ${{ env.COMMAND }}
         id: social
-        if: env.COMMAND != 'hourly' && env.COMMAND != 'requests'
+        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hourly' && env.COMMAND != 'requests'
         run: npx social "$COMMAND"
 
       - name: Keep the preview
