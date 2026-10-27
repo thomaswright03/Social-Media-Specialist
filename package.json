@@ -1,0 +1,29 @@
+{
+  "name": "social-media-specialist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Social Media Specialist: drafts Instagram posts for Thomas's products every morning (caption, hashtags and an image made from the product's own site), waits for his approval on the Vault page, then posts them through Instagram's API at the time he picked.",
+  "type": "module",
+  "bin": {
+    "social": "./bin/social.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "social": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "dotenv": "^17.4.2",
+    "playwright": "1.63.0",
+    "tsx": "^4.23.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  }
+}
