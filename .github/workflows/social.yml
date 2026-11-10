@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, requests, instagram-test, hitta-test]
+        options: [run, publish, preview, diagnose, requests, instagram-test, hitta-test]
 
 concurrency:
   group: social
@@ -146,6 +146,11 @@ jobs:
 
       - run: npm ci
         if: steps.go.outputs.yes == 'true'
+
+      # Reads the length of each posted video for the diagnosis.
+      - name: Check ffmpeg
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'diagnose'
+        run: ffprobe -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       # Writes the drafts and answers Hitta's requests.
       - name: Install Claude Code

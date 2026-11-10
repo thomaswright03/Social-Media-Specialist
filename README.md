@@ -43,6 +43,21 @@ Tables (it creates them; the Vault has them in its Prisma schema too):
 `SocialPost`, `SocialIdea`, `SocialSettings`, `SocialStatus`, `SocialAlert`,
 `SocialToken`.
 
+## The content pipeline (Reels)
+
+`pipeline/` holds the performance-first Reels pipeline: nine stages, each a
+prompt plus a gate of checks in code that must pass before the next stage.
+Stage 0 (diagnose) runs today; the others have their prompts and tested
+gates and get their runners next. See `pipeline/README.md`, including what
+Instagram's API can and can't do.
+
+## History
+
+Everything the specialist does is recorded in the Vault (`SocialAction`) and
+shown on its page: every post and failed post, drafts, token refreshes,
+pipeline stages passed or stopped at a gate, and anything done for Thomas
+through Hitta.
+
 ## Setup
 
 ### Instagram (once, about 15 minutes)
@@ -57,7 +72,9 @@ Tables (it creates them; the Vault has them in its Prisma schema too):
    then; look for "Instagram API with Instagram login".
 3. In the app, Instagram → API setup with Instagram business login →
    Generate access tokens → Add account, log in to the Instagram account, and
-   generate a token. Allow content publishing and insights. The app can stay
+   generate a token. Allow content publishing, insights, comments and
+   messages (the content pipeline reads Reel Insights; comments and messages
+   are there for when it starts managing them). The app can stay
    in Development mode: your own account doesn't need App Review.
 4. Paste the token as the `INSTAGRAM_ACCESS_TOKEN` secret below. It lasts 60
    days, and the specialist renews it every week on its own. If it ever
@@ -92,6 +109,9 @@ Then, from the Actions tab → Social Media Specialist → Run workflow:
 3. `preview`: drafts one post and keeps its image as a run artifact; saves
    nothing and posts nothing.
 4. `run`: the first real morning run. Drafts show up on the Vault page.
+5. `diagnose`: stage 0 of the content pipeline (`pipeline/README.md`). Reads
+   Insights for everything posted and names the top 3 reasons it
+   underperformed, each with a number; the result is on the Vault page.
 
 For the Vault page's **Draft now** button, the Vault needs a GitHub token
 with Actions read and write on this repo, as `SOCIAL_DISPATCH_TOKEN` on
@@ -104,6 +124,7 @@ npx social requests        answer Hitta's open requests
 npx social run             the morning run: token, stats, drafts, Hitta
 npx social publish         post every approved post that's due
 npx social preview         draft one post into preview.jpg; saves nothing, posts nothing
+npx social diagnose        content pipeline stage 0: Insights diagnosis (pipeline/README.md)
 npx social instagram-test  read the Instagram account; posts nothing
 npx social hitta-test      send Hitta a test report
 npm test                   the tests

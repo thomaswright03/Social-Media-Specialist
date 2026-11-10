@@ -8,6 +8,8 @@
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account the token belongs to; posts nothing
 //   hitta-test      sends Hitta a low-urgency test report
+//   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
+//                   everything posted and names the top 3 reasons it underperformed
 import "dotenv/config";
 import { writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
@@ -17,6 +19,7 @@ import { currentToken, instagramClient } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { publishDue, runDaily } from "./social.ts";
+import { runDiagnose } from "./pipeline/diagnose.ts";
 import { Vault } from "./vault.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
@@ -65,7 +68,7 @@ async function main() {
     const vault = connect();
     try {
       await vault.ensureTables();
-      const vaultQueryDb = libsqlQueryDb(vault.client, VAULT_TABLES, "SQLite (the Vault, Turso). SocialPost (every Instagram post from draft to published; skip the image column), SocialIdea (posts Thomas asked for), SocialSettings, SocialStatus (your latest run, as JSON). Times are ISO text like '2026-10-27T18:30:00.000+00:00' (UTC).");
+      const vaultQueryDb = libsqlQueryDb(vault.client, VAULT_TABLES, "SQLite (the Vault, Turso). SocialPost (every Instagram post from draft to published; skip the image column), SocialIdea (posts Thomas asked for), SocialSettings, SocialStatus (your latest run, as JSON), SocialStage (content pipeline stage results and gates), SocialLesson (what the pipeline learned), SocialAction (your History of everything you did). Times are ISO text like '2026-10-27T18:30:00.000+00:00' (UTC).");
       await vaultQueryDb.load().catch((err) => log(`Couldn't read the Vault's tables: ${err instanceof Error ? err.message : err}`));
       const result = await handleHittaRequests({ answerer: socialAnswerer({ vault, vaultQueryDb, runNow }), log });
       if (result.fetchError) await reportRequestsFailure(vault, result.fetchError);
@@ -115,6 +118,36 @@ async function main() {
     return;
   }
 
+  if (command === "diagnose") {
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log });
+      if (!token) {
+        console.error("INSTAGRAM_ACCESS_TOKEN isn't set, so Insights can't be read.");
+        process.exit(2);
+      }
+      const r = await runDiagnose({ vault, ig: instagramClient(token.token), ask: askClaude, log });
+      if (r.passed) {
+        console.log(`\n${r.diagnosis?.summary ?? ""}\n`);
+        for (const [i, reason] of (r.diagnosis?.reasons ?? []).entries()) console.log(`${i + 1}. ${reason.reason}\n   Fix: ${reason.fix}`);
+        const result = await sendHittaReport({
+          project: HITTA_PROJECT,
+          title: "Your Instagram diagnosis is ready",
+          summary: `The Social Media Specialist read the Insights for everything posted. ${(r.diagnosis?.reasons ?? []).map((x, i) => `${i + 1}: ${x.reason}`).join(" ")} The details are on its Vault page.`.slice(0, 900),
+          urgency: "low",
+        });
+        log(result.message);
+      } else {
+        console.error(`\nThe diagnosis didn't pass its gate after ${r.tries} tries:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+        process.exitCode = 1;
+      }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "publish") {
     const vault = connect();
     try {
@@ -128,7 +161,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, instagram-test or hitta-test.`);
     process.exit(2);
   }
 

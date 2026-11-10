@@ -193,6 +193,7 @@ async function draftOne(d: Deps, pick: Subject, renderer: Renderer, settings: Aw
   const image = await renderer.image({ kind: post.kind, theme: post.theme, headline: post.headline, subline: post.subline, productName: post.productName, host: hostOf(post.sourceUrl), screenshot: shot });
   const saved = await d.vault.addPost(post, image, now);
   if (pick.idea) await d.vault.useIdea(pick.idea.id, saved.id, now);
+  await d.vault.logAction({ kind: "drafted", summary: `Drafted "${saved.headline}"${saved.productName ? ` about ${saved.productName}` : ""}; it waits for your OK.`, target: saved.id }, now);
   return saved;
 }
 
@@ -230,11 +231,13 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
       await vault.updatePost(p.id, { state: "published", publishedAt: vaultNow(now), igContainerId: r.containerId, igMediaId: r.mediaId, permalink: r.permalink, error: null }, now);
       result.published.push({ ...p, state: "published", permalink: r.permalink });
       log(`Posted "${p.headline}"${r.permalink ? `: ${r.permalink}` : ""}.`);
+      await vault.logAction({ kind: "posted", summary: `Posted "${p.headline}" to Instagram.`, detail: r.permalink, target: p.id, onInstagram: true }, now);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       await vault.updatePost(p.id, { state: "failed", error: error.slice(0, 500) }, now);
       result.failed.push({ post: p, error });
       log(`Couldn't post "${p.headline}": ${error}`);
+      await vault.logAction({ kind: "post_failed", summary: `Tried to post "${p.headline}"; Instagram refused it.`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
       await reportOnce(d, `failed:${p.id}:${p.attempts + 1}`, {
         title: "An approved Instagram post didn't go out",
         summary: `Instagram refused your approved post "${p.headline.slice(0, 80)}". ${error.slice(0, 200)}${err instanceof InstagramError && err.tokenProblem ? " The Instagram token needs replacing." : ""} It won't try again on its own; tap Try again on the Social Media Specialist page once it's fixed.`,

@@ -53,3 +53,17 @@ Never urgent. Normal:
 - Turn down a draft, with his reason
 - Set posts a week; draft now; pause and resume (paused: no drafts and
   nothing posted, even approved posts)
+
+## The Reels content pipeline (2026-11-10)
+
+Thomas wants it to make the Reels and post them for him, performance first:
+nine stages with gates (`pipeline/README.md`). Stage 0, the Insights
+diagnosis, runs today (`social diagnose`). A finished Reel goes out on its own
+only as a Trial Reel (non-followers), and only when every pre-publish check
+passes; showing it to followers stays his call in the Instagram app.
+
+## History
+
+Everything it does is recorded and shown as History on its Vault page: posts,
+failed posts, drafts, token refreshes, pipeline stages, and what it did
+through Hitta.
