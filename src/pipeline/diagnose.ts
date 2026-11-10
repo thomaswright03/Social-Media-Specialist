@@ -66,7 +66,7 @@ export function median(values: (number | null | string | undefined)[]): number |
 
 const MEDIAN_OF = ["lengthSeconds", "views", "reach", "likes", "comments", "saves", "shares", "avgWatchSeconds", "watchPct", "skipRate", "hold3s", "sharesPer1k", "savesPer1k"];
 
-export async function gatherDiagnosisData(ig: InstagramClient, probe: Probe = ffprobeSeconds, log?: (m: string) => void): Promise<DiagnosisData & { follows30d: number | null }> {
+export async function gatherDiagnosisData(ig: InstagramClient, probe: Probe = ffprobeSeconds, log?: (m: string) => void): Promise<DiagnosisData & { follows30d: number | null; linkTaps30d: number | null }> {
   if (!ig.listMedia || !ig.reelInsights) throw new Error("This Instagram client can't read Insights");
   const media = await ig.listMedia(100);
   log?.(`Instagram has ${media.length} posts on the account.`);
@@ -82,7 +82,9 @@ export async function gatherDiagnosisData(ig: InstagramClient, probe: Probe = ff
   const med: Record<string, number | null> = {};
   for (const k of MEDIAN_OF) med[k] = median(reels.map((p) => p[k]));
   const follows30d = ig.recentFollows ? await ig.recentFollows(30).catch(() => null) : null;
-  return { posts, median: med, follows30d };
+  // The account's goal: series Reels bring profile visits, the profile sends people to the website.
+  const linkTaps30d = ig.recentLinkTaps ? await ig.recentLinkTaps(30).catch(() => null) : null;
+  return { posts, median: med, follows30d, linkTaps30d };
 }
 
 export type DiagnoseResult = { passed: boolean; diagnosis: Diagnosis | null; gate: GateResult; data: DiagnosisData; tries: number };
@@ -92,7 +94,7 @@ export async function runDiagnose(d: { vault: Vault; ig: InstagramClient; ask: (
   const data = await gatherDiagnosisData(d.ig, d.probe, d.log);
   const lessons = await d.vault.lessons();
   const lessonText = lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "";
-  const dataText = JSON.stringify({ reels: data.posts.filter((p) => p.type === "reel"), otherPosts: data.posts.filter((p) => p.type !== "reel"), median: data.median, accountFollowsLast30Days: data.follows30d, notInTheApi: "the retention graph and per-Reel follows are only in the app's Insights" }, null, 1);
+  const dataText = JSON.stringify({ reels: data.posts.filter((p) => p.type === "reel"), otherPosts: data.posts.filter((p) => p.type !== "reel"), median: data.median, accountFollowsLast30Days: data.follows30d, websiteLinkTapsLast30Days: data.linkTaps30d, accountGoal: "the series Reels should bring profile visits, and the profile sends people to the website (ads for the services are pinned)", notInTheApi: "the retention graph and per-Reel follows are only in the app's Insights" }, null, 1);
   const avoid = pipelineFile("avoid.md").replace(/^# .*\n/, "").trim();
   const run = await runStage<Diagnosis>({
     vault: d.vault,

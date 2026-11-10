@@ -77,6 +77,8 @@ export type InstagramClient = {
   reelInsights?(mediaId: string): Promise<ReelInsights>;
   /** Follows in the last `days` days (at most 30), when Instagram gives it. */
   recentFollows?(days?: number): Promise<number | null>;
+  /** Taps on the profile's links (the website) in the last `days` days (at most 30). */
+  recentLinkTaps?(days?: number): Promise<number | null>;
   /** Posts a Reel from a public video URL; a trial Reel when `trial` is set. */
   publishReel?(videoUrl: string, caption: string, opts?: { trial?: TrialStrategy; coverUrl?: string; thumbOffsetMs?: number; shareToFeed?: boolean }): Promise<{ containerId: string; mediaId: string; permalink: string | null }>;
 };
@@ -221,6 +223,15 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       const results = m?.total_value?.breakdowns?.[0]?.results ?? [];
       const follows = results.find((x) => x.dimension_values?.includes("FOLLOWER"))?.value;
       return typeof follows === "number" ? follows : null;
+    },
+
+    async recentLinkTaps(days = 30) {
+      const ig = await id();
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - Math.min(days, 30) * 86_400;
+      const r = await call(fetchImpl, "GET", `${ig}/insights`, token, { metric: "profile_links_taps", period: "day", metric_type: "total_value", since: String(since), until: String(until) }).catch(() => null);
+      const v = (r?.data as { total_value?: { value?: unknown } }[] | undefined)?.[0]?.total_value?.value;
+      return typeof v === "number" ? v : null;
     },
 
     async publishReel(videoUrl, caption, opts = {}) {

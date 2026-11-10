@@ -9,7 +9,9 @@ the idea.
 - at least one lesson, and every lesson names the stage (3, 4, 5 or 6) its
   new check belongs to and the check itself, written so it can be applied;
 - the patterns list is updated (added to, or confirmed, with the numbers);
-- a decision: double down (make the next episode in this direction) or drop.
+- a decision: double down (make the next episode in this direction) or drop,
+  and it must follow the numbers: double down only when the winner beat stage
+  0's medians on at least 2 of 3-second hold, watch % and shares per reach.
 
 <!-- prompt -->
 You are the Social Media Specialist. Stage 8: learn from this test.

@@ -231,7 +231,18 @@ export function gateProduction(j: ProductionJudgement | null, frames: { ours: nu
 
 export type MediaFacts = { width: number; height: number; videoCodec: string; audioCodec: string | null; fps: number; seconds: number; lufs: number | null; truePeak: number | null };
 export type TextBox = { text: string; x: number; y: number; w: number; h: number };
-export type Packaging = { coverAt: number | null; coverText: string | null; caption: string; keywords: string[] };
+export type Packaging = {
+  coverAt: number | null;
+  coverText: string | null;
+  caption: string;
+  keywords: string[];
+  /**
+   * Every sound and picture in the video and where it's from. Reels posted
+   * through the API can't use Instagram's music library, so music must be
+   * our own or royalty-free with a license that allows commercial use.
+   */
+  assets?: { name: string; kind: "music" | "sfx" | "voice" | "art" | "footage"; source: string; license: string }[];
+};
 
 /** Where Instagram's buttons, caption and header cover a 1080x1920 Reel. */
 export const SAFE = { top: 220, bottom: 420, right: 140, left: 60 } as const;
@@ -254,6 +265,11 @@ export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, le
     check("The caption's first line is the hook, 125 characters or less", firstLine.length > 0 && firstLine.length <= 125, `${firstLine.length} characters`),
     check("3 to 5 keywords in the caption", kw.length >= 3 && kw.length <= 5, `${kw.length} found`),
     check("A call to action", CTA.test(p.caption)),
+    check(
+      "Every sound and picture has a source and a license we can use commercially",
+      (p.assets ?? []).length > 0 && (p.assets ?? []).every((a) => a.source.trim() && a.license.trim() && !/\b(unknown|instagram (music|library|audio)|copyright(ed)?|all rights reserved)\b/i.test(a.license)),
+      (p.assets ?? []).length === 0 ? "no asset list" : (p.assets ?? []).filter((a) => !a.source.trim() || !a.license.trim() || /unknown|instagram|copyright|all rights/i.test(a.license)).map((a) => a.name).join(", ") || undefined,
+    ),
     ...learned,
   ]);
 }
@@ -284,7 +300,10 @@ export function scoreVariants(vs: Variant[]): VariantScore[] {
     .sort((a, b) => a.rank - b.rank || b.hold3s - a.hold3s);
 }
 
-export function gateTest(vs: Variant[], now: Date): GateResult & { winner: VariantScore | null } {
+/** How long a test may wait for enough reach before it's called too small. */
+export const MAX_TEST_DAYS = 7;
+
+export function gateTest(vs: Variant[], now: Date): GateResult & { winner: VariantScore | null; tooSmall: boolean } {
   const old = vs.filter((v) => now.getTime() - Date.parse(v.postedAt) >= TEST_HOURS * 3_600_000);
   const reached = vs.filter((v) => (v.reach ?? 0) >= MIN_REACH);
   const measured = vs.filter((v) => v.skipRate !== null && v.avgWatchSeconds !== null);
@@ -294,16 +313,35 @@ export function gateTest(vs: Variant[], now: Date): GateResult & { winner: Varia
     check(`Every version reached at least ${MIN_REACH} accounts`, reached.length === vs.length, vs.map((v) => `${v.id}: ${v.reach ?? 0}`).join(", ")),
     check("3-second hold and watch time are in for every version", measured.length === vs.length),
   ]);
-  return { ...g, winner: g.passed ? scoreVariants(vs)[0]! : null };
+  // The stop rule: a week on, still under the minimum reach, the test is over
+  // and too small to pick from; stage 8 logs that instead of waiting forever.
+  const allWeekOld = vs.length > 0 && vs.every((v) => now.getTime() - Date.parse(v.postedAt) >= MAX_TEST_DAYS * 86_400_000);
+  return { ...g, winner: g.passed ? scoreVariants(vs)[0]! : null, tooSmall: !g.passed && allWeekOld && reached.length < vs.length };
+}
+
+/**
+ * Double down only when the winner beats where we started (stage 0's
+ * medians) on at least two of 3-second hold, watch % and shares per reach;
+ * otherwise drop the idea. Stage 8's decision must agree.
+ */
+export function decideNext(winner: VariantScore | null, baseline: { hold3s: number | null; watchPct: number | null; sharesPerReach: number | null }): "double_down" | "drop" {
+  if (!winner) return "drop";
+  const beats = [
+    baseline.hold3s === null || winner.hold3s > baseline.hold3s,
+    baseline.watchPct === null || winner.watchPct > baseline.watchPct,
+    baseline.sharesPerReach === null || winner.sharesPerReach > baseline.sharesPerReach,
+  ].filter(Boolean).length;
+  return beats >= 2 ? "double_down" : "drop";
 }
 
 // --- Stage 8: Learn -----------------------------------------------------------
 
 export type Learning = { lessons?: { lesson?: string; stage?: number; check?: string }[]; patterns?: { pattern?: string; change?: string; numbers?: string }[]; decision?: string; why?: string };
 
-export function gateLearn(l: Learning | null, resultsLogged: boolean): GateResult {
+export function gateLearn(l: Learning | null, resultsLogged: boolean, expected?: "double_down" | "drop"): GateResult {
   const lessons = l?.lessons ?? [];
   return gate([
+    ...(expected ? [check("The decision follows the numbers (beat where we started on 2 of 3, or drop)", l?.decision === expected, `the numbers say ${expected.replace("_", " ")}`)] : []),
     check("The test results are logged", resultsLogged),
     check("At least one lesson", lessons.length > 0),
     ...lessons.map((x, i) => check(`Lesson ${i + 1} becomes a check for stage 3, 4, 5 or 6`, [3, 4, 5, 6].includes(x.stage ?? 0) && Boolean(x.check?.trim()) && Boolean(x.lesson?.trim()))),

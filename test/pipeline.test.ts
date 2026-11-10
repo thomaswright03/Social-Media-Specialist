@@ -3,6 +3,7 @@ import { createClient } from "@libsql/client";
 import { instagramClient, parseReelInsights, type InstagramClient, type Media, type ReelInsights } from "../src/instagram.ts";
 import { median, postNumbers, runDiagnose } from "../src/pipeline/diagnose.ts";
 import {
+  decideNext,
   emptySlices,
   failuresText,
   gateDiagnose,
@@ -280,7 +281,13 @@ describe("stage 5, production", () => {
 describe("stage 6, pre-publish", () => {
   const m = { width: 1080, height: 1920, videoCodec: "h264", audioCodec: "aac", fps: 30, seconds: 42, lufs: -14.2, truePeak: -1.5 };
   const boxes = [{ text: "He has 3 seconds", x: 100, y: 400, w: 800, h: 160 }];
-  const p = { coverAt: 0.5, coverText: "He has 3 seconds", caption: "He had 3 seconds to land this.\nA stick figure story about falling, luck and a pool.\nFollow for the next one.", keywords: ["stick figure", "story", "falling"] };
+  const p = {
+    coverAt: 0.5,
+    coverText: "He has 3 seconds",
+    caption: "He had 3 seconds to land this.\nA stick figure story about falling, luck and a pool.\nFollow for the next one.",
+    keywords: ["stick figure", "story", "falling"],
+    assets: [{ name: "bed", kind: "music" as const, source: "made in code", license: "ours" }],
+  };
   it("passes a clean file and packaging", () => {
     expect(gatePrepublish(m, boxes, p).passed).toBe(true);
   });
@@ -289,6 +296,10 @@ describe("stage 6, pre-publish", () => {
     expect(gatePrepublish({ ...m, lufs: -23 }, boxes, p).passed).toBe(false);
     expect(gatePrepublish({ ...m, seconds: 120 }, boxes, p).passed).toBe(false);
     expect(gatePrepublish(m, boxes, { ...p, caption: "He had 3 seconds.\nA stick figure story about falling." }).passed).toBe(false);
+  });
+  it("fails music without a license we can use (the API can't use Instagram's music library)", () => {
+    expect(gatePrepublish(m, boxes, { ...p, assets: [{ name: "hit song", kind: "music", source: "Instagram", license: "Instagram music library" }] }).passed).toBe(false);
+    expect(gatePrepublish(m, boxes, { ...p, assets: [] }).passed).toBe(false);
   });
 });
 
@@ -299,6 +310,14 @@ describe("stage 7, test small", () => {
     expect(g.passed).toBe(true);
     expect(g.winner?.id).toBe("B");
     expect(scoreVariants([v("A", 0.5, 12, 2), v("B", 0.3, 20, 6)])[0]!.hold3s).toBeCloseTo(0.7);
+  });
+  it("calls a test too small after a week without reach, and decides double down or drop against stage 0", () => {
+    const small = gateTest([{ ...v("A", 0.5, 12, 2), reach: 30, postedAt: "2026-11-01T00:00:00Z" }, { ...v("B", 0.3, 20, 6), reach: 20, postedAt: "2026-11-01T00:00:00Z" }], NOW);
+    expect(small).toMatchObject({ passed: false, tooSmall: true, winner: null });
+    const winner = scoreVariants([v("A", 0.5, 12, 2), v("B", 0.3, 20, 6)])[0]!;
+    expect(decideNext(winner, { hold3s: 0.38, watchPct: 0.12, sharesPerReach: 0 })).toBe("double_down");
+    expect(decideNext(winner, { hold3s: 0.8, watchPct: 0.9, sharesPerReach: 0 })).toBe("drop");
+    expect(decideNext(null, { hold3s: null, watchPct: null, sharesPerReach: null })).toBe("drop");
   });
   it("waits for 48 hours and enough reach", () => {
     expect(gateTest([v("A", 0.5, 12, 2), { ...v("B", 0.3, 20, 6), postedAt: "2026-11-10T00:00:00Z" }], NOW).winner).toBeNull();
@@ -313,6 +332,8 @@ describe("stage 8, learn", () => {
     expect(gateLearn({ ...l, lessons: [{ lesson: "x", stage: 7, check: "y" }] }, true).passed).toBe(false);
     expect(gateLearn(l, false).passed).toBe(false);
     expect(gateLearn({ ...l, decision: "maybe" }, true).passed).toBe(false);
+    expect(gateLearn(l, true, "drop").passed).toBe(false);
+    expect(gateLearn(l, true, "double_down").passed).toBe(true);
   });
 });
 

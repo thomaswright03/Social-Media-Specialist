@@ -19,9 +19,29 @@ series. Those videos are the examples of what to avoid (`avoid.md`).
 | 3 | The first 3 seconds | no title card, starts mid-action, on-screen hook by 0.5 s and readable by 1.5 s, cold sound-off viewers know why to keep watching | gate only |
 | 4 | Script, 30 to 60 s, standalone | no 3-second slice without something new; every spoken claim on screen; clean grammar, plausible physics and timing, no contradictions; own payoff; a reason to watch the next | gate only |
 | 5 | Production: art, voice, music, captions | our frames judged side by side with the benchmark's, not worse on any axis | gate only |
-| 6 | Pre-publish checks | duration, loudness, size, text outside Instagram's button zones, cover, caption first line, keywords, call to action, every learned check | gate only |
-| 7 | Test small: 2 to 3 hooks as Trial Reels | after 48 h, the winner by 3-second hold, average watch % and shares per reach | gate only, posting code ready |
-| 8 | Learn | every lesson becomes a check for stages 3 to 6, the patterns list is updated, and a double down or drop decision | gate only |
+| 6 | Pre-publish checks | duration, loudness, size, text outside Instagram's button zones, cover, caption first line, keywords, call to action, music and art licensed, every learned check | gate only |
+| 7 | Test small: 2 to 3 hooks as Trial Reels | after 48 h, the winner by 3-second hold, average watch % and shares per reach; too small after 7 days | gate only, posting code ready |
+| 8 | Learn | every lesson becomes a check for stages 3 to 6, the patterns list is updated, and double down or drop as the numbers say | gate only |
+
+## What I added to Thomas's outline (2026-11-10)
+
+He said to fill gaps where I saw them. These are in the gates too:
+
+- **Music and art rights** (stage 6). Reels posted through the API can't use
+  Instagram's music library, so every sound and picture must be ours or
+  royalty-free with a license that allows commercial use, and the Reel
+  lists each one with its source and license.
+- **The account's goal** (stage 0). The series is meant to bring profile
+  visits that lead to the website, so the diagnosis also reads follows and
+  taps on the profile's link over the last 30 days, not only views.
+- **A stop rule** (stage 7). A test that hasn't reached 100 accounts per
+  version after 7 days is called too small instead of waiting forever.
+- **Double down or drop by the numbers** (stage 8). Double down only when the
+  winner beats where we started (stage 0's medians) on at least 2 of 3-second
+  hold, watch % and shares per reach; otherwise drop. Stage 8's decision has
+  to agree.
+- **Gates are code, every try is saved.** A stage can't pass on its own word;
+  failures are fed back and retried up to 3 times, then it stops and says why.
 
 "Gate only" means the gate checks exist and are tested, and the stage's
 prompt is written; the runner for that stage comes next, once the open

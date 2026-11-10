@@ -17,6 +17,10 @@ render's own list of text boxes:
 - 3 to 5 keywords in the caption (Instagram search reads captions)
 - a call to action
 
+**Rights**
+- every sound and picture is listed with its source and a license we can use
+  commercially. API-posted Reels can't use Instagram's music library.
+
 **Learned:** every check stage 8 added for stage 6.
 
 A Trial Reel goes out on its own only when every item passes.
