@@ -12,21 +12,30 @@ import { pipelineFile, runStage, stagePrompt } from "./stages.ts";
 
 export type Probe = (url: string) => Promise<number | null>;
 
+/** The last reason ffprobe couldn't read a length, for the log. */
+export let lastProbeError: string | null = null;
+
 /** A video's length in seconds, read by ffprobe from its URL (null when it can't). */
 export const ffprobeSeconds: Probe = (url) =>
   new Promise((resolve) => {
-    const child = spawn("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", url], { stdio: ["ignore", "pipe", "ignore"] });
+    // Instagram's video CDN refuses some clients without a browser-like user agent.
+    const child = spawn("ffprobe", ["-v", "error", "-user_agent", "Mozilla/5.0", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", url], { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
+    let err = "";
     const timer = setTimeout(() => child.kill("SIGTERM"), 60_000);
     child.stdout.on("data", (d) => (out += d));
-    child.on("error", () => {
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => {
       clearTimeout(timer);
+      lastProbeError = e.message;
       resolve(null);
     });
     child.on("close", () => {
       clearTimeout(timer);
       const s = Number(out.trim());
-      resolve(Number.isFinite(s) && s > 0 ? Math.round(s * 10) / 10 : null);
+      const ok = Number.isFinite(s) && s > 0;
+      if (!ok) lastProbeError = err.trim().split("\n")[0]?.replace(/https?:\/\/\S+/g, "<url>").slice(0, 200) || "no duration in ffprobe's answer";
+      resolve(ok ? Math.round(s * 10) / 10 : null);
     });
   });
 
@@ -79,6 +88,9 @@ export async function gatherDiagnosisData(ig: InstagramClient, probe: Probe = ff
     posts.push(postNumbers(m, insights, seconds));
   }
   const reels = posts.filter((p) => p.type === "reel");
+  const measured = reels.filter((p) => p.lengthSeconds !== null).length;
+  const noUrl = media.filter((m) => (m.productType === "REELS" || m.mediaType === "VIDEO") && !m.mediaUrl).length;
+  log?.(`Read the length of ${measured} of ${reels.length} Reels${noUrl ? ` (${noUrl} came without a video URL)` : ""}${measured < reels.length && lastProbeError ? `; ffprobe said: ${lastProbeError}` : ""}.`);
   const med: Record<string, number | null> = {};
   for (const k of MEDIAN_OF) med[k] = median(reels.map((p) => p[k]));
   const follows30d = ig.recentFollows ? await ig.recentFollows(30).catch(() => null) : null;
