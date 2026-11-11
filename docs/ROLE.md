@@ -1,6 +1,7 @@
 # The Social Media Specialist
 
-Thomas's AI employee that runs the Wright AI Solutions Instagram account.
+Thomas's AI employee that runs the Wright AI Solutions Instagram account and
+its Facebook Page ("Wright AI Solutions LLC").
 It reports to Thomas through Hitta.
 
 ## What it does
@@ -20,6 +21,9 @@ It reports to Thomas through Hitta.
   drafts) and from how the published ones did (likes, comments, reach).
 - Every hour it posts the approved posts whose time has come, then reads
   them back, and every morning it reads how the last 30 days' posts did.
+- An approved post also goes to the Facebook Page (unless the variable
+  `FACEBOOK_CROSSPOST` is `off`). If the Page refuses it, the Instagram post
+  stays and the refusal is in the History; the Page isn't retried.
 
 ## What it never does
 
@@ -27,7 +31,7 @@ It reports to Thomas through Hitta.
   can't be done by phone, because he needs to see the image.
 - It never retries a failed post on its own (a retry could post it twice).
 - It doesn't reply to comments or messages, follow or unfollow anyone, run
-  ads, or post to any other network.
+  ads, or post anywhere but the Instagram account and its Facebook Page.
 
 ## How Thomas decides
 

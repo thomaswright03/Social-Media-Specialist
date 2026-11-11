@@ -6,7 +6,7 @@
 //   run             the morning run (see social.ts): token, stats, drafts, Hitta
 //   publish         posts every approved post whose time has come
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
-//   instagram-test  reads the Instagram account the token belongs to; posts nothing
+//   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   hitta-test      sends Hitta a low-urgency test report
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
@@ -15,6 +15,7 @@ import { writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
+import { crosspostOn, facebookPageClient } from "./facebook.ts";
 import { currentToken, instagramClient } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
@@ -89,6 +90,13 @@ async function main() {
       }
       const a = await instagramClient(token.token).account();
       log(`Instagram: @${a.username}, ${a.followers ?? "?"} followers, ${a.posts ?? "?"} posts.${token.expiresAt ? ` Token good until ${token.expiresAt.slice(0, 10)}.` : ""}`);
+      const page = facebookPageClient(token.token);
+      if (page) {
+        const p = await page.info();
+        log(`Facebook Page: ${p.name}, ${p.followers ?? "?"} followers${p.instagramId ? "; Instagram linked" : "; Instagram NOT linked to it"}. Approved posts ${crosspostOn() ? "also go to the Page" : "stay Instagram-only (FACEBOOK_CROSSPOST=off)"}.`);
+      } else {
+        log("This is an Instagram-login token, so the Facebook Page isn't reachable. Use a Facebook-login token (README) to manage the Page too.");
+      }
       log(process.env.VAULT_PUBLIC_URL?.trim() ? `Images will be served from ${process.env.VAULT_PUBLIC_URL.trim()}/api/social/media/…` : "VAULT_PUBLIC_URL isn't set: approved posts can't go out until it is.");
     } finally {
       vault.close();

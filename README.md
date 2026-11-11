@@ -60,32 +60,46 @@ through Hitta.
 
 ## Setup
 
-### Instagram (once, about 15 minutes)
+### Instagram and the Facebook Page (once, about 20 minutes)
+
+The specialist uses **Facebook login**: one token reaches both the Instagram
+account and the Facebook Page it's linked to (it can also delete Instagram
+posts and look up other accounts, which Instagram login can't). Instagram
+login still works for Instagram alone; see the end of this section.
 
 1. Make the Instagram account a **professional** account (Business or
-   Creator): in the Instagram app, Settings → Account type and tools →
-   Switch to professional account. Personal accounts can't post through the
-   API.
+   Creator), and link it to the Facebook Page: in Instagram, Edit profile →
+   Public business information → Page → connect the Page.
 2. On [developers.facebook.com](https://developers.facebook.com/apps), Create
-   app → pick the use case for managing messaging and content on Instagram
-   (the Instagram API) → type Business. Meta renames these screens now and
-   then; look for "Instagram API with Instagram login".
-3. In the app, Instagram → API setup with Instagram business login →
-   Generate access tokens → Add account, log in to the Instagram account, and
-   generate a token. Allow content publishing, insights, comments and
-   messages (the content pipeline reads Reel Insights; comments and messages
-   are there for when it starts managing them). The app can stay
-   in Development mode: your own account doesn't need App Review.
-4. Paste the token as the `INSTAGRAM_ACCESS_TOKEN` secret below. It lasts 60
-   days, and the specialist renews it every week on its own. If it ever
-   stops working, generate a new one the same way and paste it over the old
-   secret; the new one wins at once.
+   app → use cases **Manage messaging & content on Instagram** and **Manage
+   everything on your Page**. No business portfolio is needed for this route.
+3. In the app, Use cases → Instagram → Customize → **API setup with Facebook
+   login**, then **Permissions and features**: add instagram_manage_insights,
+   instagram_manage_comments, pages_manage_posts, pages_manage_engagement,
+   pages_read_user_content and read_insights (the setup adds the rest).
+4. Tools → **Graph API Explorer**: pick the app, "Get User Access Token",
+   add instagram_basic, instagram_content_publish, instagram_manage_insights,
+   instagram_manage_comments, instagram_manage_messages, pages_show_list,
+   pages_read_engagement, pages_manage_posts, pages_manage_engagement,
+   pages_read_user_content, read_insights and business_management, then
+   **Generate Access Token** and allow the Page and the Instagram account.
+5. Make it long-lived: click the ⓘ beside the token → Open in Access Token
+   Tool → **Extend Access Token**, and copy the new token. (Or skip this and
+   add the app's id as the variable `META_APP_ID` and its secret as
+   `META_APP_SECRET`; the specialist extends it itself on its first run.)
+6. Paste it as the `INSTAGRAM_ACCESS_TOKEN` secret below. On its first run
+   the specialist swaps it for the Page's own token, which doesn't expire,
+   and keeps that sealed in the Vault. Paste a new one any time; it wins at
+   once.
 
-Using Facebook login instead (an Instagram account linked to a Facebook
-Page, with a system-user token that doesn't expire) also works: set the
-secret `INSTAGRAM_USER_ID` to the Instagram account id, and add a repository
-variable (Settings → Secrets and variables → Actions → Variables)
-`INSTAGRAM_GRAPH_HOST` = `graph.facebook.com`.
+Approved posts go to the Page too. To keep them Instagram-only, add the
+repository variable `FACEBOOK_CROSSPOST` = `off` (Settings → Secrets and
+variables → Actions → Variables). If the token reaches more than one Page, set
+the variable `FACEBOOK_PAGE_ID` to the right one.
+
+Instagram login instead (Instagram only): in the app, API setup with
+Instagram login → Generate access tokens → Add account, and paste that token.
+It lasts 60 days, and the specialist renews it every week on its own.
 
 ### Secrets
 
@@ -99,13 +113,14 @@ Actions → New repository secret).
 | `VAULT_PUBLIC_URL` | The Vault's own web address, like `https://your-vault.vercel.app`. Instagram fetches each image from it. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token` on your computer |
 | `HITTA_API_KEY` | A new key for a "Social Media Specialist" employee in Hitta |
-| `INSTAGRAM_ACCESS_TOKEN` | The token from step 3 above |
-| `INSTAGRAM_USER_ID` | Optional with Instagram login (it asks Instagram); needed with Facebook login |
+| `INSTAGRAM_ACCESS_TOKEN` | The token from step 5 above |
+| `INSTAGRAM_USER_ID` | Optional; it finds the account itself |
+| `META_APP_SECRET` | Optional (step 5) |
 
 Then, from the Actions tab → Social Media Specialist → Run workflow:
 
 1. `hitta-test`: Hitta should get a low-urgency test (201).
-2. `instagram-test`: prints the account's name and followers. Posts nothing.
+2. `instagram-test`: prints the Instagram account and the Facebook Page. Posts nothing.
 3. `preview`: drafts one post and keeps its image as a run artifact; saves
    nothing and posts nothing.
 4. `run`: the first real morning run. Drafts show up on the Vault page.

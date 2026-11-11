@@ -4,7 +4,9 @@
 
 The Social Media Specialist drafts Instagram posts; Thomas approves each one on the Vault page before it's posted
 (he chose Instagram's own API, posting on approval). Only `publishDue` in `src/social.ts` posts, and only posts in
-state `approved` that it claimed with `claimForPublishing`. Never add a way to approve by phone or to post a draft,
+state `approved` that it claimed with `claimForPublishing`. The Facebook Page (Thomas, 2026-11-11: "I want it to
+manage the Facebook page too") follows the same rule: `publishDue` cross-posts the approved post there, nothing
+else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft,
 and never retry a failed post on its own. Keep the tests for this passing.
 
 Exception, Trial Reels only (Thomas, 2026-11-10): he chose "automatic Trial Reels only" for the content pipeline

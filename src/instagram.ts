@@ -107,13 +107,25 @@ export function parseReelInsights(data: { name?: string; values?: { value?: unkn
   return out;
 }
 
-const host = () => process.env.INSTAGRAM_GRAPH_HOST?.trim() || "graph.instagram.com";
+export const IG_HOST = "graph.instagram.com";
+export const FB_HOST = "graph.facebook.com";
+
+/**
+ * Which API a token belongs to: Facebook tokens (Facebook login, which also
+ * reaches the Facebook Page) start with "EAA"; Instagram login tokens with
+ * "IG". INSTAGRAM_GRAPH_HOST overrides it.
+ */
+export function graphHost(token?: string): string {
+  const set = process.env.INSTAGRAM_GRAPH_HOST?.trim();
+  if (set) return set;
+  return token?.startsWith("EAA") ? FB_HOST : IG_HOST;
+}
 
 type Fetch = typeof fetch;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {
-  const url = new URL(`https://${host()}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
+export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}, host = graphHost(token)): Promise<Record<string, unknown>> {
+  const url = new URL(`https://${host}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
   const body = new URLSearchParams({ ...params, access_token: token });
   let res: Response;
   try {
@@ -142,6 +154,12 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
 
   async function id(): Promise<string> {
     if (userId) return userId;
+    if (graphHost(token) === FB_HOST) {
+      const page = await findPage(fetchImpl, token);
+      if (!page?.instagramId) throw new InstagramError("The Facebook token doesn't reach a Page with an Instagram account linked. Link Instagram to the Page, or set INSTAGRAM_USER_ID.", null, null);
+      userId = page.instagramId;
+      return userId;
+    }
     const me = await call(fetchImpl, "GET", "me", token, { fields: "user_id,username" });
     userId = String(me.user_id ?? me.id ?? "");
     if (!userId) throw new InstagramError("Instagram didn't say which account the token belongs to. Set INSTAGRAM_USER_ID.", null, null);
@@ -276,6 +294,54 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
   };
 }
 
+export type PageRef = { id: string; name: string; instagramId: string | null; accessToken: string | null };
+
+/**
+ * The Facebook Page a Facebook token reaches: the token's own Page when it's
+ * a Page token, else the Page from /me/accounts (FACEBOOK_PAGE_ID, else the
+ * one with Instagram linked, else the first). Null when there's none.
+ */
+export async function findPage(fetchImpl: Fetch, token: string): Promise<PageRef | null> {
+  const wanted = process.env.FACEBOOK_PAGE_ID?.trim() || null;
+  // A Page token: "me" is the Page (a user has no instagram_business_account field, so that call fails).
+  const me = await call(fetchImpl, "GET", "me", token, { fields: "id,name,instagram_business_account" }, FB_HOST).catch(() => null);
+  if (me && "instagram_business_account" in me) {
+    return { id: String(me.id), name: String(me.name ?? ""), instagramId: igOf(me), accessToken: token };
+  }
+  const pages = await call(fetchImpl, "GET", "me/accounts", token, { fields: "id,name,access_token,instagram_business_account", limit: "100" }, FB_HOST);
+  const list = ((pages.data as Record<string, unknown>[] | undefined) ?? []).map((p) => ({ id: String(p.id), name: String(p.name ?? ""), instagramId: igOf(p), accessToken: typeof p.access_token === "string" ? p.access_token : null }));
+  return (wanted ? list.find((p) => p.id === wanted) : null) ?? list.find((p) => p.instagramId) ?? list[0] ?? null;
+}
+
+const igOf = (o: Record<string, unknown>) => {
+  const a = o.instagram_business_account as { id?: unknown } | undefined;
+  return a?.id ? String(a.id) : null;
+};
+
+/**
+ * A pasted Facebook token into the Page's own token. A Page token made from a
+ * long-lived user token never expires, so it's what gets stored. With
+ * META_APP_ID and META_APP_SECRET set, a short-lived (1 to 2 hour) token is
+ * first swapped for a long-lived one; without them, paste one made long-lived
+ * in Meta's Access Token Debugger ("Extend Access Token").
+ */
+export async function facebookPageToken(userToken: string, fetchImpl: Fetch = fetch): Promise<{ token: string; expiresAt: string | null; page: PageRef | null }> {
+  let t = userToken;
+  const appId = process.env.META_APP_ID?.trim();
+  const secret = process.env.META_APP_SECRET?.trim();
+  if (appId && secret) {
+    const ex = await call(fetchImpl, "GET", "oauth/access_token", t, { grant_type: "fb_exchange_token", client_id: appId, client_secret: secret, fb_exchange_token: t }, FB_HOST).catch(() => null);
+    if (typeof ex?.access_token === "string") t = ex.access_token;
+  }
+  const page = await findPage(fetchImpl, t);
+  const token = page?.accessToken ?? t;
+  // When it runs out: 0 means never.
+  const info = await call(fetchImpl, "GET", "debug_token", token, { input_token: token }, FB_HOST).catch(() => null);
+  const at = (info?.data as { expires_at?: unknown } | undefined)?.expires_at;
+  const expiresAt = typeof at === "number" && at > 0 ? new Date(at * 1000).toISOString() : null;
+  return { token, expiresAt, page };
+}
+
 export type TokenState = { token: string; expiresAt: string | null; refreshed: boolean };
 
 /**
@@ -292,9 +358,27 @@ export async function currentToken(vault: Vault, opts: { fetchImpl?: Fetch; now?
   let token = stored && stored.seed === seed ? stored.token : pasted;
   let expiresAt = stored && stored.seed === seed ? stored.expiresAt : null;
   const refreshedAt = stored && stored.seed === seed ? Date.parse(stored.refreshedAt) : 0;
-  if (!stored || stored.seed !== seed) await vault.saveToken(token, seed, null, now);
-  // Only Instagram Login tokens refresh this way; a Facebook system-user token doesn't expire.
-  if (host() !== "graph.instagram.com" || now.getTime() - refreshedAt < 7 * DAY_MS) return { token, expiresAt, refreshed: false };
+  if (!stored || stored.seed !== seed) {
+    if (graphHost(pasted) === FB_HOST) {
+      // A new Facebook token: keep the Page's own token instead (it doesn't run out).
+      const fb = await facebookPageToken(pasted, opts.fetchImpl ?? fetch).catch((err) => {
+        opts.log?.(`Couldn't get the Facebook Page's token: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      });
+      if (fb) {
+        token = fb.token;
+        expiresAt = fb.expiresAt;
+        await vault.saveToken(token, seed, expiresAt ? new Date(expiresAt) : null, now);
+        const what = `Switched to ${fb.page ? `the "${fb.page.name}" Page's own token` : "the pasted Facebook token"}${expiresAt ? `, good until ${expiresAt.slice(0, 10)}` : ", which doesn't expire"}.`;
+        await vault.logAction({ kind: "token_refreshed", summary: what, onInstagram: false }, now);
+        opts.log?.(what);
+        return { token, expiresAt, refreshed: true };
+      }
+    }
+    await vault.saveToken(token, seed, null, now);
+  }
+  // Only Instagram Login tokens refresh this way; a Facebook Page token doesn't expire.
+  if (graphHost(pasted) !== IG_HOST || now.getTime() - refreshedAt < 7 * DAY_MS) return { token, expiresAt, refreshed: false };
   try {
     const res = await (opts.fetchImpl ?? fetch)(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(30_000) });
     const json = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: { message?: string } };

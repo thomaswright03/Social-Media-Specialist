@@ -13,6 +13,7 @@
 // on the Vault page, and a failed post is never retried on its own (a retry
 // could post it twice); Thomas taps Try again.
 import { fullCaption, pickNext, readSite, screenDraft, buildDraftPrompt, type Subject } from "./draft.ts";
+import { crosspostOn, facebookPageClient, type FacebookPageClient } from "./facebook.ts";
 import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
@@ -28,6 +29,8 @@ export type Deps = {
   renderer: () => Promise<Renderer>;
   /** Instagram for a token; tests pass a fake. */
   instagram?: (token: string) => InstagramClient;
+  /** The Facebook Page for a token (null with an Instagram-login token); tests pass a fake. */
+  facebook?: (token: string) => FacebookPageClient | null;
   fetchImpl?: typeof fetch;
   now?: Date;
 };
@@ -222,6 +225,7 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
     return { ...result, skipped: missing };
   }
   const ig = (d.instagram ?? ((t) => instagramClient(t, { fetchImpl: d.fetchImpl })))(token!.token);
+  const page = crosspostOn() ? (d.facebook ?? ((t) => facebookPageClient(t, { fetchImpl: d.fetchImpl })))(token!.token) : null;
   for (const p of due) {
     if (!(await vault.claimForPublishing(p.id, now))) continue;
     try {
@@ -232,6 +236,18 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
       result.published.push({ ...p, state: "published", permalink: r.permalink });
       log(`Posted "${p.headline}"${r.permalink ? `: ${r.permalink}` : ""}.`);
       await vault.logAction({ kind: "posted", summary: `Posted "${p.headline}" to Instagram.`, detail: r.permalink, target: p.id, onInstagram: true }, now);
+      // The same approved post on the Facebook Page. A refusal there never undoes or retries the Instagram post.
+      if (page) {
+        try {
+          const fb = await page.publishPhoto(url, fullCaption(p));
+          log(`Posted "${p.headline}" to the Facebook Page${fb.permalink ? `: ${fb.permalink}` : ""}.`);
+          await vault.logAction({ kind: "posted", summary: `Posted "${p.headline}" to the Facebook Page.`, detail: fb.permalink ?? fb.postId, target: p.id, onInstagram: true }, now);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          log(`Posted "${p.headline}" to Instagram, but the Facebook Page refused it: ${error}`);
+          await vault.logAction({ kind: "post_failed", summary: `Posted "${p.headline}" to Instagram, but the Facebook Page refused it.`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
+        }
+      }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       await vault.updatePost(p.id, { state: "failed", error: error.slice(0, 500) }, now);
