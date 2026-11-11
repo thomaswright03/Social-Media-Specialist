@@ -65,6 +65,40 @@ describe("stage 1 helpers", () => {
   });
 });
 
+describe("Reels with no video file", () => {
+  const measured: MeasuredReel[] = Array.from({ length: 15 }, (_, i) => ({ url: `https://x/${i}`, account: "a", postedAt: "2026-11-01", caption: "", views: null, likes: 5, comments: 1, lengthSeconds: null, cutsPerTenSeconds: null, soundShare: null, postsPerWeek: 4, frames: `reel-${i}-cover.jpg`, framesAreCover: true }));
+  const full = measured.map((m) => ({ url: m.url, first2s: "cover: a stick figure mid-fall", art: "stick figures", onScreenText: "none", voice: "caption suggests a voiceover" }));
+
+  it("excuses only the numbers code couldn't read", () => {
+    expect(gateResearchMeasured({ reels: full, patterns: [{ pattern: "p", examples: full.slice(0, 3).map((x) => x.url) }] }, measured).passed).toBe(true);
+    // Claude can't excuse what code didn't: art is still required.
+    const noArt = gateResearchMeasured({ reels: full.map((x) => ({ ...x, art: "" })), patterns: [{ pattern: "p", examples: full.slice(0, 3).map((x) => x.url) }] }, measured);
+    expect(noArt.passed).toBe(false);
+    expect(noArt.checks.find((c) => !c.passed)?.detail).toBe("missing art");
+  });
+
+  it("saves the cover image when Instagram gives no video", async () => {
+    const vault = await memoryVault();
+    const acc = (name: string): DiscoveredAccount => ({ ...account(name, 10), media: account(name, 10).media.map((m) => ({ ...m, mediaUrl: null, thumbnailUrl: `https://cdn.example/${m.id}.jpg` })) });
+    let probed = 0;
+    let prompt = "";
+    const r = await runResearch({
+      vault,
+      token: "EAAx",
+      igUserId: "ig1",
+      accounts: ["a", "b"],
+      discover: async (_f, _t, _ig, name) => acc(name),
+      probe: async () => (probed++, 30),
+      fetchImpl: (async () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200 })) as typeof fetch,
+      ask: async (p) => ((prompt = p), "{}"),
+      now: () => NOW,
+    });
+    expect(probed).toBe(0);
+    expect(r.measured.every((m) => m.framesAreCover && m.frames?.endsWith("-cover.jpg") && m.lengthSeconds === null)).toBe(true);
+    expect(prompt).toContain("framesAreCover");
+  });
+});
+
 describe("discoverAccount", () => {
   it("reads another account through Business Discovery", async () => {
     const urls: string[] = [];

@@ -9,7 +9,7 @@
 // from code: Claude's copies are replaced before the gate, and a Reel that
 // wasn't looked up fails it.
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverAccount, type DiscoveredAccount, type Media } from "../instagram.ts";
@@ -37,7 +37,21 @@ export type MeasuredReel = {
   postsPerWeek: number | null;
   /** The frame strip Claude looks at (0 s, 1 s, 2 s, middle), relative to the work folder. */
   frames: string | null;
+  /** True when Instagram gave no video file, so `frames` is only the Reel's cover image. */
+  framesAreCover?: boolean;
 };
+
+/** Saves a Reel's cover image; null when it can't be fetched. */
+async function saveCover(fetchImpl: typeof fetch, url: string, dir: string, file: string): Promise<string | null> {
+  try {
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return null;
+    await writeFile(join(dir, file), Buffer.from(await res.arrayBuffer()));
+    return file;
+  } catch {
+    return null;
+  }
+}
 
 const isReel = (m: Media) => m.productType === "REELS" || m.mediaType === "VIDEO";
 
@@ -154,7 +168,13 @@ export function withMeasured(r: Research | null, measured: MeasuredReel[]): Rese
 export function gateResearchMeasured(r: Research | null, measured: MeasuredReel[]): GateResult {
   const known = new Set(measured.map((m) => m.url));
   const fixed = withMeasured(r, measured);
-  const base = gateResearch(fixed);
+  const byUrl = new Map(measured.map((m) => [m.url, m]));
+  // Only what code measured and couldn't read is excused; Claude can't excuse a field.
+  const base = gateResearch(fixed, (url) => {
+    const m = byUrl.get(url);
+    if (!m) return [];
+    return [...(m.lengthSeconds === null ? ["lengthSeconds"] : []), ...(m.cutsPerTenSeconds === null ? ["cutsPerTenSeconds"] : [])];
+  });
   const unknown = (fixed?.reels ?? []).filter((x) => !x.url || !known.has(x.url)).map((x) => x.url ?? "(no link)");
   return gate([check("Every Reel is one that was looked up (none invented)", unknown.length === 0, unknown.length ? `not looked up: ${unknown.slice(0, 3).join(", ")}` : undefined), ...base.checks]);
 }
@@ -229,8 +249,11 @@ export async function runResearch(d: {
   try {
     const measured: MeasuredReel[] = [];
     for (const [i, { account, media }] of picked.entries()) {
+      const name = `reel-${String(i + 1).padStart(2, "0")}`;
       const seconds = media.mediaUrl ? await (d.probe ?? ffprobeSeconds)(media.mediaUrl) : null;
-      const m = media.mediaUrl ? await (d.measure ?? measureVideo)(media.mediaUrl, seconds, dir, `reel-${String(i + 1).padStart(2, "0")}`) : { cutsPerTenSeconds: null, soundShare: null, frames: null };
+      const m = media.mediaUrl ? await (d.measure ?? measureVideo)(media.mediaUrl, seconds, dir, name) : { cutsPerTenSeconds: null, soundShare: null, frames: null };
+      // No video to read: the cover image is the one picture there is.
+      const cover = !m.frames && media.thumbnailUrl ? await saveCover(d.fetchImpl ?? fetch, media.thumbnailUrl, dir, `${name}-cover.jpg`) : null;
       measured.push({
         url: media.permalink!,
         account: account.username,
@@ -241,16 +264,20 @@ export async function runResearch(d: {
         comments: media.comments,
         lengthSeconds: seconds,
         ...m,
+        frames: m.frames ?? cover,
+        framesAreCover: !m.frames && !!cover,
         postsPerWeek: postsPerWeek(account.media, now()),
       });
     }
-    log(`Measured ${measured.length} Reels: ${measured.filter((m) => m.lengthSeconds !== null).length} lengths, ${measured.filter((m) => m.frames).length} frame strips.`);
+    const noVideo = picked.filter((p) => !p.media.mediaUrl).length;
+    log(`Measured ${measured.length} Reels: ${measured.filter((m) => m.lengthSeconds !== null).length} lengths, ${measured.filter((m) => m.frames && !m.framesAreCover).length} frame strips, ${measured.filter((m) => m.framesAreCover).length} cover images only.${noVideo ? ` Instagram gave no video file for ${noVideo} of them.` : ""}`);
 
     const lessons = await d.vault.lessons();
     const lessonText = lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "";
     const sources = [
       "Code already measured these; copy url, likes, comments, lengthSeconds, cutsPerTenSeconds and postsPerWeek as given (they're checked). Views aren't readable for other accounts; leave views null.",
-      "Each Reel's `frames` file is a strip of 4 frames side by side: at 0.1 s, 1 s, 2 s and the middle. Open it with the Read tool to describe first2s, art and onScreenText from what you actually see. soundShare is how much of the Reel has sound (0 to 1); use it for voice, with what the caption says.",
+      "Each Reel's `frames` file is a strip of 4 frames side by side: at 0.1 s, 1 s, 2 s and the middle. Open it with the Read tool to describe first2s, art and onScreenText from what you actually see. When framesAreCover is true, Instagram gave no video, so the file is only the Reel's cover image: describe what the cover shows and say first2s is judged from the cover. soundShare is how much of the Reel has sound (0 to 1); use it for voice, with what the caption says; when it's null, judge voice from the caption and say so.",
+      "When lengthSeconds or cutsPerTenSeconds is null, code couldn't read the video: leave it null. Never guess a measured number.",
       "Comment text isn't readable through Instagram's API: for commentThemes write the comment count and leave it at that, never invent what people said.",
       JSON.stringify(measured, null, 1),
       lessonText,
