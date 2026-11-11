@@ -4,8 +4,28 @@
 
 The Social Media Specialist drafts Instagram posts; Thomas approves each one on the Vault page before it's posted
 (he chose Instagram's own API, posting on approval). Only `publishDue` in `src/social.ts` posts, and only posts in
-state `approved` that it claimed with `claimForPublishing`. Never add a way to approve by phone or to post a draft,
+state `approved` that it claimed with `claimForPublishing`. The Facebook Page (Thomas, 2026-11-11: "I want it to
+manage the Facebook page too") follows the same rule: `publishDue` cross-posts the approved post there, nothing
+else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft,
 and never retry a failed post on its own. Keep the tests for this passing.
+
+Exception, Trial Reels only (Thomas, 2026-11-10): he chose "automatic Trial Reels only" for the content pipeline
+(`pipeline/README.md`). A pipeline Reel may go out without his OK only as a Trial Reel (shown to non-followers,
+`graduation_strategy: MANUAL`, so showing it to followers stays his call in the app), and only when `mayAutoPost` in
+`src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist isn't paused. Feed posts and normal
+Reels keep the approval rule above. Keep the tests for `mayAutoPost` passing.
+
+## The pipeline's gates are code (Thomas, 2026-11-10)
+
+Every stage of the content pipeline has a gate in `src/pipeline/gates.ts`. Don't let a stage pass on Claude's own
+say-so: a gate checks the output against measured data (Insights, ffprobe, the render's text boxes) or against
+separate cold reads. When a lesson from stage 8 becomes a check, it's added for stages 3 to 6, never removed silently.
+
+## Record everything it does (Thomas, 2026-11-10)
+
+Thomas wants every change or action the specialist makes recorded, like Hitta's history. Everything that changes
+Instagram, every pipeline stage, and everything done through Hitta goes through `vault.logAction` (`SocialAction`,
+shown as History on the Vault page). Any new Instagram write must log too.
 
 ## Requests from Hitta (from Thomas, standing instruction)
 

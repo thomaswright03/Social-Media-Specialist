@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { pickNext, screenDraft, fullCaption } from "../src/draft.ts";
 import type { HittaReport } from "../src/hitta.ts";
-import { currentToken, type InstagramClient } from "../src/instagram.ts";
+import type { FacebookPageClient } from "../src/facebook.ts";
+import { currentToken, graphHost, instagramClient, type InstagramClient } from "../src/instagram.ts";
 import type { Renderer } from "../src/render.ts";
 import { pickPost } from "../src/requests.ts";
 import { nextSlot } from "../src/schedule.ts";
@@ -199,9 +200,10 @@ describe("posting", () => {
     process.env.INSTAGRAM_ACCESS_TOKEN = "IGTOKEN";
     process.env.VAULT_PUBLIC_URL = "https://vault.example.com/";
     process.env.INSTAGRAM_GRAPH_HOST = "graph.facebook.com"; // no refresh calls in these tests
+    process.env.FACEBOOK_CROSSPOST = "off"; // turned on in the Facebook Page tests
   });
   afterEach(() => {
-    for (const k of ["HITTA_API_KEY", "INSTAGRAM_ACCESS_TOKEN", "VAULT_PUBLIC_URL", "INSTAGRAM_GRAPH_HOST"]) delete process.env[k];
+    for (const k of ["HITTA_API_KEY", "INSTAGRAM_ACCESS_TOKEN", "VAULT_PUBLIC_URL", "INSTAGRAM_GRAPH_HOST", "FACEBOOK_CROSSPOST"]) delete process.env[k];
   });
 
   async function withPost(state: string, scheduledFor: Date | null) {
@@ -244,6 +246,60 @@ describe("posting", () => {
     // Never twice.
     await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, fetchImpl: siteFetch, now: NOW });
     expect(ig.calls).toHaveLength(1);
+  });
+
+  const fakePage = (fail = false) => {
+    const calls: { url: string; message: string }[] = [];
+    const client: FacebookPageClient = {
+      info: async () => ({ id: "pg", name: "Wright AI Solutions LLC", followers: 3, likes: 3, link: null, instagramId: "IG" }),
+      posts: async () => [],
+      async publishPhoto(url, message) {
+        calls.push({ url, message });
+        if (fail) throw new Error("Facebook said: no");
+        return { postId: "pg_1", permalink: "https://facebook.com/pg/posts/1" };
+      },
+      publishVideo: async () => ({ videoId: "v", permalink: null }),
+      comments: async () => [],
+      reply: async () => ({ id: "r" }),
+    };
+    return { client, calls };
+  };
+
+  it("also posts an approved post to the Facebook Page, and logs both", async () => {
+    process.env.FACEBOOK_CROSSPOST = "on";
+    const { vault, post } = await withPost("approved", new Date(NOW.getTime() - 60_000));
+    const ig = fakeIg();
+    const page = fakePage();
+    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
+    expect(r.published).toHaveLength(1);
+    expect(page.calls).toEqual([{ url: `https://vault.example.com/api/social/media/${post.mediaToken}.jpg`, message: ig.calls[0]!.caption }]);
+    const history = (await vault.actions()).map((a) => a.summary);
+    expect(history.some((h) => h.includes("to Instagram"))).toBe(true);
+    expect(history.some((h) => h.includes("to the Facebook Page"))).toBe(true);
+  });
+
+  it("keeps the Instagram post when the Page refuses it, and never retries the Page", async () => {
+    process.env.FACEBOOK_CROSSPOST = "on";
+    const { vault, post } = await withPost("approved", new Date(NOW.getTime() - 60_000));
+    const ig = fakeIg();
+    const page = fakePage(true);
+    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
+    expect(r.published).toHaveLength(1);
+    expect((await vault.post(post.id))!.state).toBe("published");
+    expect((await vault.actions()).find((a) => a.kind === "post_failed")?.summary).toMatch(/Facebook Page refused/);
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
+    expect(page.calls).toHaveLength(1);
+  });
+
+  it("leaves the Page alone when FACEBOOK_CROSSPOST is off, and never posts a draft there", async () => {
+    const { vault } = await withPost("approved", new Date(NOW.getTime() - 60_000));
+    const page = fakePage();
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
+    expect(page.calls).toHaveLength(0);
+    process.env.FACEBOOK_CROSSPOST = "on";
+    const draft = await withPost("draft", new Date(NOW.getTime() - 60_000));
+    await publishDue({ vault: draft.vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
+    expect(page.calls).toHaveLength(0);
   });
 
   it("never posts a draft, a future post, or anything while paused", async () => {
@@ -340,5 +396,53 @@ describe("Hitta", () => {
     expect(pickPost(posts, "the lead finder one")!.id).toBe("b");
     expect(pickPost(posts, "show it before you build it")!.id).toBe("a");
     expect(pickPost(posts, "zzz")).toBeNull();
+  });
+});
+
+describe("Facebook login", () => {
+  afterEach(() => {
+    for (const k of ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_GRAPH_HOST", "FACEBOOK_PAGE_ID"]) delete process.env[k];
+  });
+
+  const graph = (routes: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const fetchImpl = (async (url: string | URL) => {
+      const u = new URL(String(url));
+      asked.push(`${u.host}${u.pathname}`);
+      const key = Object.keys(routes).find((k) => u.pathname.endsWith(k));
+      return new Response(JSON.stringify(key ? routes[key] : { error: { message: "no", code: 100 } }), { status: key ? 200 : 400 });
+    }) as unknown as typeof fetch;
+    return { fetchImpl, asked };
+  };
+
+  it("tells Facebook tokens from Instagram ones", () => {
+    expect(graphHost("EAAbc")).toBe("graph.facebook.com");
+    expect(graphHost("IGAAbc")).toBe("graph.instagram.com");
+    process.env.INSTAGRAM_GRAPH_HOST = "graph.instagram.com";
+    expect(graphHost("EAAbc")).toBe("graph.instagram.com");
+  });
+
+  it("swaps a pasted Facebook token for the Page's own token, which doesn't expire, and logs it", async () => {
+    const vault = await memoryVault();
+    process.env.INSTAGRAM_ACCESS_TOKEN = "EAAuser";
+    const { fetchImpl } = graph({
+      "/me/accounts": { data: [{ id: "other", name: "Everything Jesus", access_token: "EAAother" }, { id: "pg", name: "Wright AI Solutions LLC", access_token: "EAApage", instagram_business_account: { id: "IG1" } }] },
+      "/debug_token": { data: { expires_at: 0 } },
+    });
+    const t = await currentToken(vault, { fetchImpl, now: NOW });
+    expect(t).toMatchObject({ token: "EAApage", expiresAt: null });
+    // Stored: the next run uses the Page token without asking again.
+    expect((await currentToken(vault, { fetchImpl: graph({}).fetchImpl, now: NOW }))!.token).toBe("EAApage");
+    expect((await vault.actions()).map((a) => a.summary).join(" ")).toMatch(/Wright AI Solutions LLC/);
+  });
+
+  it("finds the Instagram account through the Page", async () => {
+    const { fetchImpl, asked } = graph({
+      "/me": { id: "pg", name: "Wright AI Solutions LLC", instagram_business_account: { id: "IG1" } },
+      "/IG1": { username: "wrightaisolutionsllc", followers_count: 12, media_count: 4 },
+    });
+    const a = await instagramClient("EAApage", { fetchImpl }).account();
+    expect(a).toEqual({ id: "IG1", username: "wrightaisolutionsllc", followers: 12, posts: 4 });
+    expect(asked.every((x) => x.startsWith("graph.facebook.com/"))).toBe(true);
   });
 });

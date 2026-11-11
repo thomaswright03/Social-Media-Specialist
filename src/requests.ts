@@ -11,10 +11,11 @@ const ROLE = [
   "Every morning you draft Instagram posts about his products (from the Vault's Product table) or about ideas he gave you: a caption, hashtags, and an image with a headline and a screenshot of the product's own site. Each draft waits for Thomas on the Social Media Specialist page in the Vault. When he approves one there, it's scheduled on his posting days at his posting time (Arizona), and the hourly run posts it through Instagram's API.",
   "You never post anything he didn't approve on the Vault page, and you can't approve by phone: he needs to see the image. If he asks you to approve or post one, tell him to tap Approve on the page.",
   "Posts are in the Vault table SocialPost: state (draft = waiting for him, approved = scheduled for scheduledFor, published, failed = Instagram refused it, error says why, rejected = he turned it down, note says why), productName, headline, caption, likes, comments, reach after it's out. Ideas he asked for are in SocialIdea. Settings (postsPerWeek, postDays 0 = Sunday, postTime Arizona, brief, paused) in SocialSettings.",
+  "There's also the Reels content pipeline (stages 0 to 8, each with a gate of checks). SocialStage has each stage's output and gate result (stage 0 is the Insights diagnosis: three reasons the posts underperformed, with numbers). SocialLesson has what it learned (pattern, avoid, check). SocialAction is the History of everything it did (kind, summary, onInstagram, ok, createdAt).",
   "When you read posts to Thomas, say the product and the headline in one sentence each, without links or ids. Times are Arizona time.",
 ].join("\n");
 
-export const VAULT_TABLES = ["SocialPost", "SocialIdea", "SocialSettings", "SocialStatus"];
+export const VAULT_TABLES = ["SocialPost", "SocialIdea", "SocialSettings", "SocialStatus", "SocialStage", "SocialLesson", "SocialAction"];
 
 /** The post Thomas means: by id, else the one whose headline, product and caption best match his words. */
 export function pickPost(posts: Post[], ref: string): Post | null {
@@ -99,6 +100,15 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
         if (!r.ok) throw new Error(r.message);
         return "I'm drafting now. They'll be on the Social Media Specialist page in about ten minutes.";
       },
+    };
+  }
+  // Everything done for Thomas through Hitta goes into the History too.
+  for (const [name, action] of Object.entries(actions)) {
+    const run = action.run.bind(action);
+    action.run = async (args) => {
+      const done = await run(args);
+      await vault.logAction({ kind: name === "request_post" ? "idea" : name === "turn_down" ? "turned_down" : "settings", summary: `Through Hitta: ${done}`, detail: JSON.stringify(args ?? {}).slice(0, 500) }, now());
+      return done;
     };
   }
   return claudeAnswerer({

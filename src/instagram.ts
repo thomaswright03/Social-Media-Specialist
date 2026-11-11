@@ -34,19 +34,98 @@ export class InstagramError extends Error {
 export type Account = { id: string; username: string; followers: number | null; posts: number | null };
 export type MediaStats = { likes: number | null; comments: number | null; reach: number | null; saves: number | null; shares: number | null; views: number | null; permalink: string | null };
 
+export type Media = {
+  id: string;
+  caption: string | null;
+  mediaType: string;
+  /** FEED, REELS, STORY … */
+  productType: string | null;
+  timestamp: string;
+  permalink: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  likes: number | null;
+  comments: number | null;
+};
+
+/** Reel metrics from Instagram's insights (null when Instagram doesn't give one). */
+export type ReelInsights = {
+  views: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  saves: number | null;
+  shares: number | null;
+  totalInteractions: number | null;
+  /** Seconds (Instagram gives milliseconds). */
+  avgWatchSeconds: number | null;
+  /** Seconds of total watch time, replays included. */
+  totalWatchSeconds: number | null;
+  /** Share of initial views that skipped in the first 3 seconds, 0 to 1. */
+  skipRate: number | null;
+};
+
+/** Trial Reels: shown to non-followers first. MANUAL = Thomas shares it with followers in the app; SS_PERFORMANCE = Instagram does if it does well. */
+export type TrialStrategy = "MANUAL" | "SS_PERFORMANCE";
+
 export type InstagramClient = {
   account(): Promise<Account>;
   publishImage(imageUrl: string, caption: string): Promise<{ containerId: string; mediaId: string; permalink: string | null }>;
   stats(mediaId: string): Promise<MediaStats>;
+  /** Everything on the account, newest first (up to `max`). */
+  listMedia?(max?: number): Promise<Media[]>;
+  reelInsights?(mediaId: string): Promise<ReelInsights>;
+  /** Follows in the last `days` days (at most 30), when Instagram gives it. */
+  recentFollows?(days?: number): Promise<number | null>;
+  /** Taps on the profile's links (the website) in the last `days` days (at most 30). */
+  recentLinkTaps?(days?: number): Promise<number | null>;
+  /** Posts a Reel from a public video URL; a trial Reel when `trial` is set. */
+  publishReel?(videoUrl: string, caption: string, opts?: { trial?: TrialStrategy; coverUrl?: string; thumbOffsetMs?: number; shareToFeed?: boolean }): Promise<{ containerId: string; mediaId: string; permalink: string | null }>;
 };
 
-const host = () => process.env.INSTAGRAM_GRAPH_HOST?.trim() || "graph.instagram.com";
+export const REEL_METRICS = ["views", "reach", "likes", "comments", "saved", "shares", "total_interactions", "ig_reels_avg_watch_time", "ig_reels_video_view_total_time", "reels_skip_rate"] as const;
+
+/** Instagram's insights rows into ReelInsights. */
+export function parseReelInsights(data: { name?: string; values?: { value?: unknown }[]; total_value?: { value?: unknown } }[]): ReelInsights {
+  const out: ReelInsights = { views: null, reach: null, likes: null, comments: null, saves: null, shares: null, totalInteractions: null, avgWatchSeconds: null, totalWatchSeconds: null, skipRate: null };
+  for (const m of data) {
+    const v = n(m.values?.[0]?.value ?? m.total_value?.value);
+    switch (m.name) {
+      case "views": out.views = v; break;
+      case "reach": out.reach = v; break;
+      case "likes": out.likes = v; break;
+      case "comments": out.comments = v; break;
+      case "saved": out.saves = v; break;
+      case "shares": out.shares = v; break;
+      case "total_interactions": out.totalInteractions = v; break;
+      case "ig_reels_avg_watch_time": out.avgWatchSeconds = v === null ? null : v / 1000; break;
+      case "ig_reels_video_view_total_time": out.totalWatchSeconds = v === null ? null : v / 1000; break;
+      // A percentage (e.g. 62.5); kept as a share.
+      case "reels_skip_rate": out.skipRate = v === null ? null : v > 1 ? v / 100 : v; break;
+    }
+  }
+  return out;
+}
+
+export const IG_HOST = "graph.instagram.com";
+export const FB_HOST = "graph.facebook.com";
+
+/**
+ * Which API a token belongs to: Facebook tokens (Facebook login, which also
+ * reaches the Facebook Page) start with "EAA"; Instagram login tokens with
+ * "IG". INSTAGRAM_GRAPH_HOST overrides it.
+ */
+export function graphHost(token?: string): string {
+  const set = process.env.INSTAGRAM_GRAPH_HOST?.trim();
+  if (set) return set;
+  return token?.startsWith("EAA") ? FB_HOST : IG_HOST;
+}
 
 type Fetch = typeof fetch;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {
-  const url = new URL(`https://${host()}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
+export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}, host = graphHost(token)): Promise<Record<string, unknown>> {
+  const url = new URL(`https://${host}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
   const body = new URLSearchParams({ ...params, access_token: token });
   let res: Response;
   try {
@@ -75,6 +154,12 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
 
   async function id(): Promise<string> {
     if (userId) return userId;
+    if (graphHost(token) === FB_HOST) {
+      const page = await findPage(fetchImpl, token);
+      if (!page?.instagramId) throw new InstagramError("The Facebook token doesn't reach a Page with an Instagram account linked. Link Instagram to the Page, or set INSTAGRAM_USER_ID.", null, null);
+      userId = page.instagramId;
+      return userId;
+    }
     const me = await call(fetchImpl, "GET", "me", token, { fields: "user_id,username" });
     userId = String(me.user_id ?? me.id ?? "");
     if (!userId) throw new InstagramError("Instagram didn't say which account the token belongs to. Set INSTAGRAM_USER_ID.", null, null);
@@ -108,6 +193,90 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
     },
 
+    async listMedia(max = 100) {
+      const ig = await id();
+      const out: Media[] = [];
+      let after: string | null = null;
+      while (out.length < max) {
+        const page = await call(fetchImpl, "GET", `${ig}/media`, token, { fields: "id,caption,media_type,media_product_type,timestamp,permalink,media_url,thumbnail_url,like_count,comments_count", limit: "50", ...(after ? { after } : {}) });
+        for (const m of (page.data as Record<string, unknown>[] | undefined) ?? []) {
+          out.push({
+            id: String(m.id),
+            caption: typeof m.caption === "string" ? m.caption : null,
+            mediaType: String(m.media_type ?? ""),
+            productType: typeof m.media_product_type === "string" ? m.media_product_type : null,
+            timestamp: String(m.timestamp ?? ""),
+            permalink: typeof m.permalink === "string" ? m.permalink : null,
+            mediaUrl: typeof m.media_url === "string" ? m.media_url : null,
+            thumbnailUrl: typeof m.thumbnail_url === "string" ? m.thumbnail_url : null,
+            likes: n(m.like_count),
+            comments: n(m.comments_count),
+          });
+        }
+        const next = (page.paging as { cursors?: { after?: string }; next?: string } | undefined) ?? {};
+        if (!next.next || !next.cursors?.after) break;
+        after = next.cursors.after;
+      }
+      return out.slice(0, max);
+    },
+
+    async reelInsights(mediaId) {
+      // All at once; when Instagram refuses one metric (some are "in development"), one at a time.
+      const all = await call(fetchImpl, "GET", `${mediaId}/insights`, token, { metric: REEL_METRICS.join(",") }).catch(() => null);
+      if (all) return parseReelInsights((all.data as never[]) ?? []);
+      const rows: never[] = [];
+      for (const metric of REEL_METRICS) {
+        const one = await call(fetchImpl, "GET", `${mediaId}/insights`, token, { metric }).catch(() => null);
+        rows.push(...(((one?.data as never[]) ?? []) as never[]));
+      }
+      return parseReelInsights(rows);
+    },
+
+    async recentFollows(days = 30) {
+      const ig = await id();
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - Math.min(days, 30) * 86_400;
+      const r = await call(fetchImpl, "GET", `${ig}/insights`, token, { metric: "follows_and_unfollows", period: "day", metric_type: "total_value", breakdown: "follow_type", since: String(since), until: String(until) }).catch(() => null);
+      const m = (r?.data as { total_value?: { breakdowns?: { results?: { dimension_values?: string[]; value?: number }[] }[] } }[] | undefined)?.[0];
+      const results = m?.total_value?.breakdowns?.[0]?.results ?? [];
+      const follows = results.find((x) => x.dimension_values?.includes("FOLLOWER"))?.value;
+      return typeof follows === "number" ? follows : null;
+    },
+
+    async recentLinkTaps(days = 30) {
+      const ig = await id();
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - Math.min(days, 30) * 86_400;
+      const r = await call(fetchImpl, "GET", `${ig}/insights`, token, { metric: "profile_links_taps", period: "day", metric_type: "total_value", since: String(since), until: String(until) }).catch(() => null);
+      const v = (r?.data as { total_value?: { value?: unknown } }[] | undefined)?.[0]?.total_value?.value;
+      return typeof v === "number" ? v : null;
+    },
+
+    async publishReel(videoUrl, caption, opts = {}) {
+      const ig = await id();
+      const params: Record<string, string> = { media_type: "REELS", video_url: videoUrl, caption };
+      if (opts.trial) params.trial_params = JSON.stringify({ graduation_strategy: opts.trial });
+      if (opts.coverUrl) params.cover_url = opts.coverUrl;
+      if (opts.thumbOffsetMs !== undefined) params.thumb_offset = String(Math.round(opts.thumbOffsetMs));
+      if (opts.shareToFeed !== undefined) params.share_to_feed = String(opts.shareToFeed);
+      const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
+      const containerId = String(container.id ?? "");
+      if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
+      // Video processing takes longer than an image: up to five minutes.
+      for (let i = 0; i < 100; i++) {
+        const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
+        if (s.status_code === "FINISHED") break;
+        if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the video: ${String(s.status ?? s.status_code)}`, null, null);
+        if (i === 99) throw new InstagramError("Instagram was still processing the video after five minutes.", null, null);
+        await sleep(pollMs);
+      }
+      const published = await call(fetchImpl, "POST", `${ig}/media_publish`, token, { creation_id: containerId });
+      const mediaId = String(published.id ?? "");
+      if (!mediaId) throw new InstagramError("Instagram didn't say the Reel went out.", null, null);
+      const back = await call(fetchImpl, "GET", mediaId, token, { fields: "permalink" }).catch(() => ({}) as Record<string, unknown>);
+      return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
+    },
+
     async stats(mediaId) {
       const base = await call(fetchImpl, "GET", mediaId, token, { fields: "like_count,comments_count,permalink" });
       const out: MediaStats = { likes: n(base.like_count), comments: n(base.comments_count), reach: null, saves: null, shares: null, views: null, permalink: typeof base.permalink === "string" ? base.permalink : null };
@@ -123,6 +292,54 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       return out;
     },
   };
+}
+
+export type PageRef = { id: string; name: string; instagramId: string | null; accessToken: string | null };
+
+/**
+ * The Facebook Page a Facebook token reaches: the token's own Page when it's
+ * a Page token, else the Page from /me/accounts (FACEBOOK_PAGE_ID, else the
+ * one with Instagram linked, else the first). Null when there's none.
+ */
+export async function findPage(fetchImpl: Fetch, token: string): Promise<PageRef | null> {
+  const wanted = process.env.FACEBOOK_PAGE_ID?.trim() || null;
+  // A Page token: "me" is the Page (a user has no instagram_business_account field, so that call fails).
+  const me = await call(fetchImpl, "GET", "me", token, { fields: "id,name,instagram_business_account" }, FB_HOST).catch(() => null);
+  if (me && "instagram_business_account" in me) {
+    return { id: String(me.id), name: String(me.name ?? ""), instagramId: igOf(me), accessToken: token };
+  }
+  const pages = await call(fetchImpl, "GET", "me/accounts", token, { fields: "id,name,access_token,instagram_business_account", limit: "100" }, FB_HOST);
+  const list = ((pages.data as Record<string, unknown>[] | undefined) ?? []).map((p) => ({ id: String(p.id), name: String(p.name ?? ""), instagramId: igOf(p), accessToken: typeof p.access_token === "string" ? p.access_token : null }));
+  return (wanted ? list.find((p) => p.id === wanted) : null) ?? list.find((p) => p.instagramId) ?? list[0] ?? null;
+}
+
+const igOf = (o: Record<string, unknown>) => {
+  const a = o.instagram_business_account as { id?: unknown } | undefined;
+  return a?.id ? String(a.id) : null;
+};
+
+/**
+ * A pasted Facebook token into the Page's own token. A Page token made from a
+ * long-lived user token never expires, so it's what gets stored. With
+ * META_APP_ID and META_APP_SECRET set, a short-lived (1 to 2 hour) token is
+ * first swapped for a long-lived one; without them, paste one made long-lived
+ * in Meta's Access Token Debugger ("Extend Access Token").
+ */
+export async function facebookPageToken(userToken: string, fetchImpl: Fetch = fetch): Promise<{ token: string; expiresAt: string | null; page: PageRef | null }> {
+  let t = userToken;
+  const appId = process.env.META_APP_ID?.trim();
+  const secret = process.env.META_APP_SECRET?.trim();
+  if (appId && secret) {
+    const ex = await call(fetchImpl, "GET", "oauth/access_token", t, { grant_type: "fb_exchange_token", client_id: appId, client_secret: secret, fb_exchange_token: t }, FB_HOST).catch(() => null);
+    if (typeof ex?.access_token === "string") t = ex.access_token;
+  }
+  const page = await findPage(fetchImpl, t);
+  const token = page?.accessToken ?? t;
+  // When it runs out: 0 means never.
+  const info = await call(fetchImpl, "GET", "debug_token", token, { input_token: token }, FB_HOST).catch(() => null);
+  const at = (info?.data as { expires_at?: unknown } | undefined)?.expires_at;
+  const expiresAt = typeof at === "number" && at > 0 ? new Date(at * 1000).toISOString() : null;
+  return { token, expiresAt, page };
 }
 
 export type TokenState = { token: string; expiresAt: string | null; refreshed: boolean };
@@ -141,9 +358,27 @@ export async function currentToken(vault: Vault, opts: { fetchImpl?: Fetch; now?
   let token = stored && stored.seed === seed ? stored.token : pasted;
   let expiresAt = stored && stored.seed === seed ? stored.expiresAt : null;
   const refreshedAt = stored && stored.seed === seed ? Date.parse(stored.refreshedAt) : 0;
-  if (!stored || stored.seed !== seed) await vault.saveToken(token, seed, null, now);
-  // Only Instagram Login tokens refresh this way; a Facebook system-user token doesn't expire.
-  if (host() !== "graph.instagram.com" || now.getTime() - refreshedAt < 7 * DAY_MS) return { token, expiresAt, refreshed: false };
+  if (!stored || stored.seed !== seed) {
+    if (graphHost(pasted) === FB_HOST) {
+      // A new Facebook token: keep the Page's own token instead (it doesn't run out).
+      const fb = await facebookPageToken(pasted, opts.fetchImpl ?? fetch).catch((err) => {
+        opts.log?.(`Couldn't get the Facebook Page's token: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      });
+      if (fb) {
+        token = fb.token;
+        expiresAt = fb.expiresAt;
+        await vault.saveToken(token, seed, expiresAt ? new Date(expiresAt) : null, now);
+        const what = `Switched to ${fb.page ? `the "${fb.page.name}" Page's own token` : "the pasted Facebook token"}${expiresAt ? `, good until ${expiresAt.slice(0, 10)}` : ", which doesn't expire"}.`;
+        await vault.logAction({ kind: "token_refreshed", summary: what, onInstagram: false }, now);
+        opts.log?.(what);
+        return { token, expiresAt, refreshed: true };
+      }
+    }
+    await vault.saveToken(token, seed, null, now);
+  }
+  // Only Instagram Login tokens refresh this way; a Facebook Page token doesn't expire.
+  if (graphHost(pasted) !== IG_HOST || now.getTime() - refreshedAt < 7 * DAY_MS) return { token, expiresAt, refreshed: false };
   try {
     const res = await (opts.fetchImpl ?? fetch)(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(30_000) });
     const json = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: { message?: string } };
@@ -152,6 +387,7 @@ export async function currentToken(vault: Vault, opts: { fetchImpl?: Fetch; now?
     const expires = json.expires_in ? new Date(now.getTime() + json.expires_in * 1000) : null;
     expiresAt = expires?.toISOString() ?? null;
     await vault.saveToken(token, seed, expires, now);
+    await vault.logAction({ kind: "token_refreshed", summary: `Refreshed the Instagram token${expiresAt ? `; good until ${expiresAt.slice(0, 10)}` : ""}.`, onInstagram: false }, now);
     opts.log?.(`Refreshed the Instagram token${expiresAt ? `; good until ${expiresAt.slice(0, 10)}` : ""}.`);
     return { token, expiresAt, refreshed: true };
   } catch (err) {

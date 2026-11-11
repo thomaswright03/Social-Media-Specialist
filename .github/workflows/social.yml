@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, requests, instagram-test, hitta-test]
+        options: [run, publish, preview, diagnose, requests, instagram-test, hitta-test]
 
 concurrency:
   group: social
@@ -57,8 +57,15 @@ jobs:
       # and kept sealed in the Vault; paste a new one here to replace it.
       INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
       INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
-      # A repository variable, only for Facebook login: graph.facebook.com.
+      # Only to override the guess from the token (EAA… = Facebook login).
       INSTAGRAM_GRAPH_HOST: ${{ vars.INSTAGRAM_GRAPH_HOST }}
+      # Facebook login (README.md): the Page to manage when the token reaches
+      # several, cross-posting approved posts to it ("off" stops that), and the
+      # app's id and secret, used once to make a pasted token long-lived.
+      FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
+      FACEBOOK_CROSSPOST: ${{ vars.FACEBOOK_CROSSPOST }}
+      META_APP_ID: ${{ vars.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       GITHUB_TOKEN: ${{ github.token }}
       # Scheduled runs start as the hourly check; the "due" step below turns
       # one into the morning run. A run by hand does what it was asked.
@@ -92,7 +99,7 @@ jobs:
       # Pasted secrets can pick up line breaks or spaces. Strip them.
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
@@ -146,6 +153,11 @@ jobs:
 
       - run: npm ci
         if: steps.go.outputs.yes == 'true'
+
+      # Reads the length of each posted video for the diagnosis.
+      - name: Check ffmpeg
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'diagnose'
+        run: ffprobe -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       # Writes the drafts and answers Hitta's requests.
       - name: Install Claude Code

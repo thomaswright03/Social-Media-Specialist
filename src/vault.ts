@@ -16,6 +16,12 @@
 //   SocialStatus    the latest run, for the Vault page (one row, id "social")
 //   SocialAlert     reports already sent, so each goes out once
 //   SocialToken     the Instagram token after its last refresh, sealed (never shown to Hitta or the page)
+//   SocialAction    the history: every change it makes on Instagram and every step it takes
+//                   (posted, drafted, diagnosed, a gate passed or failed), newest first on the page
+//   SocialStage     the content pipeline's stage results (pipeline/README.md): what each stage
+//                   produced and the result of its gate, one row per attempt
+//   SocialLesson    what the pipeline has learned: winning patterns, things to avoid, and the
+//                   checks stage 8 adds to stages 3 to 6
 //
 // It also reads the Vault's Product table, never writing to it.
 import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
@@ -174,7 +180,46 @@ export const CREATE_TABLES = [
   "expiresAt" DATETIME,
   "refreshedAt" DATETIME NOT NULL
 )`,
+  `CREATE TABLE IF NOT EXISTS "SocialAction" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "kind" TEXT NOT NULL,
+  "summary" TEXT NOT NULL,
+  "detail" TEXT,
+  "target" TEXT,
+  "onInstagram" BOOLEAN NOT NULL DEFAULT false,
+  "ok" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" DATETIME NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS "SocialAction_createdAt_idx" ON "SocialAction"("createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "SocialStage" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "stage" INTEGER NOT NULL,
+  "subject" TEXT NOT NULL DEFAULT 'account',
+  "attempt" INTEGER NOT NULL DEFAULT 1,
+  "passed" BOOLEAN NOT NULL DEFAULT false,
+  "output" TEXT NOT NULL,
+  "gate" TEXT NOT NULL,
+  "input" TEXT,
+  "createdAt" DATETIME NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS "SocialStage_stage_createdAt_idx" ON "SocialStage"("stage", "createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "SocialLesson" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "kind" TEXT NOT NULL,
+  "stage" INTEGER,
+  "text" TEXT NOT NULL,
+  "evidence" TEXT,
+  "source" TEXT NOT NULL,
+  "active" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" DATETIME NOT NULL
+)`,
 ];
+
+export type ActionKind = "posted" | "post_failed" | "drafted" | "token_refreshed" | "settings" | "idea" | "turned_down" | "stage" | "lesson" | "instagram";
+export type ActionEntry = { id: string; kind: string; summary: string; detail: string | null; target: string | null; onInstagram: boolean; ok: boolean; createdAt: string };
+export type StageRecord = { id: string; stage: number; subject: string; attempt: number; passed: boolean; output: unknown; gate: unknown; createdAt: string };
+export type LessonKind = "pattern" | "avoid" | "check";
+export type Lesson = { id: string; kind: LessonKind; stage: number | null; text: string; evidence: string | null; source: string; createdAt: string };
 
 /** Dates the way the Vault (Prisma) stores them, so text comparisons sort right. */
 export function vaultNow(date = new Date()): string {
@@ -426,6 +471,81 @@ export class Vault {
       sql: `INSERT INTO "SocialAlert" ("key","title","urgency","sentAt") VALUES (?,?,?,?) ON CONFLICT("key") DO NOTHING`,
       args: [key, title, urgency, vaultNow(now)],
     });
+  }
+
+  // --- History ---------------------------------------------------------------
+
+  /**
+   * Records one thing it did, for the History on the Vault page. Everything
+   * that changes Instagram goes through here (onInstagram), and so does every
+   * pipeline step. A failure to record never stops the work it records.
+   */
+  async logAction(a: { kind: ActionKind; summary: string; detail?: string | null; target?: string | null; onInstagram?: boolean; ok?: boolean }, now = new Date()): Promise<void> {
+    try {
+      await this.ensureTables();
+      await this.db.execute({
+        sql: `INSERT INTO "SocialAction" ("id","kind","summary","detail","target","onInstagram","ok","createdAt") VALUES (?,?,?,?,?,?,?,?)`,
+        args: [randomUUID(), a.kind, a.summary.slice(0, 500), a.detail?.slice(0, 4000) ?? null, a.target ?? null, a.onInstagram ? 1 : 0, a.ok === false ? 0 : 1, vaultNow(now)],
+      });
+    } catch {
+      // The history is a record, not a gate.
+    }
+  }
+
+  async actions(limit = 100): Promise<ActionEntry[]> {
+    await this.ensureTables();
+    const rs = await this.db.execute({ sql: `SELECT * FROM "SocialAction" ORDER BY "createdAt" DESC LIMIT ?`, args: [limit] });
+    return rs.rows.map((r) => ({ id: String(r.id), kind: String(r.kind), summary: String(r.summary), detail: str(r.detail), target: str(r.target), onInstagram: Boolean(Number(r.onInstagram)), ok: Boolean(Number(r.ok)), createdAt: iso(r.createdAt) ?? "" }));
+  }
+
+  // --- The content pipeline --------------------------------------------------
+
+  async saveStage(r: { stage: number; subject?: string; attempt: number; passed: boolean; output: unknown; gate: unknown; input?: unknown }, now = new Date()): Promise<string> {
+    await this.ensureTables();
+    const id = randomUUID();
+    await this.db.execute({
+      sql: `INSERT INTO "SocialStage" ("id","stage","subject","attempt","passed","output","gate","input","createdAt") VALUES (?,?,?,?,?,?,?,?,?)`,
+      args: [id, r.stage, r.subject ?? "account", r.attempt, r.passed ? 1 : 0, JSON.stringify(r.output ?? null), JSON.stringify(r.gate ?? null), r.input === undefined ? null : JSON.stringify(r.input), vaultNow(now)],
+    });
+    return id;
+  }
+
+  /** The latest result of a stage (passed or not), or the latest that passed. */
+  async latestStage(stage: number, opts: { passedOnly?: boolean; subject?: string } = {}): Promise<StageRecord | null> {
+    await this.ensureTables();
+    const rs = await this.db.execute({
+      sql: `SELECT * FROM "SocialStage" WHERE "stage" = ? AND "subject" = ? ${opts.passedOnly ? `AND "passed" = 1` : ""} ORDER BY "createdAt" DESC, "attempt" DESC LIMIT 1`,
+      args: [stage, opts.subject ?? "account"],
+    });
+    const r = rs.rows[0];
+    if (!r) return null;
+    const parse = (v: unknown) => {
+      try {
+        return JSON.parse(String(v));
+      } catch {
+        return null;
+      }
+    };
+    return { id: String(r.id), stage: Number(r.stage), subject: String(r.subject), attempt: Number(r.attempt), passed: Boolean(Number(r.passed)), output: parse(r.output), gate: parse(r.gate), createdAt: iso(r.createdAt) ?? "" };
+  }
+
+  async lessons(kind?: LessonKind): Promise<Lesson[]> {
+    await this.ensureTables();
+    const rs = await this.db.execute({ sql: `SELECT * FROM "SocialLesson" WHERE "active" = 1 ${kind ? `AND "kind" = ?` : ""} ORDER BY "createdAt" ASC`, args: kind ? [kind] : [] });
+    return rs.rows.map((r) => ({ id: String(r.id), kind: String(r.kind) as LessonKind, stage: num(r.stage), text: String(r.text), evidence: str(r.evidence), source: String(r.source), createdAt: iso(r.createdAt) ?? "" }));
+  }
+
+  /** Adds a lesson unless the same text is already there. True when it was new. */
+  async addLesson(l: { kind: LessonKind; stage?: number | null; text: string; evidence?: string | null; source: string }, now = new Date()): Promise<boolean> {
+    await this.ensureTables();
+    const text = l.text.trim().slice(0, 600);
+    const same = await this.db.execute({ sql: `SELECT 1 FROM "SocialLesson" WHERE "kind" = ? AND lower("text") = lower(?) AND "active" = 1`, args: [l.kind, text] });
+    if (same.rows.length) return false;
+    await this.db.execute({
+      sql: `INSERT INTO "SocialLesson" ("id","kind","stage","text","evidence","source","active","createdAt") VALUES (?,?,?,?,?,?,1,?)`,
+      args: [randomUUID(), l.kind, l.stage ?? null, text, l.evidence ?? null, l.source, vaultNow(now)],
+    });
+    return true;
   }
 
   // --- The Instagram token ---------------------------------------------------
