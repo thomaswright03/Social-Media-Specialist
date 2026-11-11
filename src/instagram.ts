@@ -294,6 +294,52 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
   };
 }
 
+/** Another business or creator account, seen through Business Discovery (Facebook login only). */
+export type DiscoveredAccount = { username: string; followers: number | null; posts: number | null; media: Media[] };
+
+const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count,media_url,thumbnail_url";
+
+/**
+ * Up to `max` recent posts of another professional account, with their likes
+ * and comments. Only Business Discovery reaches other accounts, and only with
+ * a Facebook-login token; a personal account can't be read at all.
+ */
+export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId: string, username: string, max = 100): Promise<DiscoveredAccount> {
+  const handle = username.replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/[/?#].*$/, "").trim();
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) throw new InstagramError(`"${username}" isn't an Instagram username.`, null, null);
+  const media: Media[] = [];
+  let after: string | null = null;
+  let head: Record<string, unknown> = {};
+  for (let page = 0; page < 4 && media.length < max; page++) {
+    const edge = `media${after ? `.after(${after})` : ""}.limit(50){${DISCOVERY_MEDIA}}`;
+    const r = await call(fetchImpl, "GET", igUserId, token, { fields: `business_discovery.username(${handle}){username,followers_count,media_count,${edge}}` }, FB_HOST).catch((err) => {
+      if (err instanceof InstagramError && /cannot be found|does not exist|not.*business/i.test(err.message)) {
+        throw new InstagramError(`@${handle} can't be read: Instagram only shows business and creator accounts to other apps.`, err.status, err.code);
+      }
+      throw err;
+    });
+    head = (r.business_discovery as Record<string, unknown> | undefined) ?? {};
+    const edgeData = head.media as { data?: Record<string, unknown>[]; paging?: { cursors?: { after?: string }; next?: string } } | undefined;
+    for (const m of edgeData?.data ?? []) {
+      media.push({
+        id: String(m.id),
+        caption: typeof m.caption === "string" ? m.caption : null,
+        mediaType: String(m.media_type ?? ""),
+        productType: typeof m.media_product_type === "string" ? m.media_product_type : null,
+        timestamp: String(m.timestamp ?? ""),
+        permalink: typeof m.permalink === "string" ? m.permalink : null,
+        mediaUrl: typeof m.media_url === "string" ? m.media_url : null,
+        thumbnailUrl: typeof m.thumbnail_url === "string" ? m.thumbnail_url : null,
+        likes: n(m.like_count),
+        comments: n(m.comments_count),
+      });
+    }
+    after = edgeData?.paging?.next ? (edgeData.paging.cursors?.after ?? null) : null;
+    if (!after) break;
+  }
+  return { username: String(head.username ?? handle), followers: n(head.followers_count), posts: n(head.media_count), media: media.slice(0, max) };
+}
+
 export type PageRef = { id: string; name: string; instagramId: string | null; accessToken: string | null };
 
 /**

@@ -47,8 +47,8 @@ Tables (it creates them; the Vault has them in its Prisma schema too):
 
 `pipeline/` holds the performance-first Reels pipeline: nine stages, each a
 prompt plus a gate of checks in code that must pass before the next stage.
-Stage 0 (diagnose) runs today; the others have their prompts and tested
-gates and get their runners next. See `pipeline/README.md`, including what
+Stages 0 (diagnose) and 1 (research) run today; the others have their
+prompts and tested gates and get their runners next. See `pipeline/README.md`, including what
 Instagram's API can and can't do.
 
 ## History
@@ -127,6 +127,11 @@ Then, from the Actions tab → Social Media Specialist → Run workflow:
 5. `diagnose`: stage 0 of the content pipeline (`pipeline/README.md`). Reads
    Insights for everything posted and names the top 3 reasons it
    underperformed, each with a number; the result is on the Vault page.
+6. `research`: stage 1. Type the Instagram usernames to learn from in the
+   run's **accounts** box (or save them as the `RESEARCH_ACCOUNTS` variable).
+   It reads their Reels through Business Discovery (business and creator
+   accounts only), measures each one with ffmpeg, and saves the winning
+   patterns as lessons for the later stages.
 
 For the Vault page's **Draft now** button, the Vault needs a GitHub token
 with Actions read and write on this repo, as `SOCIAL_DISPATCH_TOKEN` on
@@ -140,6 +145,7 @@ npx social run             the morning run: token, stats, drafts, Hitta
 npx social publish         post every approved post that's due
 npx social preview         draft one post into preview.jpg; saves nothing, posts nothing
 npx social diagnose        content pipeline stage 0: Insights diagnosis (pipeline/README.md)
+npx social research a b    content pipeline stage 1: study the Reels of accounts a and b
 npx social instagram-test  read the Instagram account; posts nothing
 npx social hitta-test      send Hitta a test report
 npm test                   the tests

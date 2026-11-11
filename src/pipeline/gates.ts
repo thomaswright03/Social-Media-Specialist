@@ -14,7 +14,7 @@ export function gate(checks: Check[]): GateResult {
   return { passed: checks.length > 0 && checks.every((c) => c.passed), checks };
 }
 
-const check = (name: string, passed: boolean, detail?: string): Check => (detail === undefined ? { name, passed } : { name, passed, detail });
+export const check = (name: string, passed: boolean, detail?: string): Check => (detail === undefined ? { name, passed } : { name, passed, detail });
 
 /** The failed checks as lines for the next prompt. */
 export function failuresText(g: GateResult | null): string {

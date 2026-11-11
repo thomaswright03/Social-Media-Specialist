@@ -10,6 +10,8 @@
 //   hitta-test      sends Hitta a low-urgency test report
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
+//   research        stage 1: studies the Reels of the accounts Thomas admires
+//                   (RESEARCH_ACCOUNTS, or usernames after the command) and saves what works
 import "dotenv/config";
 import { writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
@@ -21,6 +23,7 @@ import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
+import { runResearch } from "./pipeline/research.ts";
 import { Vault } from "./vault.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
@@ -156,6 +159,46 @@ async function main() {
     return;
   }
 
+  if (command === "research") {
+    const fromArgs = process.argv.slice(3);
+    const accounts = (fromArgs.length ? fromArgs : (process.env.RESEARCH_ACCOUNTS ?? "").split(/[\s,]+/))
+      .map((a) => a.trim().replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/.*$/, ""))
+      .filter(Boolean);
+    if (!accounts.length) {
+      console.error("No accounts to study. Set RESEARCH_ACCOUNTS (comma separated) or name them after the command.");
+      process.exit(2);
+    }
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log });
+      if (!token) {
+        console.error("INSTAGRAM_ACCESS_TOKEN isn't set.");
+        process.exit(2);
+      }
+      const me = await instagramClient(token.token).account();
+      const r = await runResearch({ vault, token: token.token, igUserId: me.id, accounts, log });
+      if (r.passed) {
+        const patterns = r.research?.patterns ?? [];
+        console.log(`\nStudied ${r.measured.length} Reels from ${accounts.map((a) => `@${a}`).join(", ")}.\n`);
+        for (const [i, p] of patterns.entries()) console.log(`${i + 1}. ${p.pattern}`);
+        const result = await sendHittaReport({
+          project: HITTA_PROJECT,
+          title: "Your Instagram research is ready",
+          summary: `The Social Media Specialist studied ${r.measured.length} Reels from ${accounts.join(", ")}. ${patterns.slice(0, 3).map((p, i) => `${i + 1}: ${p.pattern}`).join(" ")} The details are on its Vault page.`.slice(0, 900),
+          urgency: "low",
+        });
+        log(result.message);
+      } else {
+        console.error(`\nThe research didn't pass its gate${r.tries ? ` after ${r.tries} tries` : ""}:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+        process.exitCode = 1;
+      }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "publish") {
     const vault = connect();
     try {
@@ -169,7 +212,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, instagram-test or hitta-test.`);
     process.exit(2);
   }
 
