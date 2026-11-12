@@ -26,7 +26,11 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, requests, instagram-test, hitta-test]
+        options: [run, publish, preview, diagnose, research, requests, instagram-test, hitta-test]
+      accounts:
+        description: For research, the Instagram usernames to study (comma separated)
+        type: string
+        required: false
 
 concurrency:
   group: social
@@ -67,6 +71,8 @@ jobs:
       META_APP_ID: ${{ vars.META_APP_ID }}
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       GITHUB_TOKEN: ${{ github.token }}
+      # Stage 1 research: the accounts Thomas admires (the run's input wins).
+      RESEARCH_ACCOUNTS: ${{ inputs.accounts || vars.RESEARCH_ACCOUNTS }}
       # Scheduled runs start as the hourly check; the "due" step below turns
       # one into the morning run. A run by hand does what it was asked.
       COMMAND: ${{ github.event_name == 'schedule' && 'hourly' || inputs.command || 'run' }}
@@ -154,9 +160,10 @@ jobs:
       - run: npm ci
         if: steps.go.outputs.yes == 'true'
 
-      # Reads the length of each posted video for the diagnosis.
+      # Reads the length of each video for the diagnosis and the research, and
+      # measures cuts, sound and frames for the research.
       - name: Check ffmpeg
-        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'diagnose'
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'diagnose' || env.COMMAND == 'research')
         run: ffprobe -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       # Writes the drafts and answers Hitta's requests.

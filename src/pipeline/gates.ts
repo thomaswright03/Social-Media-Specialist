@@ -14,7 +14,7 @@ export function gate(checks: Check[]): GateResult {
   return { passed: checks.length > 0 && checks.every((c) => c.passed), checks };
 }
 
-const check = (name: string, passed: boolean, detail?: string): Check => (detail === undefined ? { name, passed } : { name, passed, detail });
+export const check = (name: string, passed: boolean, detail?: string): Check => (detail === undefined ? { name, passed } : { name, passed, detail });
 
 /** The failed checks as lines for the next prompt. */
 export function failuresText(g: GateResult | null): string {
@@ -75,13 +75,19 @@ export type Research = {
 
 const RESEARCH_FIELDS = ["lengthSeconds", "first2s", "cutsPerTenSeconds", "voice", "art", "onScreenText", "postsPerWeek", "commentThemes"] as const;
 
-export function gateResearch(r: Research | null): GateResult {
+/**
+ * `notReadable` names, per Reel link, the fields code tried and couldn't
+ * measure (Instagram gives no video file for some Reels); those may stay
+ * empty, and nothing else may.
+ */
+export function gateResearch(r: Research | null, notReadable: (url: string) => readonly string[] = () => []): GateResult {
   const reels = r?.reels ?? [];
   const byUrl = new Map(reels.filter((x) => x.url).map((x) => [x.url!, x]));
   const hasNumbers = (x: (typeof reels)[number]) => [x.views, x.likes, x.comments].some((v) => typeof v === "number");
   const checks: Check[] = [check("15 to 20 Reels studied", reels.length >= 15 && reels.length <= 20, `got ${reels.length}`), check("Every Reel has a link", reels.every((x) => /^https?:\/\//.test(x.url ?? "")))];
   reels.forEach((x, i) => {
-    const missing = RESEARCH_FIELDS.filter((f) => x[f] === undefined || x[f] === null || x[f] === "");
+    const excused = notReadable(x.url ?? "");
+    const missing = RESEARCH_FIELDS.filter((f) => !excused.includes(f) && (x[f] === undefined || x[f] === null || x[f] === ""));
     checks.push(check(`Reel ${i + 1} has its numbers and every field`, hasNumbers(x) && missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : hasNumbers(x) ? undefined : "no views, likes or comments"));
   });
   const patterns = r?.patterns ?? [];
