@@ -339,7 +339,13 @@ export class Vault {
 
   /** Active products with a website, the ones it can post about. */
   async products(): Promise<Product[]> {
-    const rs = await this.db.execute(`SELECT "id", "name", "description", "url" FROM "Product" WHERE "status" = 'active' AND "url" IS NOT NULL AND "url" != '' ORDER BY "name"`).catch(() => null);
+    // Active products only, and never one whose project Thomas retired (a
+    // Product row can stay "active" after its project is retired).
+    const rs = await this.db
+      .execute(
+        `SELECT "id", "name", "description", "url" FROM "Product" p WHERE "status" = 'active' AND "url" IS NOT NULL AND "url" != '' AND NOT EXISTS (SELECT 1 FROM "Project" r WHERE r."retiredAt" IS NOT NULL AND lower(trim(r."name")) = lower(trim(p."name"))) ORDER BY "name"`,
+      )
+      .catch(() => this.db.execute(`SELECT "id", "name", "description", "url" FROM "Product" WHERE "status" = 'active' AND "url" IS NOT NULL AND "url" != '' ORDER BY "name"`).catch(() => null));
     return (rs?.rows ?? []).map((r) => ({ id: String(r.id), name: String(r.name), description: str(r.description), url: String(r.url) }));
   }
 

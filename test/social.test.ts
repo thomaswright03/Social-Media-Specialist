@@ -26,6 +26,17 @@ const PRODUCTS: Product[] = [
   { id: "p2", name: "Lead Finder", description: null, url: "https://leads.example.com/" },
 ];
 
+describe("products", () => {
+  it("leaves out inactive products and products whose project was retired", async () => {
+    const vault = await memoryVault([...PRODUCTS, { id: "p3", name: "ParkLess", description: null, url: "https://parkless.example.com/" }]);
+    expect((await vault.products()).map((p) => p.name)).toEqual(["Lead Finder", "ParkLess", "Room Designer 3D"]);
+    await vault.client.execute(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY, "name" TEXT, "retiredAt" TEXT)`);
+    await vault.client.execute(`INSERT INTO "Project" VALUES ('x', 'parkless ', '2026-11-01T00:00:00.000Z'), ('y', 'Lead Finder', NULL)`);
+    await vault.client.execute(`UPDATE "Product" SET "status" = 'inactive' WHERE "id" = 'p1'`);
+    expect((await vault.products()).map((p) => p.name)).toEqual(["Lead Finder"]);
+  });
+});
+
 const goodAnswer = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     angle: "show the customer first",
