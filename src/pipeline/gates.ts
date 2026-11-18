@@ -141,7 +141,9 @@ export type SoundOffReads = boolean[];
 
 /** Reading speed for on-screen text, words a second. */
 export const READ_WPS = 4;
-const TITLE_LIKE = /\b(title|black|blank|logo|intro card|fade in from black|empty)\b/i;
+// The frame itself being a card or a blank, not words that happen to appear
+// in a scene ("an empty lot", "a black cat").
+const TITLE_LIKE = /\b(title (card|screen|frame|slide)|(black|blank|empty) (screen|frame)|logo (card|screen|reveal|sting)|intro (card|screen)|fades? in from black|opens on black)\b/i;
 
 /** "no title card", "not black", "without a logo": a shot that says what it isn't. */
 export const withoutNegations = (s: string) => s.replace(/\b(no|not|never|without|isn't|is not)\s+(an?\s+|the\s+)?[\w-]+(\s+(card|frame|screen))?/gi, " ");

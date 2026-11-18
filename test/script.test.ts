@@ -116,5 +116,10 @@ describe("the title-card check", () => {
     const o = (visual: string) => ({ intendedHook: "x", shots: [{ start: 0, end: 3, visual, kind: "action", onScreenText: "WHY", textAt: 0.1 }] });
     expect(gateOpening(o("Mid-action, no title card, not black: a dog types"), [true, true, true]).checks.find((c) => c.name.startsWith("No title"))?.passed).toBe(true);
     expect(gateOpening(o("A black screen, then a dog"), [true, true, true]).checks.find((c) => c.name.startsWith("No title"))?.passed).toBe(false);
+    const passes = (v: string) => gateOpening(o(v), [true, true, true]).checks.find((c) => c.name.startsWith("No title"))?.passed;
+    expect(passes("A florist sprints through a dark, foggy empty lot")).toBe(true);
+    expect(passes("The mayor slams an empty lemonade cup next to a black cat, already in motion at frame 1, no title card and no blank frame")).toBe(true);
+    expect(passes("Title card: DAY 1")).toBe(false);
+    expect(passes("Fades in from black to a desk")).toBe(false);
   });
 });
