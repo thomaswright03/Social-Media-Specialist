@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, ideas, requests, instagram-test, hitta-test, voice-test]
+        options: [run, publish, preview, diagnose, research, ideas, script, requests, instagram-test, hitta-test, voice-test]
       format:
         description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix
         type: string
