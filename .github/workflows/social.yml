@@ -225,6 +225,7 @@ jobs:
             reel/timeline.json
             reel/scenes/
             reel/judge/
+            reel/follow/
           if-no-files-found: ignore
 
       - name: Keep the voice test

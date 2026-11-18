@@ -38,7 +38,7 @@ import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
 import { askClaudeWithFiles } from "./pipeline/research.ts";
 import { ENTERTAINMENT, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
-import { speak } from "./voice.ts";
+import { soundEffect, speak } from "./voice.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
@@ -141,6 +141,7 @@ async function main() {
         ask: askClaude,
         judge: (dir) => askClaudeWithFiles(dir),
         speak,
+        sfx: process.env.REEL_SFX === "off" ? undefined : soundEffect,
         browser: () => chromium.launch(),
         benchmarks: (dir) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts, dir }) : Promise.resolve([])),
         outDir: "reel",

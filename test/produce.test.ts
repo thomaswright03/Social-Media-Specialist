@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraFor, captionChunks, composeHtml, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
+import { cameraFor, captionChunks, captionWords, composeHtml, kickerFor, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
 import { keyFrameNumbers } from "../src/pipeline/produce.ts";
 import { drawScene, safeSvg, svgFrom, svgProblems } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
@@ -84,6 +84,22 @@ describe("timeline", () => {
     expect(c.map((x) => x.words.map((w) => w.word).join(" "))).toEqual(["Go home.", "Sleep now please", "friend"]);
     expect(c[0]!.to).toBeCloseTo(c[1]!.from);
     expect(c[2]!.to).toBeLessThanOrEqual(t[0]!.at + t[0]!.dur);
+  });
+
+  it("shows on-screen text as the caption when nobody speaks, and as the top line only when it adds something", () => {
+    const [quiet, said, extra] = timeline(
+      [
+        { start: 0, end: 2, onScreenText: "2:31 AM" },
+        { start: 2, end: 4, onScreenText: "IMAGINE YOU OWN THAT SHOP", line: "Imagine you own that shop." },
+        { start: 4, end: 6, onScreenText: "DAY 3", line: "He did it again." },
+      ],
+      [null, { seconds: 1, words: [{ word: "Imagine", start: 0, end: 0.3 }] }, { seconds: 1, words: [{ word: "He", start: 0, end: 0.2 }] }],
+    );
+    expect(captionWords(quiet!).map((w) => w.word)).toEqual(["2:31", "AM"]);
+    expect(kickerFor(quiet!)).toBe("");
+    expect(repeatsLine(said!.onScreenText, said!.line)).toBe(true);
+    expect(kickerFor(said!)).toBe("");
+    expect(kickerFor(extra!)).toBe("DAY 3");
   });
 
   it("reads the camera move from the shot", () => {

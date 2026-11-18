@@ -25,6 +25,8 @@ What we've already made (be different from it):
 
 {{LESSONS}}
 
+Every pitch must work as a story a stranger follows on one watch in 35 seconds: one or two characters, one or two places, one question set up at the start and answered at the end.
+
 For each pitch write it as ONE sentence that makes a cold reader want the next sentence, then score it 1 to 5 on hook, shareable, standalone, different. Then list the ids of the top 3 by total.
 
 {{GATE_FAILURES}}

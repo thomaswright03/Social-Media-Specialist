@@ -134,7 +134,7 @@ export function gateIdeas(x: Ideas | null, cold: ColdReads): GateResult {
 
 // --- Stage 3: The first 3 seconds ---------------------------------------------
 
-export type Shot = { start?: number; end?: number; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string };
+export type Shot = { start?: number; end?: number; place?: string; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string };
 export type Opening = { intendedHook?: string; shots?: Shot[] };
 /** Cold sound-off viewers: did each give a reason to keep watching that matches the intended hook? */
 export type SoundOffReads = boolean[];
@@ -216,6 +216,29 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
     check("Review: grammar, physics, timing and consistency", review !== null && review.problems.length === 0, review ? review.problems.join("; ") || undefined : "not reviewed"),
     ...learned,
   ]);
+}
+
+/** Cold retellings: did each viewer get the story right without being confused? */
+export type RetellReads = boolean[];
+export const MIN_SHOTS = 8;
+export const MAX_SHOTS = 14;
+
+/**
+ * Can a stranger follow it? Thomas called the first test Reel incoherent
+ * (2026-11-18): four places, two twists, no voice for the first shots.
+ */
+export function clarityChecks(shots: Shot[], retell: RetellReads | null): Check[] {
+  const places = new Set(shots.map((s) => (s.place ?? "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim()).filter(Boolean));
+  const unnamed = shots.filter((s) => !s.place?.trim()).length;
+  const voiced = shots.filter((s) => s.line?.trim()).length;
+  const right = (retell ?? []).filter(Boolean).length;
+  return [
+    check(`${MIN_SHOTS} to ${MAX_SHOTS} shots`, shots.length >= MIN_SHOTS && shots.length <= MAX_SHOTS, `${shots.length} shots`),
+    check("One or two places", unnamed === 0 && places.size >= 1 && places.size <= 2, unnamed ? `${unnamed} shots don't name their place` : `${places.size}: ${[...places].join(", ")}`),
+    check("The voice starts in the first shot", Boolean(shots[0]?.line?.trim())),
+    check("The voice tells the story (a line in at least 3 of 4 shots)", shots.length > 0 && voiced / shots.length >= 0.75, `${voiced} of ${shots.length}`),
+    check("Cold viewers retell the story right (2 of 3)", retell !== null && right >= 2, retell === null ? "not read" : `${right} of ${retell.length}`),
+  ];
 }
 
 // --- Stage 5: Production ------------------------------------------------------

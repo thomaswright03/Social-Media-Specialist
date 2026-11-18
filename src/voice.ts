@@ -59,3 +59,26 @@ export async function speak(text: string, opts: SpeakOpts = {}): Promise<Spoken>
   }
   return { audio: Buffer.from(json.audio_base64, "base64"), words: wordsFrom(json.alignment) };
 }
+
+/**
+ * A sound effect from Thomas's ElevenLabs account (sound generation). Paid
+ * plans may use what it makes commercially, so it's listed as ElevenLabs in
+ * the Reel's assets.
+ */
+export async function soundEffect(text: string, seconds: number, opts: { fetchImpl?: typeof fetch; apiKey?: string } = {}): Promise<Buffer> {
+  const apiKey = opts.apiKey ?? process.env.ELEVENLABS_API_KEY?.trim();
+  if (!apiKey) throw new Error("ELEVENLABS_API_KEY isn't set");
+  const res = await (opts.fetchImpl ?? fetch)("https://api.elevenlabs.io/v1/sound-generation?output_format=mp3_44100_128", {
+    method: "POST",
+    headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ text, duration_seconds: Math.min(22, Math.max(0.5, Math.round(seconds * 10) / 10)), prompt_influence: 0.5 }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { detail?: { message?: string; status?: string } | string };
+    const d = j.detail;
+    throw new Error(`ElevenLabs sound effects said: ${typeof d === "string" ? d : (d?.message ?? d?.status ?? `HTTP ${res.status}`)}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+export type SoundEffect = typeof soundEffect;

@@ -42,6 +42,29 @@ export const totalSeconds = (t: TimedShot[]) => (t.length ? t.at(-1)!.at + t.at(
 
 export type Chunk = { words: Word[]; from: number; to: number };
 
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean);
+
+/** True when a shot's on-screen text mostly repeats its spoken line. */
+export function repeatsLine(text: string | undefined, line: string | undefined): boolean {
+  const a = norm(text ?? "");
+  const b = new Set(norm(line ?? ""));
+  if (!a.length || !b.size) return false;
+  return a.filter((w) => b.has(w)).length / a.length >= 0.6;
+}
+
+/**
+ * The words the big caption shows: the spoken words where there are any,
+ * otherwise the shot's on-screen text, popping in one word after another.
+ */
+export function captionWords(s: TimedShot): Word[] {
+  if (s.words.length) return s.words;
+  const words = (s.onScreenText ?? "").split(/\s+/).filter(Boolean);
+  return words.map((w, k) => ({ word: w, start: s.at + 0.05 + k * 0.16, end: s.at + 0.05 + k * 0.16 + 0.15 }));
+}
+
+/** The small line at the top: the on-screen text, when the caption isn't already saying it. */
+export const kickerFor = (s: TimedShot) => (s.words.length && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? s.onScreenText.trim() : "");
+
 /** Caption chunks: up to 3 words, broken after a full stop, comma or question mark. */
 export function captionChunks(t: TimedShot[], max = 3): Chunk[] {
   const out: Chunk[] = [];
@@ -49,10 +72,10 @@ export function captionChunks(t: TimedShot[], max = 3): Chunk[] {
     let cur: Word[] = [];
     const end = s.at + s.dur;
     const flush = () => {
-      if (cur.length) out.push({ words: cur, from: cur[0]!.start, to: end });
+      if (cur.length) out.push({ words: cur, from: Math.max(s.at, cur[0]!.start - 0.08), to: end });
       cur = [];
     };
-    for (const w of s.words) {
+    for (const w of captionWords(s)) {
       cur.push(w);
       if (cur.length >= max || /[.,?!;:]$/.test(w.word)) flush();
     }
@@ -79,10 +102,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 /** The page every frame is drawn from. */
 export function composeHtml(t: TimedShot[], svgs: string[]): string {
-  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: s.onScreenText?.trim() ?? "", ...cameraFor(s.visual ?? ""), i }));
+  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: kickerFor(s), ...cameraFor(s.visual ?? ""), i }));
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@800;900&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=block">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
@@ -91,10 +114,11 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
 #flash{position:absolute;inset:0;background:#fff;opacity:0}
-#title{position:absolute;left:80px;right:160px;top:260px;text-align:center;font-family:Anton,"Inter",Impact,sans-serif;font-size:84px;line-height:1.04;letter-spacing:.01em;color:#fff;text-transform:uppercase;text-shadow:0 6px 0 rgba(0,0,0,.55),0 0 24px rgba(0,0,0,.6);opacity:0}
-#title span{display:inline;background:rgba(0,0,0,.72);padding:6px 18px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
-#cap{position:absolute;left:80px;right:160px;top:1320px;text-align:center;font-family:Inter,sans-serif;font-weight:900;font-size:76px;line-height:1.1;color:#fff;text-transform:uppercase;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 5px 0 #000}
+#title{position:absolute;left:100px;right:160px;top:300px;text-align:center;font-family:Montserrat,sans-serif;font-weight:800;font-size:44px;line-height:1.2;letter-spacing:.04em;color:#fff;text-transform:uppercase;text-shadow:0 2px 10px rgba(0,0,0,.85),0 0 2px rgba(0,0,0,.9);opacity:0}
+#title span{display:inline}
+#cap{position:absolute;left:80px;right:160px;top:1020px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
+#cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>
 ${svgs.map((s, i) => `<div class="scene" id="s${i}">${s}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
@@ -123,8 +147,9 @@ window.render=(t)=>{
   const cap=document.getElementById('cap');
   const c=CHUNKS.find(c=>t>=c.from&&t<c.to);
   if(!c){ if(capKey!==null){ cap.innerHTML=''; capKey=null; } }
-  else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k<=cur?(k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)):'').filter(Boolean).join(' '); capKey=key; } }
-  const boxes=[]; for(const e of [title.firstElementChild,cap]){ if(!e||!e.textContent.trim()||getComputedStyle(e.closest('#title,#cap')).opacity==='0') continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
+  else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
+    const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
+  const boxes=[]; for(const e of [title.firstElementChild,cap.textContent.trim()?cap:null]){ if(!e||!e.textContent.trim()||getComputedStyle(e.closest('#title,#cap')).opacity==='0') continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
 };
 </script></body></html>`;
@@ -179,7 +204,7 @@ export async function audioSeconds(file: string): Promise<number> {
  * a soft whoosh on every cut, all ducked under the voice, then loudness
  * normalised to -14 LUFS with true peak under -1.5 dBTP (two passes).
  */
-export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string): Promise<string> {
+export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string, sfx: { file: string; at: number }[] = []): Promise<string> {
   const total = totalSeconds(t);
   const inputs: string[] = [];
   const filters: string[] = [];
@@ -188,10 +213,14 @@ export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], di
   inputs.push("-f", "lavfi", "-i", `anoisesrc=color=brown:amplitude=0.03:d=${total.toFixed(3)}:r=44100`);
   filters.push(`[0:a]lowpass=f=400,afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, total - 1.5).toFixed(3)}:d=1.5[pad]`);
   filters.push(`[1:a]lowpass=f=300,aformat=channel_layouts=stereo[room]`);
+  // A soft low pulse, like a slow heartbeat, from the second shot on.
+  const beatFrom = t[1]?.at ?? 0;
+  inputs.push("-f", "lavfi", "-i", `aevalsrc='if(gte(t,${beatFrom.toFixed(3)}),0.5*sin(2*PI*52*t)*exp(-9*mod(t-${beatFrom.toFixed(3)},0.82)),0)':s=44100:d=${total.toFixed(3)}`);
+  filters.push(`[2:a]lowpass=f=160,volume=0.55,aformat=channel_layouts=stereo[beat]`);
   const cuts = t.slice(1).map((s) => s.at);
   const whooshes: string[] = [];
   cuts.forEach((c, i) => {
-    const idx = 2 + i;
+    const idx = 3 + i;
     inputs.push("-f", "lavfi", "-i", `anoisesrc=color=pink:amplitude=0.25:d=0.4:r=44100`);
     const ms = Math.max(0, Math.round((c - 0.18) * 1000));
     filters.push(`[${idx}:a]highpass=f=900,lowpass=f=5000,afade=t=in:d=0.18,afade=t=out:st=0.18:d=0.22,volume=0.35,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[w${i}]`);
@@ -200,13 +229,22 @@ export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], di
   const voices: string[] = [];
   voiceFiles.forEach((f, i) => {
     if (!f || t[i]?.voiceAt == null) return;
-    const idx = 2 + cuts.length + voices.length;
+    const idx = 3 + cuts.length + voices.length;
     inputs.push("-i", f);
     const ms = Math.round(t[i]!.voiceAt! * 1000);
     filters.push(`[${idx}:a]aresample=44100,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[v${voices.length}]`);
     voices.push(`[v${voices.length}]`);
   });
-  filters.push(`[pad][room]${whooshes.join("")}amix=inputs=${2 + whooshes.length}:normalize=0:duration=first[bed]`);
+  // Sound effects (from the script's cues) sit under the voice like the bed.
+  const effects: string[] = [];
+  sfx.forEach((e, k) => {
+    const idx = 3 + cuts.length + voices.length + k;
+    inputs.push("-i", e.file);
+    const ms = Math.max(0, Math.round(e.at * 1000));
+    filters.push(`[${idx}:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.6,adelay=${ms}|${ms}[e${k}]`);
+    effects.push(`[e${k}]`);
+  });
+  filters.push(`[pad][room][beat]${whooshes.join("")}${effects.join("")}amix=inputs=${3 + whooshes.length + effects.length}:normalize=0:duration=first[bed]`);
   if (voices.length) {
     filters.push(`${voices.join("")}amix=inputs=${voices.length}:normalize=0:duration=longest,apad=whole_dur=${total.toFixed(3)},asplit=2[voice][key]`);
     filters.push(`[bed][key]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[duck]`);

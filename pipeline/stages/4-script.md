@@ -11,6 +11,12 @@ leaves a reason to watch the next. Something new every 2 to 3 seconds.
 - every spoken line has its claim visible on screen (`onScreen` filled);
 - standalone: no "part 2", "episode", "last time", "previously", "as we saw";
 - it has a payoff and a reason to watch the next;
+- a stranger can follow it (Thomas, 2026-11-18: the first test Reel was
+  "the most incoherent thing I've ever seen"): 8 to 14 shots, one or two
+  places, the voice starts in the first shot and speaks in at least 3 of 4
+  shots, and 3 separate cold reads that see only what a viewer sees and hears
+  retell the story; a 4th call checks each retelling against what was meant,
+  and 2 of 3 must get it right without being confused;
 - a separate Claude review (Thomas's Low Tide checks) finds no problems:
   grammar, physics and timing plausible, nothing contradicts itself;
 - the format's own checks (`gateFormat`, see the README's content mix): an
@@ -30,8 +36,14 @@ Winning patterns: {{PATTERNS}}
 
 Rules: it stands alone (never refer to other episodes), has its own payoff, and leaves a reason to watch the next one. Something new every 2 to 3 seconds. Every spoken claim is shown on screen. Clean grammar; plausible physics and timing; nothing contradicts itself.
 
+A stranger scrolling past must understand it on one watch. Cold viewers will retell your story from only what they see and hear, and it fails if they get it wrong or are confused. So:
+- A narrator tells the story out loud from the first second (the first shot has a line) and speaks in nearly every shot. With sound on, the voice alone says who this is, where they are and what happens. Say who "I" or "he" is the first time.
+- 8 to 14 shots. Each shot's visual is ONE still moment that a single flat drawing shows clearly: one pose, one place, at most two characters. Never two actions in one shot ("grabs the keys and pulls on a coat" is two shots, or just one pose).
+- One question, one answer: a single mystery set up at the start and answered by the payoff. At most one small twist at the very end, only if it doesn't confuse the answer.
+- Every shot names its place ("place": "the shop"). One or two places in the whole video.
+
 Keep it simple so it holds together (a strict reviewer checks every one of these):
-- 30 to 45 seconds. Every shot is 1.5 to 3 seconds long, never longer; a new shot, new on-screen text or a new line in every 3 seconds.
+- 30 to 45 seconds. Shots are 2.5 to 4 seconds (the opening's shots keep their timing); a new shot, new on-screen text or a new line in every 3 seconds.
 - One timeline told in order, starting with the opening. No flashbacks and no flash-forwards. Any clock or day shown on screen only moves forward and matches what's happening.
 - One or two characters and one or two places. A character is in one place at a time and needs the time to get anywhere.
 - Anything used later (a flashlight, a key, a phone) is shown before it's used.
@@ -40,5 +52,5 @@ Keep it simple so it holds together (a strict reviewer checks every one of these
 
 {{GATE_FAILURES}}
 
-Reply with only JSON: {"shots": [{"start": 0, "end": 2.5, "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "sfx or music cue"}], "payoff": "...", "nextHook": "...", "caption": "...", "sources": [{"url": "https://...", "published": "YYYY-MM-DD", "title": "..."}]} (sources only for an explainer)
+Reply with only JSON: {"shots": [{"start": 0, "end": 2.5, "place": "the shop", "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "sfx or music cue"}], "payoff": "...", "nextHook": "...", "caption": "...", "sources": [{"url": "https://...", "published": "YYYY-MM-DD", "title": "..."}]} (sources only for an explainer)
 <!-- /prompt -->

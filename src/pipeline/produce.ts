@@ -9,11 +9,12 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
-import type { Speak } from "../voice.ts";
+import type { SoundEffect, Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { drawScenes, lookSheet } from "./scenes.ts";
-import { learnedChecks } from "./script.ts";
+import { learnedChecks, retellMatchPrompt } from "./script.ts";
+import { isYes } from "./ideas.ts";
 import { runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
@@ -110,6 +111,8 @@ export async function runProduce(d: {
   /** The judge: a Claude call that can read the images in a folder. */
   judge: (dir: string) => Ask;
   speak: Speak;
+  /** Sound effects for the script's cues; left out, the Reel gets only our own bed. */
+  sfx?: SoundEffect;
   browser: () => Promise<Browser>;
   /** Saves benchmark frames into the folder and returns their file names. */
   benchmarks: (dir: string) => Promise<string[]>;
@@ -175,6 +178,24 @@ export async function runProduce(d: {
     return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
   }
 
+  // Sound effects for each shot's cue (a failed one is left out, not fatal).
+  const effects: { file: string; at: number; cue: string }[] = [];
+  if (d.sfx) {
+    for (const [i, s] of t.entries()) {
+      const cue = s.sound?.trim();
+      if (!cue || /^(none|silence|no sound)\b/i.test(cue)) continue;
+      try {
+        const audio = await d.sfx(`${cue}. Cinematic, clean, no music, no voice.`, Math.min(4, Math.max(1, s.dur)));
+        const file = join(work, `sfx-${String(i + 1).padStart(2, "0")}.mp3`);
+        await writeFile(file, audio);
+        effects.push({ file, at: s.at, cue });
+      } catch (err) {
+        log(`Shot ${i + 1}'s sound effect wasn't made: ${(err as Error).message}`);
+      }
+    }
+    log(`Made ${effects.length} sound effects from the script's cues.`);
+  }
+
   // Render, mix, mux.
   const browser = await d.browser();
   let boxes: TextBox[] = [];
@@ -186,7 +207,7 @@ export async function runProduce(d: {
   } finally {
     await browser.close().catch(() => {});
   }
-  const audio = await mixAudio(t, voiceFiles, work);
+  const audio = await mixAudio(t, voiceFiles, work, effects);
   const video = join(d.outDir, "reel.mp4");
   await mux(framesDir, audio, video);
   const facts = await mediaFacts(video);
@@ -202,10 +223,33 @@ export async function runProduce(d: {
     await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(judgeDir, name)).then(() => ours.push(name)).catch(() => {});
   }
   const bench = await d.benchmarks(judgeDir).catch(() => [] as string[]);
+
+  // Can a stranger follow the finished video? A separate viewer sees one
+  // frame of every shot with what's said over it, and retells it.
+  const followDir = join(d.outDir, "follow");
+  await mkdir(followDir, { recursive: true });
+  const watched: string[] = [];
+  for (const [i, s] of t.entries()) {
+    const f = Math.max(1, Math.round((s.at + Math.min(s.dur * 0.6, s.dur - 0.1)) * FPS));
+    const name = `shot-${String(i + 1).padStart(2, "0")}.jpg`;
+    await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
+    watched.push(`${name}${s.line ? ` (you hear: "${s.line}")` : " (no voice)"}`);
+  }
+  const retold = (
+    await d
+      .judge(followDir)(
+        `These are frames from a short Instagram Reel, one per shot, in order, with what the voice says over each:\n${watched.join("\n")}\n\nRead every image. You've watched it once. In two plain sentences, tell a friend what happened and who it was about. Then, on a new line, write CONFUSED: and what didn't make sense, or CONFUSED: nothing.`,
+      )
+      .catch(() => "")
+  ).trim();
+  const confused = retold.match(/CONFUSED:\s*(.*)$/im)?.[1]?.trim() ?? "";
+  const intended = `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
+  const followed = Boolean(retold) && (!confused || /^(nothing|none|no)\b/i.test(confused)) && isYes(await d.ask(retellMatchPrompt(intended, retold)).catch(() => ""));
+  log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
   const cuts = t.length - 1;
   const notes = [
     `Ours: Thomas's paid ElevenLabs voice reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
-    `Our sound: our own low pad and room tone with a whoosh on each of the ${cuts} cuts, ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No sound effects beyond that and no music anyone else owns.`,
+    `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
     `Benchmark: the most liked Reels of the accounts Thomas admires (cover images only; Instagram gives no audio for other accounts). Judge their voice and sound as what top stick-figure story accounts use: a clear narrator over trending music with sound effects.`,
   ].join(" ");
   const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
@@ -217,7 +261,11 @@ export async function runProduce(d: {
     prompt: () => stagePrompt(5, { FRAMES: `ours: ${ours.join(", ")}; benchmark: ${bench.join(", ") || "none"} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
     gate: (j) => {
       const g = gateProduction(j, { ours: ours.length, benchmarks: bench.length }, learned);
-      return gate([check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`), ...g.checks]);
+      return gate([
+        check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
+        check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),
+        ...g.checks,
+      ]);
     },
     input: { look, seconds, shots: t.length, facts },
     // The video doesn't change between tries, so one judgement is the answer.
