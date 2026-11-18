@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraFor, captionChunks, captionWords, composeHtml, kickerFor, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
+import { cameraFor, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
 import { keyFrameNumbers } from "../src/pipeline/produce.ts";
 import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
@@ -117,7 +117,7 @@ describe("timeline", () => {
     expect(c[2]!.to).toBeLessThanOrEqual(t[0]!.at + t[0]!.dur);
   });
 
-  it("shows on-screen text as the caption when nobody speaks, and as the top line only when it adds something", () => {
+  it("shows on-screen text as the caption when nobody speaks, and has the art draw it when it adds something", async () => {
     const [quiet, said, extra] = timeline(
       [
         { start: 0, end: 2, onScreenText: "2:31 AM" },
@@ -127,10 +127,13 @@ describe("timeline", () => {
       [null, { seconds: 1, words: [{ word: "Imagine", start: 0, end: 0.3 }] }, { seconds: 1, words: [{ word: "He", start: 0, end: 0.2 }] }],
     );
     expect(captionWords(quiet!).map((w) => w.word)).toEqual(["2:31", "AM"]);
-    expect(kickerFor(quiet!)).toBe("");
     expect(repeatsLine(said!.onScreenText, said!.line)).toBe(true);
-    expect(kickerFor(said!)).toBe("");
-    expect(kickerFor(extra!)).toBe("DAY 3");
+    const prompts: string[] = [];
+    for (const i of [1, 2]) await drawScene([said!, extra!], i - 1, "look", async (p) => (prompts.push(p), good));
+    expect(prompts[0]).not.toMatch(/also wants/);
+    expect(prompts[1]).toMatch(/also wants "DAY 3" seen/);
+    expect(prompts[1]).toMatch(/caption adds them: "He did it again."/);
+    expect(composeHtml([said!], [good])).not.toContain('id="title"');
   });
 
   it("reads the camera move from the shot", () => {

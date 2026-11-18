@@ -17,6 +17,8 @@ export const LEAD = 0.15;
 export const TAIL = 0.3;
 export const MIN_SHOT = 1.5;
 export const LIME = "#a3e635";
+/** The one caption band: below the action, above Instagram's bottom UI (the art keeps faces and the action out of it). */
+export const CAPTION_TOP = 1290;
 
 export type Word = { word: string; start: number; end: number };
 export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null; words: Word[] };
@@ -62,9 +64,6 @@ export function captionWords(s: TimedShot): Word[] {
   return words.map((w, k) => ({ word: w, start: s.at + 0.05 + k * 0.16, end: s.at + 0.05 + k * 0.16 + 0.15 }));
 }
 
-/** The small line at the top: the on-screen text, when the caption isn't already saying it. */
-export const kickerFor = (s: TimedShot) => (s.words.length && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? s.onScreenText.trim() : "");
-
 /** Caption chunks: up to 3 words, broken after a full stop, comma or question mark. */
 export function captionChunks(t: TimedShot[], max = 3): Chunk[] {
   const out: Chunk[] = [];
@@ -102,7 +101,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 /** The page every frame is drawn from. */
 export function composeHtml(t: TimedShot[], svgs: string[]): string {
-  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: kickerFor(s), ...cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`), i }));
+  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, ...cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`), i }));
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=block">
@@ -114,22 +113,20 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
 #flash{position:absolute;inset:0;background:#fff;opacity:0}
-#title{position:absolute;left:100px;right:160px;top:300px;text-align:center;font-family:Montserrat,sans-serif;font-weight:800;font-size:44px;line-height:1.2;letter-spacing:.04em;color:#fff;text-transform:uppercase;text-shadow:0 2px 10px rgba(0,0,0,.85),0 0 2px rgba(0,0,0,.9);opacity:0}
-#title span{display:inline}
-#cap{position:absolute;left:80px;right:160px;top:1020px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
+#cap{position:absolute;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
 #cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>
 ${svgs.map((s, i) => `<div class="scene" id="s${i}">${s}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
-<div id="title"></div><div id="cap"></div>
+<div id="cap"></div>
 <script>
 const SHOTS=${scriptJson(shots)};
 const CHUNKS=${scriptJson(chunks)};
 const ease=(x)=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
 const esc=(s)=>s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
-let shown=-1, titleText=null, capKey=null;
+let shown=-1, capKey=null;
 window.render=(t)=>{
   let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
   const s=SHOTS[i], local=t-s.at, p=Math.min(1,local/s.dur);
@@ -141,15 +138,12 @@ window.render=(t)=>{
   const g=document.getElementById('grain'); g.style.opacity=s.grain?'.18':'0';
   if(s.grain){ document.getElementById('turb').setAttribute('seed',String(Math.floor(t*30)%97+1)); g.style.transform='translate('+(Math.floor(t*30)%7-3)+'px,'+(Math.floor(t*30*3)%7-3)+'px)'; }
   document.getElementById('flash').style.opacity=s.flash&&local<.1?String(.55*(1-local/.1)):'0';
-  const title=document.getElementById('title');
-  if(titleText!==s.text){ title.innerHTML=s.text?'<span>'+esc(s.text)+'</span>':''; titleText=s.text; }
-  const tp=i===0?1:Math.min(1,local/.18); title.style.opacity=s.text?String(tp):'0'; title.style.transform='scale('+(0.86+0.14*ease(tp))+')';
   const cap=document.getElementById('cap');
   const c=CHUNKS.find(c=>t>=c.from&&t<c.to);
   if(!c){ if(capKey!==null){ cap.innerHTML=''; capKey=null; } }
   else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
-  const boxes=[]; for(const e of [title.firstElementChild,cap.textContent.trim()?cap:null]){ if(!e||!e.textContent.trim()||getComputedStyle(e.closest('#title,#cap')).opacity==='0') continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
+  const boxes=[]; for(const e of [cap.textContent.trim()?cap:null]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
 };
 </script></body></html>`;

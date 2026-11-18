@@ -3,6 +3,7 @@
 // "art" prompts). Code checks every drawing before it's used and asks again,
 // with what was wrong, when one is broken.
 import type { Shot } from "./gates.ts";
+import { repeatsLine } from "./compose.ts";
 import { stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
@@ -127,7 +128,8 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
       5,
       {
         LOOK: look,
-        OVERLAY_TEXT: [s.onScreenText, s.line].filter((x) => x?.trim()).map((x) => `"${x}"`).join(", ") || "(none)",
+        OVERLAY_TEXT: (s.line?.trim() || s.onScreenText?.trim()) ? `"${(s.line?.trim() || s.onScreenText!.trim())}"` : "(none)",
+        IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `The script also wants "${s.onScreenText.trim()}" seen. Show it in the world itself if it fits (a clock, a sign, a calendar, a phone screen), or leave it out.` : "",
         SECONDS: seconds,
         N: String(i + 1),
         TOTAL: String(shots.length),
