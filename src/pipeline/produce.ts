@@ -12,7 +12,7 @@ import type { Vault } from "../vault.ts";
 import type { SoundEffect, Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
-import { drawScenes, lookSheet } from "./scenes.ts";
+import { castSheet, drawScenes, lookSheet } from "./scenes.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { runStage, stagePrompt } from "./stages.ts";
 
@@ -162,11 +162,14 @@ export async function runProduce(d: {
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
-  // Art: a look sheet, then every shot drawn in that style.
+  // Art: a look sheet, the cast drawn once, then every shot drawn in that style with the cast placed in it.
   const timed = t.map((s) => ({ ...s, start: Math.round(s.at * 10) / 10, end: Math.round((s.at + s.dur) * 10) / 10 }));
   const look = await lookSheet(timed, d.ask);
   await writeFile(join(d.outDir, "look.txt"), look);
-  const scenes = await drawScenes(timed, look, d.ask, log);
+  const cast = await castSheet(timed, look, d.ask);
+  await writeFile(join(d.outDir, "cast.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs>${cast.defs}</defs>${cast.parts.map((x, i) => `<use href="#${x.id}" transform="translate(${200 + (i % 3) * 340} ${300 + Math.floor(i / 3) * 420})"/>`).join("")}</svg>`);
+  log(cast.parts.length ? `Cast drawn once: ${cast.parts.map((x) => x.id).join(", ")}.` : "No cast sheet; each shot draws its own characters.");
+  const scenes = await drawScenes(timed, look, d.ask, log, cast);
   const missing = scenes.map((s, i) => (s.svg ? null : i + 1)).filter((x): x is number => x !== null);
   const svgs = scenes.map((s) => s.svg ?? "");
   await writeSvgs(join(d.outDir, "scenes"), svgs.filter(Boolean));

@@ -134,7 +134,7 @@ export function gateIdeas(x: Ideas | null, cold: ColdReads): GateResult {
 
 // --- Stage 3: The first 3 seconds ---------------------------------------------
 
-export type Shot = { start?: number; end?: number; place?: string; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string };
+export type Shot = { start?: number; end?: number; place?: string; camera?: string; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string };
 export type Opening = { intendedHook?: string; shots?: Shot[] };
 /** Cold sound-off viewers: did each give a reason to keep watching that matches the intended hook? */
 export type SoundOffReads = boolean[];
@@ -237,6 +237,23 @@ export const MAX_SHOTS = 14;
  * Can a stranger follow it? Thomas called the first test Reel incoherent
  * (2026-11-18): four places, two twists, no voice for the first shots.
  */
+/** The camera each shot is drawn from (stage 4 names one; stage 5 frames the drawing by it). */
+export const CAMERAS = ["wide", "medium", "close-up", "over-the-shoulder", "low angle", "high angle", "insert"] as const;
+const cameraOf = (s: Shot) => CAMERAS.find((c) => (s.camera ?? "").toLowerCase().includes(c)) ?? null;
+
+/** Every shot names a camera, neighbours differ, and at least 3 kinds are used: no Reel of one figure against one wall. */
+export function cameraCheck(shots: Shot[]): Check {
+  const cams = shots.map(cameraOf);
+  const unnamed = cams.filter((c) => !c).length;
+  const repeats = cams.flatMap((c, i) => (i > 0 && c && c === cams[i - 1] ? [i + 1] : []));
+  const kinds = new Set(cams.filter(Boolean)).size;
+  return check(
+    "The camera changes (every shot names one, no two in a row the same, 3+ kinds)",
+    unnamed === 0 && repeats.length === 0 && kinds >= 3,
+    unnamed ? `${unnamed} shots don't name a camera from: ${CAMERAS.join(", ")}` : repeats.length ? `shot ${repeats.join(", ")} repeats the camera before it` : `${kinds} kinds`,
+  );
+}
+
 export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = []): Check[] {
   const places = new Set(shots.map((s) => (s.place ?? "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim()).filter(Boolean));
   const unnamed = shots.filter((s) => !s.place?.trim()).length;
@@ -246,6 +263,7 @@ export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: 
     check(`${MIN_SHOTS} to ${MAX_SHOTS} shots`, shots.length >= MIN_SHOTS && shots.length <= MAX_SHOTS, `${shots.length} shots`),
     check("One or two places", unnamed === 0 && places.size >= 1 && places.size <= 2, unnamed ? `${unnamed} shots don't name their place` : `${places.size}: ${[...places].join(", ")}`),
     check("The voice starts in the first shot", Boolean(shots[0]?.line?.trim())),
+    cameraCheck(shots),
     check("The voice tells the story (a line in at least 3 of 4 shots)", shots.length > 0 && voiced / shots.length >= 0.75, `${voiced} of ${shots.length}`),
     check("Cold viewers retell the story right (2 of 3)", retell !== null && right >= 2, retell === null ? "not read" : `${right} of ${retell.length}${notes.length ? `. What the viewers who didn't get it said: ${notes.map((n) => `"${n}"`).join(" ")}` : ""}`),
   ];

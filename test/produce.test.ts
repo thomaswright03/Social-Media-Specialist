@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cameraFor, captionChunks, captionWords, composeHtml, kickerFor, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
 import { keyFrameNumbers } from "../src/pipeline/produce.ts";
-import { drawScene, safeSvg, svgFrom, svgProblems } from "../src/pipeline/scenes.ts";
+import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 
 const shapes = '<rect width="1080" height="1920" fill="#0b0d12"/><circle cx="540" cy="900" r="40"/><line x1="0" y1="0" x2="1" y2="1"/><path d="M0 0"/><rect x="1" y="1" width="2" height="2"/><ellipse cx="1" cy="1" rx="1" ry="1"/>';
@@ -44,6 +44,37 @@ describe("drawings", () => {
     const bad = await drawScene(shots, 0, "look", async () => "nothing");
     expect(bad.svg).toBeNull();
     expect(bad.tries).toBe(3);
+  });
+
+  it("draws the cast once and every shot places it", async () => {
+    const sheet = '<svg viewBox="0 0 1080 1920"><defs><g id="c-mia" data-note="Mia, 8: pigtails, lime bow"><circle r="70"/></g><g id="p-stand" data-note="the stand"><rect width="2" height="2"/></g></defs></svg>';
+    const cast = castFrom("```svg\n" + sheet + "\n```")!;
+    expect(cast.parts.map((x) => x.id)).toEqual(["c-mia", "p-stand"]);
+    expect(castProblems(cast)).toEqual([]);
+    expect(castProblems(castFrom(sheet.replace(/c-mia/, "p-mia"))).join()).toMatch(/no character/);
+    expect(castProblems(castFrom(sheet.replace("</defs>", "<script>x</script></defs>"))).join()).toMatch(/script/);
+    expect(castProblems(null).length).toBe(1);
+
+    const prompts: string[] = [];
+    const answers = ["no", sheet];
+    expect((await castSheet([{ visual: "Mia sells" }], "look", async (p) => (prompts.push(p), answers.shift()!))).parts.length).toBe(2);
+    expect(prompts[1]).toMatch(/refused/);
+    expect(await castSheet([{ visual: "x" }], "look", async () => "nothing")).toEqual(NO_CAST);
+
+    const placed = good.replace("</svg>", '<use href="#c-mia" transform="translate(500 600)"/></svg>');
+    expect(missingRefs(placed, cast)).toEqual([]);
+    expect(missingRefs(placed, NO_CAST)).toEqual(["c-mia"]);
+    expect(withCast(placed, cast)).toContain('height="1920"><defs><g id="c-mia"');
+
+    const shots = [{ start: 0, end: 2, camera: "close-up", place: "the stand", visual: "Mia grins" }];
+    const drawn: string[] = [];
+    const tries = [good.replace("</svg>", '<use href="#c-bob"/></svg>'), placed];
+    const r = await drawScene(shots, 0, "look", async (p) => (drawn.push(p), tries.shift()!), cast);
+    expect(r.tries).toBe(2);
+    expect(drawn[0]).toMatch(/#c-mia: Mia, 8/);
+    expect(drawn[0]).toMatch(/camera for this shot is close-up/);
+    expect(drawn[1]).toMatch(/#c-bob, which isn't defined/);
+    expect(r.svg).toContain('<g id="c-mia"');
   });
 
   it("the art and look prompts exist and fill in", () => {

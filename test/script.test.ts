@@ -10,8 +10,8 @@ const NOW = new Date("2026-11-18T19:00:00Z");
 const opening = { intendedHook: "why the dog is typing", shots: [{ start: 0, end: 1.5, visual: "a dog types at a desk at night", kind: "action", onScreenText: "WHY IS HE TYPING", textAt: 0.2 }, { start: 1.5, end: 3, visual: "the dog stares into the camera", kind: "action", onScreenText: "WHY IS HE TYPING" }] };
 const script = (over: Record<string, unknown> = {}) => ({
   shots: [
-    { ...opening.shots[0], place: "the shop", line: "My dog types every night.", onScreen: "the dog at the keyboard" },
-    ...Array.from({ length: 11 }, (_, i) => ({ start: 1.5 + i * 2.6, end: 4.1 + i * 2.6, place: i < 6 ? "the shop" : "The Shop", visual: `shot ${i}`, onScreenText: `beat ${i}`, line: `Line ${i}.`, onScreen: `beat ${i}` })),
+    { ...opening.shots[0], place: "the shop", camera: "wide", line: "My dog types every night.", onScreen: "the dog at the keyboard" },
+    ...Array.from({ length: 11 }, (_, i) => ({ start: 1.5 + i * 2.6, end: 4.1 + i * 2.6, place: i < 6 ? "the shop" : "The Shop", camera: ["close-up", "medium", "insert"][i % 3], visual: `shot ${i}`, onScreenText: `beat ${i}`, line: `Line ${i}.`, onScreen: `beat ${i}` })),
   ],
   payoff: "He was ordering treats.",
   nextHook: "Tomorrow: the cat.",
@@ -97,10 +97,11 @@ describe("can a stranger follow it", () => {
 
   it("counts shots, places and how much of it is narrated", async () => {
     const { clarityChecks } = await import("../src/pipeline/gates.ts");
-    const shot = (place: string, line = "x") => ({ start: 0, end: 3, place, visual: "v", line });
+    const cams = ["wide", "medium", "close-up", "insert"];
+    const shot = (place: string, line = "x", i = 0) => ({ start: 0, end: 3, place, camera: cams[i % 4], visual: "v", line });
     const names = (cs: { name: string; passed: boolean }[]) => cs.filter((x) => !x.passed).map((x) => x.name);
-    expect(names(clarityChecks(Array.from({ length: 10 }, () => shot("the shop")), [true, true, false]))).toEqual([]);
-    const messy = [shot("shop", ""), shot("bedroom"), shot("street"), shot("shop", ""), shot("car", "")];
+    expect(names(clarityChecks(Array.from({ length: 10 }, (_, i) => shot("the shop", "x", i)), [true, true, false]))).toEqual([]);
+    const messy = [shot("shop", "", 0), shot("bedroom", "x", 1), shot("street", "x", 2), shot("shop", "", 3), shot("car", "", 0)];
     expect(names(clarityChecks(messy, [false, false, true]))).toEqual([
       "8 to 14 shots",
       "One or two places",
@@ -108,6 +109,15 @@ describe("can a stranger follow it", () => {
       "The voice tells the story (a line in at least 3 of 4 shots)",
       "Cold viewers retell the story right (2 of 3)",
     ]);
+  });
+
+  it("wants the camera to change", async () => {
+    const { cameraCheck } = await import("../src/pipeline/gates.ts");
+    const s = (camera?: string) => ({ camera });
+    expect(cameraCheck([s("Wide shot"), s("close-up"), s("medium"), s("close-up")]).passed).toBe(true);
+    expect(cameraCheck([s("wide"), s("close-up"), s("close-up"), s("medium")]).detail).toMatch(/shot 3 repeats/);
+    expect(cameraCheck([s("wide"), s(), s("medium")]).detail).toMatch(/1 shots don't name/);
+    expect(cameraCheck([s("wide"), s("medium"), s("wide"), s("medium")]).passed).toBe(false);
   });
 });
 
