@@ -39,7 +39,7 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
 }
 
 export const reviewPrompt = (s: Script & { caption?: string }) =>
-  `Review this Reel script like a strict editor. Find every problem with: grammar and spelling, physics or timing that couldn't happen (someone in two places, a 10-minute task in 2 seconds), and anything that contradicts something earlier in the script. Ignore style.\n\n${JSON.stringify({ shots: s.shots, payoff: s.payoff, caption: s.caption }, null, 1)}\n\nReply with only JSON: {"problems": ["..."]} (an empty list when there are none).`;
+  `Review this Reel script like a strict editor. Find the real errors: grammar and spelling mistakes, physics or timing that couldn't happen even in the story's own world (someone in two places at once, a 10-minute task in 2 seconds, talking through glass as if it weren't there), and anything the script contradicts later. A mystery the story means to leave open (a note that appears, a figure that vanishes) is not an error; don't ask for it to be explained. Ignore style and taste, and leave out minor nitpicks a viewer would never notice in a 40-second video.\n\n${JSON.stringify({ shots: s.shots, payoff: s.payoff, caption: s.caption }, null, 1)}\n\nReply with only JSON: {"problems": ["shot N: the error, in one sentence"]} (an empty list when there are none).`;
 
 /** Stage 4's separate review; null when it couldn't be read. */
 export async function reviewScript(s: Script | null, ask: Ask): Promise<ScriptReview | null> {
@@ -109,14 +109,25 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   }
   if (!opening || !premise) return { subject: reel.subject, premise: null, opening: null, script: null, passed: false, stage: 3, gate: last3 ?? gate([check("An idea to open", false)]), problem: null };
 
-  // Stage 4.
+  // Stage 4. A retry revises the last draft (fix the failures, keep the rest),
+  // since a full rewrite brings new mistakes of its own.
+  let lastDraft: ScriptOut | null = null;
   const r4 = await runStage<ScriptOut>({
     vault: d.vault,
     stage: 4,
     subject: reel.subject,
     ask: d.ask,
-    prompt: (failures) => stagePrompt(4, { PREMISE: premise!, FORMAT: formatBrief(choice), OPENING: JSON.stringify(opening), PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
+    prompt: (failures) =>
+      stagePrompt(4, {
+        PREMISE: premise!,
+        FORMAT: formatBrief(choice),
+        OPENING: JSON.stringify(opening),
+        PATTERNS: patterns,
+        LESSONS: lessonText,
+        GATE_FAILURES: failures && lastDraft ? `${failures}\n\nRevise your last script below: change only what fixes these, keep everything else as it is.\n${JSON.stringify(lastDraft)}` : failures,
+      }),
     gate: async (s) => {
+      if (s) lastDraft = s;
       const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
       return gate([...base.checks, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
