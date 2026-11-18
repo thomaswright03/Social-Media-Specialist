@@ -50,14 +50,16 @@ export function nextFormat(history: Made[], products: Product[]): Choice {
   const ads = window.filter((m) => m.format === "ad").length;
   const sinceAd = recent.findIndex((m) => m.format === "ad");
   const gapOk = sinceAd === -1 ? recent.length >= MIN_GAP_BETWEEN_ADS : sinceAd >= MIN_GAP_BETWEEN_ADS;
-  if (products.length && gapOk && (ads + 1) / MIX_WINDOW <= 1 - ENTERTAINMENT_SHARE + 1e-9) {
-    const last = (p: Product) => recent.find((m) => m.format === "ad" && m.productId === p.id)?.at ?? "";
-    const product = [...products].sort((a, b) => last(a).localeCompare(last(b)) || a.name.localeCompare(b.name))[0]!;
-    return { format: "ad", product };
-  }
+  if (products.length && gapOk && (ads + 1) / MIX_WINDOW <= 1 - ENTERTAINMENT_SHARE + 1e-9) return { format: "ad", product: nextProduct(history, products) };
   const lastMade = (f: Format) => recent.find((m) => m.format === f)?.at ?? "";
   const format = [...ENTERTAINMENT].sort((a, b) => lastMade(a).localeCompare(lastMade(b)) || ENTERTAINMENT.indexOf(a) - ENTERTAINMENT.indexOf(b))[0]!;
   return { format, product: null };
+}
+
+/** The product advertised least recently (A to Z among ties). */
+export function nextProduct(history: Made[], products: Product[]): Product | null {
+  const last = (p: Product) => history.filter((m) => m.format === "ad" && m.productId === p.id).map((m) => m.at).sort().at(-1) ?? "";
+  return [...products].sort((a, b) => last(a).localeCompare(last(b)) || a.name.localeCompare(b.name))[0] ?? null;
 }
 
 /** The format's brief for the stage 2 and 4 prompts. */

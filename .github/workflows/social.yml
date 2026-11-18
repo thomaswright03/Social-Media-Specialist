@@ -26,7 +26,11 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, requests, instagram-test, hitta-test, voice-test]
+        options: [run, publish, preview, diagnose, research, ideas, requests, instagram-test, hitta-test, voice-test]
+      format:
+        description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix
+        type: string
+        required: false
       accounts:
         description: For research, the Instagram usernames to study (comma separated)
         type: string
@@ -80,6 +84,7 @@ jobs:
       FEED_IMAGE_POSTS: ${{ vars.FEED_IMAGE_POSTS }}
       # Stage 1 research: the accounts Thomas admires (the run's input wins).
       RESEARCH_ACCOUNTS: ${{ inputs.accounts || vars.RESEARCH_ACCOUNTS }}
+      REEL_FORMAT: ${{ inputs.format }}
       # Scheduled runs start as the hourly check; the "due" step below turns
       # one into the morning run. A run by hand does what it was asked.
       COMMAND: ${{ github.event_name == 'schedule' && 'hourly' || inputs.command || 'run' }}

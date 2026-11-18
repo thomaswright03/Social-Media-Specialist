@@ -14,8 +14,8 @@ series. Those videos are the examples of what to avoid (`avoid.md`).
 | # | Stage | Gate (all must pass) | Built |
 |---|-------|----------------------|-------|
 | 0 | Diagnose: pull Insights for everything posted | 3 reasons it underperformed, each backed by a number that matches the Insights data | yes (`social diagnose`) |
-| 1 | Research what wins: 15 to 20 top Reels in the niche | every winning pattern has 3+ real examples, each with a link and its numbers | gate only |
-| 2 | Ideas: pitch 20, score, keep 3 | 20 scored pitches, the top 3 kept, each finalist passes the cold one-sentence test | gate only |
+| 1 | Research what wins: 15 to 20 top Reels in the niche | every winning pattern has 3+ real examples, each with a link and its numbers | yes (`social research`) |
+| 2 | Ideas: pitch 20 in the format code picked (80/20 mix), score, keep 3 | 20 scored pitches, the top 3 kept, each finalist fits the format and passes the cold one-sentence test (3 separate cold reads, 2 must say yes) | yes (`social ideas`) |
 | 3 | The first 3 seconds | no title card, starts mid-action, on-screen hook by 0.5 s and readable by 1.5 s, cold sound-off viewers know why to keep watching | gate only |
 | 4 | Script, 30 to 60 s, standalone | no 3-second slice without something new; every spoken claim on screen; clean grammar, plausible physics and timing, no contradictions; own payoff; a reason to watch the next | gate only |
 | 5 | Production: art, voice, music, captions | our frames judged side by side with the benchmark's, not worse on any axis | gate only |
