@@ -67,17 +67,19 @@ export async function runStage<T>(opts: {
   input?: unknown;
   log?: (m: string) => void;
   now?: () => Date;
+  /** Tries before it stops (MAX_TRIES unless a stage needs more). */
+  tries?: number;
 }): Promise<StageRun<T>> {
   const now = opts.now ?? (() => new Date());
   const name = STAGES.find((s) => s.n === opts.stage)?.name ?? `Stage ${opts.stage}`;
   let last: StageRun<T> | null = null;
-  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+  for (let attempt = 1; attempt <= (opts.tries ?? MAX_TRIES); attempt++) {
     const answer = await opts.ask(opts.prompt(failuresText(last?.gate ?? null)));
     const output = parseJson<T>(answer);
     const g = await opts.gate(output);
     const recordId = await opts.vault.saveStage({ stage: opts.stage, subject: opts.subject, attempt, passed: g.passed, output: output ?? { unparsed: answer.slice(0, 2000) }, gate: g, input: attempt === 1 ? opts.input : undefined }, now());
     last = { output, gate: g, tries: attempt, recordId };
-    opts.log?.(`Stage ${opts.stage} (${name}), try ${attempt}: ${g.passed ? "gate passed" : `${g.checks.filter((c) => !c.passed).length} checks failed`}.`);
+    opts.log?.(`Stage ${opts.stage} (${name}), try ${attempt}: ${g.passed ? "gate passed" : `${g.checks.filter((c) => !c.passed).length} checks failed (${g.checks.filter((c) => !c.passed).map((c) => `${c.name}${c.detail ? `: ${c.detail.slice(0, 120)}` : ""}`).join("; ")})`}.`);
     if (g.passed) break;
   }
   const failed = last!.gate.checks.filter((c) => !c.passed);

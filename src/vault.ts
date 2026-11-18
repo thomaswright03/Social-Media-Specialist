@@ -516,6 +516,29 @@ export class Vault {
     return id;
   }
 
+  /** Every passed stage 2 (one per Reel in the making): its format, product and finalists, newest first. */
+  async reelsStarted(limit = 50): Promise<{ subject: string; format: string; productId: string | null; finalists: string[]; at: string }[]> {
+    await this.ensureTables();
+    const rs = await this.db.execute({ sql: `SELECT "subject", "input", "output", "createdAt" FROM "SocialStage" WHERE "stage" = 2 AND "passed" = 1 AND "subject" LIKE 'reel:%' ORDER BY "createdAt" DESC LIMIT ?`, args: [limit] });
+    // The first try saves the input; later tries don't, so read it from the reel's first row.
+    const out: { subject: string; format: string; productId: string | null; finalists: string[]; at: string }[] = [];
+    for (const r of rs.rows) {
+      const subject = String(r.subject);
+      const first = await this.db.execute({ sql: `SELECT "input" FROM "SocialStage" WHERE "stage" = 2 AND "subject" = ? AND "input" IS NOT NULL ORDER BY "createdAt" ASC LIMIT 1`, args: [subject] });
+      let input: { format?: string; productId?: string | null } = {};
+      let output: { pitches?: { id?: number; sentence?: string }[]; finalists?: number[] } = {};
+      try {
+        input = JSON.parse(String(first.rows[0]?.input ?? "{}"));
+      } catch {}
+      try {
+        output = JSON.parse(String(r.output ?? "{}"));
+      } catch {}
+      const finalists = (output.finalists ?? []).map((id) => output.pitches?.find((p) => p.id === id)?.sentence ?? "").filter(Boolean);
+      out.push({ subject, format: input.format ?? "story", productId: input.productId ?? null, finalists, at: iso(r.createdAt) ?? "" });
+    }
+    return out;
+  }
+
   /** The latest result of a stage (passed or not), or the latest that passed. */
   async latestStage(stage: number, opts: { passedOnly?: boolean; subject?: string } = {}): Promise<StageRecord | null> {
     await this.ensureTables();

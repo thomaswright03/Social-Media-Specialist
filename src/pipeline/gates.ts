@@ -143,6 +143,9 @@ export type SoundOffReads = boolean[];
 export const READ_WPS = 4;
 const TITLE_LIKE = /\b(title|black|blank|logo|intro card|fade in from black|empty)\b/i;
 
+/** "no title card", "not black", "without a logo": a shot that says what it isn't. */
+export const withoutNegations = (s: string) => s.replace(/\b(no|not|never|without|isn't|is not)\s+(an?\s+|the\s+)?[\w-]+(\s+(card|frame|screen))?/gi, " ");
+
 export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned: Check[] = []): GateResult {
   const shots = o?.shots ?? [];
   const first = shots[0];
@@ -153,7 +156,7 @@ export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned:
   return gate([
     check("The opening has shots", shots.length > 0),
     check("The first shot starts at 0 s", first?.start === 0),
-    check("No title card, black or blank frame first", Boolean(first) && first!.kind !== "title" && !TITLE_LIKE.test(first!.visual ?? ""), first?.visual),
+    check("No title card, black or blank frame first", Boolean(first) && first!.kind !== "title" && !TITLE_LIKE.test(withoutNegations(first!.visual ?? "")), first?.visual),
     check("Starts mid-action", first?.kind === "action" && Boolean(first.visual?.trim())),
     check("The hook is on screen by 0.5 s", textAt <= 0.5, Number.isFinite(textAt) ? `appears at ${textAt} s` : "no on-screen text in the first shot"),
     check("The hook can be read by 1.5 s", words > 0 && readBy <= 1.5, `${words} words, read by ${Number.isFinite(readBy) ? readBy.toFixed(2) : "never"} s`),
@@ -207,7 +210,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
     check("Opens with the opening that passed stage 3", Boolean(openingFirst) && shots[0]?.visual === openingFirst!.visual && shots[0]?.onScreenText === openingFirst!.onScreenText),
     check("Something new in every 3-second slice", empty.length === 0, empty.length ? `nothing new at ${empty.map((t) => `${t}-${t + SLICE_SECONDS} s`).join(", ")}` : undefined),
     check("Every spoken claim is visible on screen", unshown.length === 0, unshown.length ? unshown.map((x) => `"${(x.line ?? "").slice(0, 50)}" at ${x.start} s`).join("; ") : undefined),
-    check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text)),
+    check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text), text.match(REFERS_TO_OTHER_EPISODES)?.[0] ? `says "${text.match(REFERS_TO_OTHER_EPISODES)![0]}"` : undefined),
     check("Has its own payoff", Boolean(s?.payoff?.trim())),
     check("Leaves a reason to watch the next", Boolean(s?.nextHook?.trim())),
     check("Review: grammar, physics, timing and consistency", review !== null && review.problems.length === 0, review ? review.problems.join("; ") || undefined : "not reviewed"),

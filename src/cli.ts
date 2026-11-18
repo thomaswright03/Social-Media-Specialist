@@ -8,6 +8,11 @@
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   hitta-test      sends Hitta a low-urgency test report
+//   ideas           stage 2: picks the next Reel's format (80% entertainment, 20% ads) and keeps 3 ideas
+//                   (REEL_FORMAT or a format after the command picks one by hand)
+//   script          stages 3 and 4: the first 3 seconds, then the full script, for the newest Reel
+//                   that passed stage 2
+//   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
 //   research        stage 1: studies the Reels of the accounts Thomas admires
@@ -25,7 +30,11 @@ import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch } from "./pipeline/research.ts";
+import { runIdeas } from "./pipeline/ideas.ts";
+import { runScript } from "./pipeline/script.ts";
+import { ENTERTAINMENT, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
+import { speak } from "./voice.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
@@ -67,6 +76,61 @@ async function main() {
     });
     log(result.message);
     process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "ideas") {
+    const wanted = (process.argv[3] ?? process.env.REEL_FORMAT ?? "").trim().toLowerCase();
+    if (wanted && wanted !== "ad" && !(ENTERTAINMENT as readonly string[]).includes(wanted)) {
+      console.error(`"${wanted}" isn't a format. Use ad, ${ENTERTAINMENT.join(", ")}, or leave it empty to follow the 80/20 mix.`);
+      process.exit(2);
+    }
+    const vault = connect();
+    try {
+      const products = await siteProducts().catch((err) => {
+        log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
+        return [];
+      });
+      const r = await runIdeas({ vault, products, ask: askClaude, log, format: (wanted || undefined) as Format | undefined });
+      if (r.passed) {
+        console.log(`\n${r.choice.format}${r.choice.product ? ` for ${r.choice.product.name}` : ""}: the 3 kept ideas\n`);
+        for (const [i, s] of r.finalists.entries()) console.log(`${i + 1}. ${s}`);
+      } else {
+        console.error(`\nThe ideas didn't pass their gate after ${r.tries} tries:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+        process.exitCode = 1;
+      }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
+  if (command === "script") {
+    const vault = connect();
+    try {
+      const products = await siteProducts().catch(() => []);
+      const r = await runScript({ vault, products, ask: askClaude, log });
+      if (r.passed && r.script) {
+        console.log(`\n${r.premise}\n`);
+        for (const s of r.script.shots ?? []) console.log(`${s.start}-${s.end} s  ${s.visual ?? ""}${s.onScreenText ? `\n         text: ${s.onScreenText}` : ""}${s.line ? `\n         voice: ${s.line}` : ""}`);
+        console.log(`\nPayoff: ${r.script.payoff}\nCaption: ${r.script.caption}`);
+      } else {
+        console.error(`\n${r.problem ?? `Stage ${r.stage} didn't pass its gate`}:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+        process.exitCode = 1;
+      }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
+  if (command === "voice-test") {
+    const line = "Imagine you run a bakery, and the orders start coming in at two in the morning. Most of you said keep sleeping. Here's what happened.";
+    const s = await speak(line);
+    await writeFile("voice-test.mp3", s.audio);
+    log(`ElevenLabs read ${s.words.length} words (${s.words.at(-1)?.end.toFixed(1) ?? "?"} s) into voice-test.mp3. It's under this run's Artifacts as "voice-test".`);
+    return;
   }
 
   if (command === "requests") {
@@ -213,7 +277,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, ideas, script, voice-test, instagram-test or hitta-test.`);
     process.exit(2);
   }
 
