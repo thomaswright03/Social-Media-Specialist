@@ -6,6 +6,8 @@ It reports to Thomas through Hitta.
 
 ## What it does
 
+- Image posts are OFF since 2026-11-18 (Thomas: "everything should be reels");
+  the repo variable FEED_IMAGE_POSTS=on brings them back. When on:
 - Every morning it drafts Instagram feed posts until a week's worth is
   waiting or scheduled (3 a week by default, at most 3 drafts a morning):
   - about the products on wright-ai-solutions.com ("Products you can sign up

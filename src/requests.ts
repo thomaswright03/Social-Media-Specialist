@@ -4,6 +4,7 @@
 // the image; by phone he can ask for a post, turn one down, or pause.
 // Run first in every workflow run (`social requests`), and every hour.
 import { siteProducts } from "./site.ts";
+import { feedImagePostsOn } from "./social.ts";
 import { claudeAnswerer, type Action, type Answerer, type QueryDb } from "./hitta-requests.ts";
 import { vaultNow, type Post, type Vault } from "./vault.ts";
 
@@ -46,7 +47,7 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
   const now = opts.now ?? (() => new Date());
   const actions: Record<string, Action> = {
     request_post: {
-      description: "Queues a post Thomas asked for (a topic, a product, an offer, a message). The next morning's run drafts it first, and it waits for his approval like every post. Only when he asks for a post about something.",
+      description: "Queues an idea Thomas asked for (a topic, a product, an offer, a message) for an upcoming Reel. Only when he asks for a post or Reel about something.",
       args: '{"about": "what the post should say or be about, in his words", "product": "the product name if he named one, or null"}',
       async run(args) {
         const about = String(args.about ?? "").trim().slice(0, 500);
@@ -54,7 +55,9 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
         const named = String(args.product ?? "").trim().toLowerCase();
         const product = named ? (await siteProducts().catch(() => [])).find((p) => p.name.toLowerCase().includes(named) || named.includes(p.name.toLowerCase())) : undefined;
         await vault.addIdea(about, product?.id ?? null, "hitta", now());
-        return `Got it. I'll draft that post${product ? ` for ${product.name}` : ""} tomorrow morning, and it'll wait on the Vault page for your OK.`;
+        return feedImagePostsOn()
+          ? `Got it. I'll draft that post${product ? ` for ${product.name}` : ""} tomorrow morning, and it'll wait on the Vault page for your OK.`
+          : `Got it. I saved that idea${product ? ` for ${product.name}` : ""} for an upcoming Reel.`;
       },
     },
     turn_down: {
