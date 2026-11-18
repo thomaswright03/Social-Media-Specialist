@@ -175,6 +175,8 @@ export type Script = { shots?: Shot[]; payoff?: string; nextHook?: string };
 export type ScriptReview = { problems: string[] };
 
 export const SLICE_SECONDS = 3;
+/** Speaking speed for a narrated line, words a second. */
+export const SPOKEN_WPS = 2.6;
 
 /** The 3-second slices with nothing new to see or hear (start times). */
 export function emptySlices(shots: Shot[], length: number): number[] {
@@ -183,7 +185,13 @@ export function emptySlices(shots: Shot[], length: number): number[] {
   for (const s of shots) {
     const t = s.start ?? 0;
     events.push(t); // a new shot is something new to see
-    if (s.line?.trim()) events.push(t);
+    if (s.line?.trim()) {
+      // A spoken line keeps changing the word-by-word caption while it's heard
+      // (about 2.6 words a second), so each second of speech is something new.
+      const words = s.line.trim().split(/\s+/).length;
+      const until = Math.min(s.end ?? t, t + words / SPOKEN_WPS);
+      for (let x = t; x < until; x += 1) events.push(x);
+    }
     if (s.onScreenText?.trim() && s.onScreenText !== lastText) events.push(typeof s.textAt === "number" ? s.textAt : t);
     if (s.sound?.trim()) events.push(t);
     lastText = s.onScreenText ?? "";
