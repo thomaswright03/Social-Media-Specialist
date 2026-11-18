@@ -102,7 +102,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 /** The page every frame is drawn from. */
 export function composeHtml(t: TimedShot[], svgs: string[]): string {
-  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: kickerFor(s), ...cameraFor(s.visual ?? ""), i }));
+  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: kickerFor(s), ...cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`), i }));
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=block">

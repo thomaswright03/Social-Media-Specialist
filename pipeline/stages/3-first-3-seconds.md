@@ -25,5 +25,5 @@ Rules: start mid-action, no title card, no black or blank frame, and put the hoo
 
 {{GATE_FAILURES}}
 
-Reply with only JSON: {"intendedHook": "why they keep watching", "shots": [{"start": 0, "end": 1.2, "visual": "what's on screen", "kind": "action", "onScreenText": "...", "textAt": 0.2, "audio": "..."}]}
+Reply with only JSON: {"intendedHook": "why they keep watching", "shots": [{"start": 0, "end": 1.2, "camera": "close-up", "visual": "what's on screen", "kind": "action", "onScreenText": "...", "textAt": 0.2, "audio": "..."}]}
 <!-- /prompt -->

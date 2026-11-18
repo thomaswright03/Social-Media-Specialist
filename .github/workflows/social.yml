@@ -222,6 +222,7 @@ jobs:
           path: |
             reel/reel.mp4
             reel/look.txt
+            reel/cast.svg
             reel/timeline.json
             reel/scenes/
             reel/judge/
