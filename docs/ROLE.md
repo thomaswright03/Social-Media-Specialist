@@ -6,6 +6,8 @@ It reports to Thomas through Hitta.
 
 ## What it does
 
+- Image posts are OFF since 2026-11-18 (Thomas: "everything should be reels");
+  the repo variable FEED_IMAGE_POSTS=on brings them back. When on:
 - Every morning it drafts Instagram feed posts until a week's worth is
   waiting or scheduled (3 a week by default, at most 3 drafts a morning):
   - about the products on wright-ai-solutions.com ("Products you can sign up
@@ -65,6 +67,12 @@ nine stages with gates (`pipeline/README.md`). Stage 0, the Insights
 diagnosis, runs today (`social diagnose`). A finished Reel goes out on its own
 only as a Trial Reel (non-followers), and only when every pre-publish check
 passes; showing it to followers stays his call in the Instagram app.
+
+What it makes (Thomas, 2026-11-18): about 80% entertainment (standalone
+stick-figure stories, satisfying AI videos, and current events explained with
+bold graphics) and 20% ads (one product from the website, plus the business
+itself: custom AI agents and software for businesses). Code picks each
+Reel's format and checks the script against it (`src/pipeline/formats.ts`).
 
 ## History
 

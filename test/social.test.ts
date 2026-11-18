@@ -12,6 +12,9 @@ import { parseSiteProducts, siteProducts } from "../src/site.ts";
 import { call, setRetryMs } from "../src/instagram.ts";
 import { DEFAULT_SETTINGS, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
 
+// These tests cover the image posts, which are off by default (Reels only).
+process.env.FEED_IMAGE_POSTS = "on";
+
 const NOW = new Date("2026-10-27T15:00:00Z"); // a Tuesday, 8:00 in Arizona
 
 async function memoryVault(products: Product[] = []): Promise<Vault> {
@@ -27,6 +30,21 @@ const PRODUCTS: Product[] = [
   { id: "p1", name: "Room Designer 3D", description: "3D bathroom designer", url: "https://rooms.example.com/" },
   { id: "p2", name: "Lead Finder", description: null, url: "https://leads.example.com/" },
 ];
+
+describe("Reels only", () => {
+  it("drafts no image posts unless FEED_IMAGE_POSTS is on", async () => {
+    process.env.FEED_IMAGE_POSTS = "";
+    try {
+      const vault = await memoryVault(PRODUCTS);
+      let asked = 0;
+      const { snapshot } = await runDaily({ vault, hitta: async () => ({ ok: true, status: 201, message: "ok" }), log: () => {}, ask: async () => (asked++, goodAnswer()), renderer: async () => fakeRenderer(), fetchImpl: siteFetch, now: NOW });
+      expect(snapshot.drafted).toBe(0);
+      expect(asked).toBe(0);
+    } finally {
+      process.env.FEED_IMAGE_POSTS = "on";
+    }
+  });
+});
 
 describe("network blips", () => {
   it("tries a read again when it didn't reach Meta, but never a write", async () => {

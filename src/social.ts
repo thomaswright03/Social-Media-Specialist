@@ -21,6 +21,9 @@ import { DAY_MS } from "./time.ts";
 import { siteProducts, SITE_URL } from "./site.ts";
 import { vaultNow, type Post, type Product, type SocialSnapshot, type Vault } from "./vault.ts";
 
+/** Image (feed) posts are off unless FEED_IMAGE_POSTS is "on". */
+export const feedImagePostsOn = () => process.env.FEED_IMAGE_POSTS?.trim().toLowerCase() === "on";
+
 export type Deps = {
   vault: Vault;
   hitta: (r: HittaReport) => Promise<HittaResult>;
@@ -116,8 +119,11 @@ export async function runDaily(d: Deps): Promise<{ snapshot: SocialSnapshot; ale
     }
   }
 
-  // 3. Drafts.
-  if (settings.paused) {
+  // 3. Drafts. Thomas, 2026-11-18: "everything should be reels", so image
+  // posts are off unless FEED_IMAGE_POSTS is "on"; his ideas wait for the Reels.
+  if (!feedImagePostsOn()) {
+    log("Image posts are off (everything is Reels now), so no image drafts.");
+  } else if (settings.paused) {
     snapshot.notes.push("Paused: no drafts and nothing posted until it's resumed.");
   } else {
     const waiting = all.filter((p) => p.state === "draft").length;
