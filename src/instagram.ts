@@ -124,17 +124,29 @@ export function graphHost(token?: string): string {
 type Fetch = typeof fetch;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Wait before retrying a read that didn't reach Meta (tests set it to 0). */
+export let RETRY_MS = 2_000;
+export const setRetryMs = (ms: number) => (RETRY_MS = ms);
+
 export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}, host = graphHost(token)): Promise<Record<string, unknown>> {
   const url = new URL(`https://${host}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
   const body = new URLSearchParams({ ...params, access_token: token });
-  let res: Response;
-  try {
-    res =
-      method === "GET"
-        ? await fetchImpl(`${url}?${body}`, { signal: AbortSignal.timeout(30_000) })
-        : await fetchImpl(url, { method: "POST", body, signal: AbortSignal.timeout(60_000) });
-  } catch (err) {
-    throw new InstagramError(`Instagram couldn't be reached: ${err instanceof Error ? err.message : String(err)}`, null, null);
+  let res: Response | null = null;
+  // A read that never reached Meta (a network blip) is tried up to 3 times.
+  // A write is never repeated: it may have gone through.
+  for (let attempt = 1; !res; attempt++) {
+    try {
+      res =
+        method === "GET"
+          ? await fetchImpl(`${url}?${body}`, { signal: AbortSignal.timeout(30_000) })
+          : await fetchImpl(url, { method: "POST", body, signal: AbortSignal.timeout(60_000) });
+    } catch (err) {
+      if (method === "GET" && attempt < 3) {
+        await new Promise((r) => setTimeout(r, attempt * RETRY_MS));
+        continue;
+      }
+      throw new InstagramError(`Instagram couldn't be reached: ${err instanceof Error ? err.message : String(err)}`, null, null);
+    }
   }
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string; code?: number; error_user_msg?: string } };
   if (!res.ok || json.error) {

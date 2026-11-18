@@ -9,6 +9,7 @@ import { pickPost } from "../src/requests.ts";
 import { nextSlot } from "../src/schedule.ts";
 import { publishDue, runDaily } from "../src/social.ts";
 import { parseSiteProducts, siteProducts } from "../src/site.ts";
+import { call, setRetryMs } from "../src/instagram.ts";
 import { DEFAULT_SETTINGS, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
 
 const NOW = new Date("2026-10-27T15:00:00Z"); // a Tuesday, 8:00 in Arizona
@@ -26,6 +27,27 @@ const PRODUCTS: Product[] = [
   { id: "p1", name: "Room Designer 3D", description: "3D bathroom designer", url: "https://rooms.example.com/" },
   { id: "p2", name: "Lead Finder", description: null, url: "https://leads.example.com/" },
 ];
+
+describe("network blips", () => {
+  it("tries a read again when it didn't reach Meta, but never a write", async () => {
+    setRetryMs(0);
+    let gets = 0;
+    let posts = 0;
+    const flaky = (async (_u: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts++;
+        throw new TypeError("fetch failed");
+      }
+      if (++gets < 3) throw new TypeError("fetch failed");
+      return new Response(JSON.stringify({ id: "1" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await expect(call(flaky, "GET", "me", "IGx")).resolves.toEqual({ id: "1" });
+    expect(gets).toBe(3);
+    await expect(call(flaky, "POST", "me/media", "IGx", {})).rejects.toThrow("couldn't be reached");
+    expect(posts).toBe(1);
+    setRetryMs(2_000);
+  });
+});
 
 describe("products from the website", () => {
   it("reads the product cards in Our Services, with each product's front page", () => {

@@ -164,7 +164,7 @@ jobs:
       # measures cuts, sound and frames for the research.
       - name: Check ffmpeg
         if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'diagnose' || env.COMMAND == 'research')
-        run: ffprobe -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+        run: command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       # Writes the drafts and answers Hitta's requests.
       - name: Install Claude Code
