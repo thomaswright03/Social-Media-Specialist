@@ -12,6 +12,8 @@
 //                   (REEL_FORMAT or a format after the command picks one by hand)
 //   script          stages 3 and 4: the first 3 seconds, then the full script, for the newest Reel
 //                   that passed stage 2
+//   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
+//                   captions, our own sound) and judges it against the benchmark Reels; posts nothing
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
@@ -32,6 +34,8 @@ import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch } from "./pipeline/research.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
+import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
+import { askClaudeWithFiles } from "./pipeline/research.ts";
 import { ENTERTAINMENT, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
 import { speak } from "./voice.ts";
@@ -119,6 +123,37 @@ async function main() {
         for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
         process.exitCode = 1;
       }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
+  if (command === "produce") {
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log }).catch(() => null);
+      const me = token ? await instagramClient(token.token).account().catch(() => null) : null;
+      const accounts = (process.env.RESEARCH_ACCOUNTS || "stickmanstorys22").split(/[\s,]+/).map((a) => a.trim().replace(/^@/, "")).filter(Boolean);
+      const { chromium } = await import("playwright");
+      const r = await runProduce({
+        vault,
+        ask: askClaude,
+        judge: (dir) => askClaudeWithFiles(dir),
+        speak,
+        browser: () => chromium.launch(),
+        benchmarks: (dir) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts, dir }) : Promise.resolve([])),
+        outDir: "reel",
+        subject: process.argv[3] || undefined,
+        log,
+      });
+      if (r.video) log(`The Reel is under this run's Artifacts as "reel" (${r.seconds.toFixed(1)} s). Nothing was posted.`);
+      if (!r.passed) {
+        console.error(`\n${r.problem ?? "Stage 5 didn't pass its gate"}:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+        if (r.fixFirst) console.error(`Fix first: ${r.fixFirst}`);
+        process.exitCode = 1;
+      } else if (r.fixFirst) log(`The judge's biggest gap: ${r.fixFirst}`);
     } finally {
       vault.close();
     }

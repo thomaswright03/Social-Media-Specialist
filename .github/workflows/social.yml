@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, ideas, script, requests, instagram-test, hitta-test, voice-test]
+        options: [run, publish, preview, diagnose, research, ideas, script, produce, requests, instagram-test, hitta-test, voice-test]
       format:
         description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix
         type: string
@@ -48,7 +48,7 @@ permissions:
 jobs:
   social:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       # The Vault's Turso database (the same values as the other employees').
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
@@ -172,10 +172,10 @@ jobs:
       - run: npm ci
         if: steps.go.outputs.yes == 'true'
 
-      # Reads the length of each video for the diagnosis and the research, and
-      # measures cuts, sound and frames for the research.
+      # Reads the length of each video for the diagnosis and the research,
+      # measures cuts, sound and frames for the research, and makes the Reel.
       - name: Check ffmpeg
-        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'diagnose' || env.COMMAND == 'research')
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'diagnose' || env.COMMAND == 'research' || env.COMMAND == 'produce')
         run: command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       # Writes the drafts and answers Hitta's requests.
@@ -184,9 +184,9 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       # Makes the post images (a screenshot of the product's site, then the
-      # post itself).
+      # post itself) and draws the Reel's frames.
       - name: Install the browser
-        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'run' || env.COMMAND == 'preview')
+        if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'run' || env.COMMAND == 'preview' || env.COMMAND == 'produce')
         run: npx playwright install --with-deps chromium
 
       # First, before anything long: Hitta waits on the phone for these
@@ -211,6 +211,21 @@ jobs:
         with:
           name: preview
           path: preview.jpg
+
+      # The Reel, its drawings and the judge's frames, even when the gate
+      # failed, so Thomas can watch it either way.
+      - name: Keep the Reel
+        if: always() && env.COMMAND == 'produce' && steps.social.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel
+          path: |
+            reel/reel.mp4
+            reel/look.txt
+            reel/timeline.json
+            reel/scenes/
+            reel/judge/
+          if-no-files-found: ignore
 
       - name: Keep the voice test
         if: env.COMMAND == 'voice-test' && steps.social.outcome == 'success'

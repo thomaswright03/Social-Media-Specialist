@@ -74,6 +74,13 @@ bold graphics) and 20% ads (one product from the website, plus the business
 itself: custom AI agents and software for businesses). Code picks each
 Reel's format and checks the script against it (`src/pipeline/formats.ts`).
 
+How a Reel gets made (stage 5, `social produce`): Thomas's ElevenLabs voice
+reads the lines, Claude draws every shot as a flat-vector stick-figure SVG in
+one style, code adds the titles, word-by-word lime captions and our own sound
+(no music anyone else owns), and renders a 1080x1920 mp4. A separate judge
+compares its frames with the benchmark accounts' best Reels. Nothing is posted
+by this step; the video is saved as the run's artifact.
+
 ## History
 
 Everything it does is recorded and shown as History on its Vault page: posts,

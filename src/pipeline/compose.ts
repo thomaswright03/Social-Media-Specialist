@@ -1,0 +1,255 @@
+// Stage 5's compositor: puts the drawings, the voice, the captions and the
+// sound together into a 1080x1920 mp4. Each frame is drawn by headless
+// Chromium from one HTML page (window.render(t) seeks every animation to the
+// frame's time, so nothing depends on how fast the machine is), then ffmpeg
+// joins the frames with the mixed audio.
+import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { Browser } from "playwright";
+import type { Shot, TextBox } from "./gates.ts";
+
+export const W = 1080;
+export const H = 1920;
+export const FPS = 30;
+/** Silence before a shot's line starts, and after it ends. */
+export const LEAD = 0.15;
+export const TAIL = 0.3;
+export const MIN_SHOT = 1.5;
+export const LIME = "#a3e635";
+
+export type Word = { word: string; start: number; end: number };
+export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null; words: Word[] };
+
+/**
+ * Where each shot starts and how long it lasts. A shot keeps its scripted
+ * length unless its line needs longer; its words move to where they're heard.
+ */
+export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[]): TimedShot[] {
+  let at = 0;
+  return shots.map((s, i) => {
+    const v = voices[i] ?? null;
+    const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
+    const dur = Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const voiceAt = v ? at + LEAD : null;
+    const t: TimedShot = { ...s, at, dur, voiceAt, words: v ? v.words.map((w) => ({ word: w.word, start: w.start + voiceAt!, end: w.end + voiceAt! })) : [] };
+    at += dur;
+    return t;
+  });
+}
+
+export const totalSeconds = (t: TimedShot[]) => (t.length ? t.at(-1)!.at + t.at(-1)!.dur : 0);
+
+export type Chunk = { words: Word[]; from: number; to: number };
+
+/** Caption chunks: up to 3 words, broken after a full stop, comma or question mark. */
+export function captionChunks(t: TimedShot[], max = 3): Chunk[] {
+  const out: Chunk[] = [];
+  for (const s of t) {
+    let cur: Word[] = [];
+    const end = s.at + s.dur;
+    const flush = () => {
+      if (cur.length) out.push({ words: cur, from: cur[0]!.start, to: end });
+      cur = [];
+    };
+    for (const w of s.words) {
+      cur.push(w);
+      if (cur.length >= max || /[.,?!;:]$/.test(w.word)) flush();
+    }
+    flush();
+  }
+  // A chunk stays until the next one starts (or a moment after its last word).
+  return out.map((c, i) => ({ ...c, to: Math.min(c.to, out[i + 1]?.from ?? Infinity, c.words.at(-1)!.end + 0.6) }));
+}
+
+/** How the camera moves in a shot, read from its description. */
+export function cameraFor(visual: string): { from: number; to: number; grain: boolean; flash: boolean } {
+  const v = visual.toLowerCase();
+  const grain = /security|cctv|cam\b|camera feed|grainy|footage|monitor view/.test(v);
+  const flash = /\b(hard (cut|push)|snaps?|slams?|flash|bang)\b/.test(v);
+  if (/push[- ]?in|zoom|extreme close|close-up|closer/.test(v)) return { from: 1.0, to: 1.16, grain, flash };
+  if (/\bwide\b|establishing/.test(v)) return { from: 1.04, to: 1.0, grain, flash };
+  return { from: 1.0, to: 1.06, grain, flash };
+}
+
+/** JSON that can't end the <script> it sits in. */
+const scriptJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** The page every frame is drawn from. */
+export function composeHtml(t: TimedShot[], svgs: string[]): string {
+  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, text: s.onScreenText?.trim() ?? "", ...cameraFor(s.visual ?? ""), i }));
+  const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
+  return `<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@800;900&display=block">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
+.scene{position:absolute;inset:0;display:none;transform-origin:50% 50%}
+.scene svg{width:${W}px;height:${H}px;display:block}
+#grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
+#flash{position:absolute;inset:0;background:#fff;opacity:0}
+#title{position:absolute;left:80px;right:160px;top:260px;text-align:center;font-family:Anton,"Inter",Impact,sans-serif;font-size:84px;line-height:1.04;letter-spacing:.01em;color:#fff;text-transform:uppercase;text-shadow:0 6px 0 rgba(0,0,0,.55),0 0 24px rgba(0,0,0,.6);opacity:0}
+#title span{display:inline;background:rgba(0,0,0,.72);padding:6px 18px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+#cap{position:absolute;left:80px;right:160px;top:1320px;text-align:center;font-family:Inter,sans-serif;font-weight:900;font-size:76px;line-height:1.1;color:#fff;text-transform:uppercase;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 5px 0 #000}
+#cap b{color:${LIME};font-weight:900}
+</style></head><body>
+${svgs.map((s, i) => `<div class="scene" id="s${i}">${s}</div>`).join("\n")}
+<svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
+<div id="vignette"></div><div id="flash"></div>
+<div id="title"></div><div id="cap"></div>
+<script>
+const SHOTS=${scriptJson(shots)};
+const CHUNKS=${scriptJson(chunks)};
+const ease=(x)=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+const esc=(s)=>s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+let shown=-1, titleText=null, capKey=null;
+window.render=(t)=>{
+  let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
+  const s=SHOTS[i], local=t-s.at, p=Math.min(1,local/s.dur);
+  if(i!==shown){ if(shown>=0) document.getElementById('s'+shown).style.display='none'; document.getElementById('s'+i).style.display='block'; shown=i; }
+  const el=document.getElementById('s'+i);
+  el.style.transform='scale('+(s.from+(s.to-s.from)*ease(p))+')';
+  getComputedStyle(el).transform;
+  for(const a of el.getAnimations({subtree:true})){ a.pause(); a.currentTime=local*1000; }
+  const g=document.getElementById('grain'); g.style.opacity=s.grain?'.18':'0';
+  if(s.grain){ document.getElementById('turb').setAttribute('seed',String(Math.floor(t*30)%97+1)); g.style.transform='translate('+(Math.floor(t*30)%7-3)+'px,'+(Math.floor(t*30*3)%7-3)+'px)'; }
+  document.getElementById('flash').style.opacity=s.flash&&local<.1?String(.55*(1-local/.1)):'0';
+  const title=document.getElementById('title');
+  if(titleText!==s.text){ title.innerHTML=s.text?'<span>'+esc(s.text)+'</span>':''; titleText=s.text; }
+  const tp=i===0?1:Math.min(1,local/.18); title.style.opacity=s.text?String(tp):'0'; title.style.transform='scale('+(0.86+0.14*ease(tp))+')';
+  const cap=document.getElementById('cap');
+  const c=CHUNKS.find(c=>t>=c.from&&t<c.to);
+  if(!c){ if(capKey!==null){ cap.innerHTML=''; capKey=null; } }
+  else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k<=cur?(k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)):'').filter(Boolean).join(' '); capKey=key; } }
+  const boxes=[]; for(const e of [title.firstElementChild,cap]){ if(!e||!e.textContent.trim()||getComputedStyle(e.closest('#title,#cap')).opacity==='0') continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
+  return boxes;
+};
+</script></body></html>`;
+}
+
+/** Draws every frame into `dir` (00001.jpg …) and returns the text boxes seen. */
+export async function renderFrames(browser: Browser, html: string, seconds: number, dir: string, log?: (m: string) => void): Promise<{ frames: number; boxes: TextBox[] }> {
+  await mkdir(dir, { recursive: true });
+  const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+  const seen = new Map<string, TextBox>();
+  try {
+    await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
+    await page.evaluate(() => document.fonts.ready.then(() => true));
+    const frames = Math.round(seconds * FPS);
+    for (let f = 0; f < frames; f++) {
+      const boxes = (await page.evaluate((t) => (window as unknown as { render(t: number): TextBox[] }).render(t), f / FPS)) as TextBox[];
+      for (const b of boxes) {
+        const k = `${b.text}|${Math.round(b.x)}|${Math.round(b.y)}|${Math.round(b.w)}|${Math.round(b.h)}`;
+        if (!seen.has(k)) seen.set(k, b);
+      }
+      await page.screenshot({ path: join(dir, `${String(f + 1).padStart(5, "0")}.jpg`), type: "jpeg", quality: 90 });
+      if (f % (FPS * 10) === 0 && f) log?.(`Rendered ${f / FPS} s of ${seconds.toFixed(1)} s.`);
+    }
+    return { frames, boxes: [...seen.values()] };
+  } finally {
+    await page.close();
+  }
+}
+
+export function run(cmd: string, args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => reject(new Error(`${cmd} couldn't start: ${e.message}`)));
+    child.on("close", (code) => (code === 0 ? resolve(out + err) : reject(new Error(`${cmd} failed (${code}): ${err.slice(-800)}`))));
+  });
+}
+
+/** Seconds of audio in a file, by ffprobe. */
+export async function audioSeconds(file: string): Promise<number> {
+  const out = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file]);
+  const n = Number(out.trim().split("\n")[0]);
+  if (!Number.isFinite(n)) throw new Error(`ffprobe couldn't read the length of ${file}`);
+  return n;
+}
+
+/**
+ * Our own sound: a low pad and room tone (made here, so nobody else owns it),
+ * a soft whoosh on every cut, all ducked under the voice, then loudness
+ * normalised to -14 LUFS with true peak under -1.5 dBTP (two passes).
+ */
+export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string): Promise<string> {
+  const total = totalSeconds(t);
+  const inputs: string[] = [];
+  const filters: string[] = [];
+  const pad = `0.05*sin(2*PI*55*t)+0.035*sin(2*PI*82.41*t)*(0.6+0.4*sin(2*PI*0.13*t))+0.02*sin(2*PI*110*t)*(0.5+0.5*sin(2*PI*0.21*t))`;
+  inputs.push("-f", "lavfi", "-i", `aevalsrc='${pad}|${pad}':s=44100:d=${total.toFixed(3)}`);
+  inputs.push("-f", "lavfi", "-i", `anoisesrc=color=brown:amplitude=0.03:d=${total.toFixed(3)}:r=44100`);
+  filters.push(`[0:a]lowpass=f=400,afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, total - 1.5).toFixed(3)}:d=1.5[pad]`);
+  filters.push(`[1:a]lowpass=f=300,aformat=channel_layouts=stereo[room]`);
+  const cuts = t.slice(1).map((s) => s.at);
+  const whooshes: string[] = [];
+  cuts.forEach((c, i) => {
+    const idx = 2 + i;
+    inputs.push("-f", "lavfi", "-i", `anoisesrc=color=pink:amplitude=0.25:d=0.4:r=44100`);
+    const ms = Math.max(0, Math.round((c - 0.18) * 1000));
+    filters.push(`[${idx}:a]highpass=f=900,lowpass=f=5000,afade=t=in:d=0.18,afade=t=out:st=0.18:d=0.22,volume=0.35,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[w${i}]`);
+    whooshes.push(`[w${i}]`);
+  });
+  const voices: string[] = [];
+  voiceFiles.forEach((f, i) => {
+    if (!f || t[i]?.voiceAt == null) return;
+    const idx = 2 + cuts.length + voices.length;
+    inputs.push("-i", f);
+    const ms = Math.round(t[i]!.voiceAt! * 1000);
+    filters.push(`[${idx}:a]aresample=44100,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[v${voices.length}]`);
+    voices.push(`[v${voices.length}]`);
+  });
+  filters.push(`[pad][room]${whooshes.join("")}amix=inputs=${2 + whooshes.length}:normalize=0:duration=first[bed]`);
+  if (voices.length) {
+    filters.push(`${voices.join("")}amix=inputs=${voices.length}:normalize=0:duration=longest,apad=whole_dur=${total.toFixed(3)},asplit=2[voice][key]`);
+    filters.push(`[bed][key]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[duck]`);
+    filters.push(`[voice][duck]amix=inputs=2:normalize=0:duration=first,atrim=0:${total.toFixed(3)}[mix]`);
+  } else {
+    filters.push(`[bed]anull[mix]`);
+  }
+  const raw = join(dir, "mix-raw.wav");
+  await run("ffmpeg", ["-y", "-v", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", "[mix]", "-ac", "2", "-ar", "44100", raw]);
+  const m = await measureLoudness(raw);
+  const out = join(dir, "mix.wav");
+  const ln = m
+    ? `loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
+    : "loudnorm=I=-14:TP=-1.5:LRA=11";
+  await run("ffmpeg", ["-y", "-v", "error", "-i", raw, "-af", `${ln},aresample=44100`, "-ar", "44100", out]);
+  return out;
+}
+
+async function measureLoudness(file: string): Promise<Record<string, string> | null> {
+  const out = await run("ffmpeg", ["-hide_banner", "-i", file, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"]).catch(() => "");
+  const j = out.slice(out.lastIndexOf("{"), out.lastIndexOf("}") + 1);
+  try {
+    return JSON.parse(j) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
+/** Joins the frames and the audio into an mp4 Instagram takes. */
+export async function mux(framesDir: string, audio: string, out: string): Promise<void> {
+  await run("ffmpeg", [
+    "-y", "-v", "error",
+    "-framerate", String(FPS), "-i", join(framesDir, "%05d.jpg"),
+    "-i", audio,
+    "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", String(FPS),
+    "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+    "-shortest", "-movflags", "+faststart", out,
+  ]);
+}
+
+export async function writeSvgs(dir: string, svgs: string[]) {
+  await mkdir(dir, { recursive: true });
+  await Promise.all(svgs.map((s, i) => writeFile(join(dir, `shot-${String(i + 1).padStart(2, "0")}.svg`), s)));
+}
+
+export { esc as escapeHtml };

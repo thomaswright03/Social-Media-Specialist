@@ -26,7 +26,17 @@ export function wordsFrom(alignment: { characters?: string[]; character_start_ti
   return words;
 }
 
-export async function speak(text: string, opts: { fetchImpl?: typeof fetch; apiKey?: string; voiceId?: string } = {}): Promise<Spoken> {
+export type SpeakOpts = {
+  fetchImpl?: typeof fetch;
+  apiKey?: string;
+  voiceId?: string;
+  /** The lines around this one, so a Reel read line by line still sounds like one read. */
+  previousText?: string;
+  nextText?: string;
+};
+export type Speak = (text: string, opts?: SpeakOpts) => Promise<Spoken>;
+
+export async function speak(text: string, opts: SpeakOpts = {}): Promise<Spoken> {
   const apiKey = opts.apiKey ?? process.env.ELEVENLABS_API_KEY?.trim();
   const voiceId = opts.voiceId ?? process.env.ELEVENLABS_VOICE_ID?.trim();
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY isn't set");
@@ -34,7 +44,12 @@ export async function speak(text: string, opts: { fetchImpl?: typeof fetch; apiK
   const res = await (opts.fetchImpl ?? fetch)(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps?output_format=mp3_44100_128`, {
     method: "POST",
     headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_MODEL?.trim() || "eleven_multilingual_v2" }),
+    body: JSON.stringify({
+      text,
+      model_id: process.env.ELEVENLABS_MODEL?.trim() || "eleven_multilingual_v2",
+      ...(opts.previousText ? { previous_text: opts.previousText } : {}),
+      ...(opts.nextText ? { next_text: opts.nextText } : {}),
+    }),
     signal: AbortSignal.timeout(120_000),
   });
   const json = (await res.json().catch(() => ({}))) as { audio_base64?: string; alignment?: Parameters<typeof wordsFrom>[0]; detail?: { message?: string; status?: string } | string };
