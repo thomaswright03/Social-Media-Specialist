@@ -207,7 +207,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
     check("Opens with the opening that passed stage 3", Boolean(openingFirst) && shots[0]?.visual === openingFirst!.visual && shots[0]?.onScreenText === openingFirst!.onScreenText),
     check("Something new in every 3-second slice", empty.length === 0, empty.length ? `nothing new at ${empty.map((t) => `${t}-${t + SLICE_SECONDS} s`).join(", ")}` : undefined),
     check("Every spoken claim is visible on screen", unshown.length === 0, unshown.length ? unshown.map((x) => `"${(x.line ?? "").slice(0, 50)}" at ${x.start} s`).join("; ") : undefined),
-    check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text)),
+    check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text), text.match(REFERS_TO_OTHER_EPISODES)?.[0] ? `says "${text.match(REFERS_TO_OTHER_EPISODES)![0]}"` : undefined),
     check("Has its own payoff", Boolean(s?.payoff?.trim())),
     check("Leaves a reason to watch the next", Boolean(s?.nextHook?.trim())),
     check("Review: grammar, physics, timing and consistency", review !== null && review.problems.length === 0, review ? review.problems.join("; ") || undefined : "not reviewed"),

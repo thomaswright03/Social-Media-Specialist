@@ -77,7 +77,7 @@ export async function runStage<T>(opts: {
     const g = await opts.gate(output);
     const recordId = await opts.vault.saveStage({ stage: opts.stage, subject: opts.subject, attempt, passed: g.passed, output: output ?? { unparsed: answer.slice(0, 2000) }, gate: g, input: attempt === 1 ? opts.input : undefined }, now());
     last = { output, gate: g, tries: attempt, recordId };
-    opts.log?.(`Stage ${opts.stage} (${name}), try ${attempt}: ${g.passed ? "gate passed" : `${g.checks.filter((c) => !c.passed).length} checks failed`}.`);
+    opts.log?.(`Stage ${opts.stage} (${name}), try ${attempt}: ${g.passed ? "gate passed" : `${g.checks.filter((c) => !c.passed).length} checks failed (${g.checks.filter((c) => !c.passed).map((c) => `${c.name}${c.detail ? `: ${c.detail.slice(0, 120)}` : ""}`).join("; ")})`}.`);
     if (g.passed) break;
   }
   const failed = last!.gate.checks.filter((c) => !c.passed);

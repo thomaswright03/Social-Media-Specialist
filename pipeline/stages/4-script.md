@@ -36,6 +36,7 @@ Keep it simple so it holds together (a strict reviewer checks every one of these
 - One or two characters and one or two places. A character is in one place at a time and needs the time to get anywhere.
 - Anything used later (a flashlight, a key, a phone) is shown before it's used.
 - The payoff and the caption agree with how the story actually ends.
+- nextHook is why someone would follow for the next video (a new mystery, "follow for what the dog does next"), never "part 2", "episode", "to be continued" or anything that makes this one incomplete.
 
 {{GATE_FAILURES}}
 
