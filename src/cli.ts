@@ -21,6 +21,7 @@ import { crosspostOn, facebookPageClient } from "./facebook.ts";
 import { currentToken, instagramClient } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
+import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch } from "./pipeline/research.ts";
@@ -111,9 +112,9 @@ async function main() {
     const vault = connect();
     const renderer = await playwrightRenderer();
     try {
-      const [products, ideas, posts, settings] = await Promise.all([vault.products(), vault.openIdeas(), vault.posts(), vault.settings()]);
+      const [products, ideas, posts, settings] = await Promise.all([siteProducts(), vault.openIdeas(), vault.posts(), vault.settings()]);
       const [pick] = pickNext(products, ideas, posts, settings, 1);
-      if (!pick) throw new Error("No active products with a website in the Vault, and no ideas queued.");
+      if (!pick) throw new Error("No products on the website, and no ideas queued.");
       const site = pick.product ? await readSite(pick.product.url) : null;
       const screened = screenDraft(await askClaude(buildDraftPrompt({ pick, site, settings, history: posts })), { ...pick, site });
       if (!screened.ok) throw new Error(`The draft couldn't be used: ${screened.reason}`);

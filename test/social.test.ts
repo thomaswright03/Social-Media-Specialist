@@ -8,6 +8,7 @@ import type { Renderer } from "../src/render.ts";
 import { pickPost } from "../src/requests.ts";
 import { nextSlot } from "../src/schedule.ts";
 import { publishDue, runDaily } from "../src/social.ts";
+import { parseSiteProducts, siteProducts } from "../src/site.ts";
 import { DEFAULT_SETTINGS, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
 
 const NOW = new Date("2026-10-27T15:00:00Z"); // a Tuesday, 8:00 in Arizona
@@ -25,6 +26,41 @@ const PRODUCTS: Product[] = [
   { id: "p1", name: "Room Designer 3D", description: "3D bathroom designer", url: "https://rooms.example.com/" },
   { id: "p2", name: "Lead Finder", description: null, url: "https://leads.example.com/" },
 ];
+
+describe("products from the website", () => {
+  it("reads the product cards in Our Services, with each product's front page", () => {
+    const got = parseSiteProducts(siteHtml(PRODUCTS), "https://wright-ai-solutions.com/");
+    expect(got).toEqual([
+      { id: "site:room-designer-3d", name: "Room Designer 3D", description: "3D bathroom designer", url: "https://rooms.example.com/" },
+      { id: "site:lead-finder", name: "Lead Finder", description: null, url: "https://leads.example.com/" },
+    ]);
+    expect(parseSiteProducts("<html>no section</html>", "https://x/")).toEqual([]);
+  });
+
+  it("fails loudly when the site can't be read or lists nothing", async () => {
+    await expect(siteProducts((async () => new Response("", { status: 503 })) as unknown as typeof fetch)).rejects.toThrow("503");
+    await expect(siteProducts((async () => new Response("<html></html>")) as unknown as typeof fetch)).rejects.toThrow("no product cards");
+  });
+
+  it("drafts only what the website lists, not the Vault's products", async () => {
+    const vault = await memoryVault([{ id: "old", name: "ParkLess", description: null, url: "https://parkless.example.com/" }]);
+    const renderer = fakeRenderer();
+    const { snapshot } = await runDaily({ vault, hitta: async () => ({ ok: true, status: 201, message: "ok" }), log: () => {}, ask: async () => goodAnswer(), renderer: async () => renderer, fetchImpl: siteFetch, now: NOW });
+    expect(snapshot.drafted).toBe(3);
+    expect((await vault.posts()).map((p) => p.productName)).not.toContain("ParkLess");
+  });
+});
+
+describe("products", () => {
+  it("leaves out inactive products and products whose project was retired", async () => {
+    const vault = await memoryVault([...PRODUCTS, { id: "p3", name: "ParkLess", description: null, url: "https://parkless.example.com/" }]);
+    expect((await vault.products()).map((p) => p.name)).toEqual(["Lead Finder", "ParkLess", "Room Designer 3D"]);
+    await vault.client.execute(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY, "name" TEXT, "retiredAt" TEXT)`);
+    await vault.client.execute(`INSERT INTO "Project" VALUES ('x', 'parkless ', '2026-11-01T00:00:00.000Z'), ('y', 'Lead Finder', NULL)`);
+    await vault.client.execute(`UPDATE "Product" SET "status" = 'inactive' WHERE "id" = 'p1'`);
+    expect((await vault.products()).map((p) => p.name)).toEqual(["Lead Finder"]);
+  });
+});
 
 const goodAnswer = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
@@ -54,9 +90,16 @@ const fakeRenderer = (): Renderer & { shots: string[] } => {
   };
 };
 
+// Thomas's website, with a product card for each product.
+const siteHtml = (products: Product[]) =>
+  `<html><body><section class="hero"><h3>Not a product</h3></section><section class="products" id="our-services"><div class="cards">${products
+    .map((p) => `<article class="card product-card"><span class="tag">x</span><h3>${p.name}</h3><p>${p.description ?? ""}</p><a href="${p.url}signup.html" target="_blank" class="btn btn-primary product-signup">Sign up</a></article>`)
+    .join("")}</div></section><section id="work"><article class="work-item"><h3>Client work</h3><a href="https://client.example/" class="work-link">x</a></article></section></body></html>`;
+
 const siteFetch = (async (url: string | URL, init?: RequestInit) => {
   const u = String(url);
   if (init?.method === "HEAD") return new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } });
+  if (u.startsWith("https://wright-ai-solutions.com")) return new Response(siteHtml(PRODUCTS));
   if (u.includes("example.com")) return new Response(`<html><body><h1>Design bathrooms in 3D</h1><a href="/designer.html">Designer</a><a href="https://other.com/x">x</a></body></html>`);
   return new Response("{}", { status: 404 });
 }) as unknown as typeof fetch;

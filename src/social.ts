@@ -18,7 +18,8 @@ import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
 import { DAY_MS } from "./time.ts";
-import { vaultNow, type Post, type SocialSnapshot, type Vault } from "./vault.ts";
+import { siteProducts, SITE_URL } from "./site.ts";
+import { vaultNow, type Post, type Product, type SocialSnapshot, type Vault } from "./vault.ts";
 
 export type Deps = {
   vault: Vault;
@@ -32,6 +33,8 @@ export type Deps = {
   /** The Facebook Page for a token (null with an Instagram-login token); tests pass a fake. */
   facebook?: (token: string) => FacebookPageClient | null;
   fetchImpl?: typeof fetch;
+  /** The products to post about; the website's product cards unless a test passes its own. */
+  products?: () => Promise<Product[]>;
   now?: Date;
 };
 
@@ -122,9 +125,15 @@ export async function runDaily(d: Deps): Promise<{ snapshot: SocialSnapshot; ale
     const need = Math.max(0, Math.min(MAX_DRAFTS_A_DAY, settings.postsPerWeek - waiting - lined));
     if (need === 0) log(`${waiting} drafts waiting and ${lined} scheduled: enough for a week, no new drafts.`);
     else {
-      const products = await vault.products();
+      const products = await (d.products ?? (() => siteProducts(d.fetchImpl ?? fetch)))().catch((err) => {
+        const why = err instanceof Error ? err.message : String(err);
+        log(`Couldn't read the products from ${SITE_URL()}: ${why}`);
+        snapshot.notes.push(`Couldn't read the products from ${SITE_URL()} (${why}), so only your ideas were drafted.`);
+        return [] as Product[];
+      });
+      log(`Products on ${SITE_URL()}: ${products.map((p) => p.name).join(", ") || "none"}.`);
       const ideas = await vault.openIdeas();
-      if (products.length === 0 && ideas.length === 0) snapshot.notes.push("No active products with a website in the Vault, so there's nothing to post about.");
+      if (products.length === 0 && ideas.length === 0) snapshot.notes.push(`No products on ${SITE_URL()} and no ideas queued, so there's nothing to post about.`);
       const picks = pickNext(products, ideas, all, settings, need);
       let renderer: Renderer | null = null;
       try {

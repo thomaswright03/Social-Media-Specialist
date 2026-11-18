@@ -3,6 +3,7 @@
 // Thomas asks. Approving a post happens only on the Vault page, where he sees
 // the image; by phone he can ask for a post, turn one down, or pause.
 // Run first in every workflow run (`social requests`), and every hour.
+import { siteProducts } from "./site.ts";
 import { claudeAnswerer, type Action, type Answerer, type QueryDb } from "./hitta-requests.ts";
 import { vaultNow, type Post, type Vault } from "./vault.ts";
 
@@ -51,7 +52,7 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
         const about = String(args.about ?? "").trim().slice(0, 500);
         if (!about) throw new Error("I didn't catch what the post should be about");
         const named = String(args.product ?? "").trim().toLowerCase();
-        const product = named ? (await vault.products()).find((p) => p.name.toLowerCase().includes(named) || named.includes(p.name.toLowerCase())) : undefined;
+        const product = named ? (await siteProducts().catch(() => [])).find((p) => p.name.toLowerCase().includes(named) || named.includes(p.name.toLowerCase())) : undefined;
         await vault.addIdea(about, product?.id ?? null, "hitta", now());
         return `Got it. I'll draft that post${product ? ` for ${product.name}` : ""} tomorrow morning, and it'll wait on the Vault page for your OK.`;
       },
