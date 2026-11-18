@@ -57,12 +57,16 @@ export async function retellReads(shots: Shot[], intended: string, ask: Ask, rea
   out.notes = [];
   for (let i = 0; i < reads; i++) {
     const a = (await ask(retellPrompt(shots)).catch(() => "")).trim();
-    const confused = a.match(/CONFUSED:\s*(.*)$/im)?.[1]?.trim() ?? "";
-    const clear = !confused || /^(nothing|none|no)\b/i.test(confused);
-    const ok = Boolean(a) && clear && isYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
+    // The match call weighs the whole answer, confusion included: a viewer
+    // unsure of a detail that doesn't matter still got the story.
+    const ok = Boolean(a) && isYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
     out.push(ok);
-    // What a viewer who didn't get it said, so the next revision knows what to fix.
-    if (!ok) out.notes.push(a.replace(/\s+/g, " ").slice(0, 300) || "no answer");
+    // What a viewer who didn't get it said (what confused them first), so the next revision knows what to fix.
+    if (!ok) {
+      const confused = a.match(/CONFUSED:\s*([\s\S]*)$/i)?.[1]?.trim() ?? "";
+      const story = a.replace(/CONFUSED:[\s\S]*$/i, "").replace(/\s+/g, " ").trim();
+      out.notes.push(a ? `${confused ? `Confused by: ${confused.replace(/\s+/g, " ").slice(0, 200)}. ` : ""}Retold it as: ${story.slice(0, 220)}` : "no answer");
+    }
   }
   return out;
 }
@@ -88,7 +92,7 @@ export async function learnedChecks(vault: Vault, stage: number, output: unknown
   return out;
 }
 
-type ScriptOut = Script & { caption?: string; sources?: FormatDraft["sources"] };
+type ScriptOut = Script & { caption?: string; story?: string; sources?: FormatDraft["sources"] };
 export type ScriptResult = { subject: string; premise: string | null; opening: Opening | null; script: ScriptOut | null; passed: boolean; stage: 3 | 4; gate: GateResult; problem: string | null };
 
 /** The Reel to script next: the newest one that passed stage 2 and has no passed stage 4. */
@@ -159,7 +163,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       if (s) lastDraft = s;
       const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
       const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
-      const reads = shots.length ? await retellReads(shots, `${premise}\nHow it ends: ${s?.payoff ?? ""}`, cold) : null;
+      const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
+      const reads = shots.length ? await retellReads(shots, intended, cold) : null;
       const clarity = clarityChecks(shots, reads, reads?.notes ?? []);
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
       return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);

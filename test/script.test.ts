@@ -28,6 +28,7 @@ function fakeClaude(over: { review?: string; script?: unknown; soundOff?: string
     if (p.includes("Stage 4")) return JSON.stringify(over.script ?? script());
     if (p.includes("sound OFF")) return over.soundOff ?? "Why the dog is typing.";
     if (p.includes("strict editor")) return over.review ?? '{"problems": []}';
+    if (p.includes("meant this story")) return p.includes("CONFUSED: nothing") ? "YES" : "NO";
     if (p.includes("tell a friend")) return over.retell ?? "A dog types at night and it turns out he was ordering treats.\nCONFUSED: nothing";
     return "YES";
   };
@@ -91,6 +92,7 @@ describe("can a stranger follow it", () => {
     const retell = c.seen.find((p) => p.includes("tell a friend"))!;
     expect(retell).toContain('You hear: "My dog types every night."');
     expect(retell).not.toContain("ordering treats");
+    expect(r.gate.checks.find((x) => x.name.startsWith("Cold viewers retell"))?.detail).toContain("Confused by: who is the man");
   });
 
   it("counts shots, places and how much of it is narrated", async () => {
