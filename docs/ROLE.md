@@ -8,8 +8,8 @@ It reports to Thomas through Hitta.
 
 - Every morning it drafts Instagram feed posts until a week's worth is
   waiting or scheduled (3 a week by default, at most 3 drafts a morning):
-  - about the active products in the Vault that have a website (Products
-    Thomas leaves out on the page are skipped), the one posted about longest
+  - about the products on wright-ai-solutions.com ("Products you can sign up
+    for today", read fresh each morning; Thomas, 2026-11-18), the one posted about longest
     ago first, or about an idea Thomas asked for, which always comes first;
   - a caption (a hook, 60 to 150 words, a call to action that the link is in
     the bio) and 3 to 10 hashtags;
