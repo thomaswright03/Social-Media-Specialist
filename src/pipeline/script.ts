@@ -48,7 +48,13 @@ export const retellPrompt = (shots: Shot[]) =>
   `You just watched a short Instagram Reel once, with the sound on. This is everything you saw, read and heard:\n\n${viewerShots(shots)}\n\nIn two plain sentences, tell a friend what happened in it and who it was about. Then, on a new line, write CONFUSED: and what didn't make sense to you, or CONFUSED: nothing.`;
 
 export const retellMatchPrompt = (intended: string, retelling: string) =>
-  `A video's maker meant this story: "${intended}"\nA viewer who watched it once retold it as:\n"${retelling}"\n\nDid the viewer get the story right (who it's about, what happened and how it ended), and were they not confused about anything that matters? Answer with only YES or NO.`;
+  `A video's maker meant this story: "${intended}"\n\nA viewer who watched it once retold it as:\n"${retelling}"\n\nDid the viewer understand the story? Answer YES if they got who it's about, what happened and how it ends, even in their own words and even if they left out or mixed up a small detail. Answer NO only if they got one of those three wrong, or said something central confused them.\n\nWrite three short lines (Who: RIGHT or WRONG, What happened: RIGHT or WRONG, Ending: RIGHT or WRONG), then a last line: VERDICT: YES or VERDICT: NO.`;
+
+/** The verdict at the end of a retelling match (YES when it says so). */
+export const verdictYes = (answer: string) => {
+  const all = [...answer.matchAll(/VERDICT:\W*(YES|NO)\b/gi)];
+  return all.length ? all.at(-1)![1]!.toUpperCase() === "YES" : isYes(answer);
+};
 
 /** Separate cold viewers retell the story; a separate call checks each against what was meant. */
 export async function retellReads(shots: Shot[], intended: string, ask: Ask, reads = RETELL_READS): Promise<RetellReads & { notes?: string[] }> {
@@ -59,7 +65,7 @@ export async function retellReads(shots: Shot[], intended: string, ask: Ask, rea
     const a = (await ask(retellPrompt(shots)).catch(() => "")).trim();
     // The match call weighs the whole answer, confusion included: a viewer
     // unsure of a detail that doesn't matter still got the story.
-    const ok = Boolean(a) && isYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
+    const ok = Boolean(a) && verdictYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
     out.push(ok);
     // What a viewer who didn't get it said (what confused them first), so the next revision knows what to fix.
     if (!ok) {

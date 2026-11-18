@@ -28,7 +28,7 @@ function fakeClaude(over: { review?: string; script?: unknown; soundOff?: string
     if (p.includes("Stage 4")) return JSON.stringify(over.script ?? script());
     if (p.includes("sound OFF")) return over.soundOff ?? "Why the dog is typing.";
     if (p.includes("strict editor")) return over.review ?? '{"problems": []}';
-    if (p.includes("meant this story")) return p.includes("CONFUSED: nothing") ? "YES" : "NO";
+    if (p.includes("meant this story")) return p.includes("CONFUSED: nothing") ? "Who: RIGHT\nVERDICT: YES" : "NO at first... VERDICT: NO";
     if (p.includes("tell a friend")) return over.retell ?? "A dog types at night and it turns out he was ordering treats.\nCONFUSED: nothing";
     return "YES";
   };

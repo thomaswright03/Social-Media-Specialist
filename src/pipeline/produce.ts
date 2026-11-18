@@ -13,8 +13,7 @@ import type { SoundEffect, Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { drawScenes, lookSheet } from "./scenes.ts";
-import { learnedChecks, retellMatchPrompt } from "./script.ts";
-import { isYes } from "./ideas.ts";
+import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
@@ -244,7 +243,7 @@ export async function runProduce(d: {
   ).trim();
   const confused = retold.match(/CONFUSED:\s*(.*)$/im)?.[1]?.trim() ?? "";
   const intended = `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
-  const followed = Boolean(retold) && (!confused || /^(nothing|none|no)\b/i.test(confused)) && isYes(await d.ask(retellMatchPrompt(intended, retold)).catch(() => ""));
+  const followed = Boolean(retold) && (!confused || /^(nothing|none|no)\b/i.test(confused)) && verdictYes(await d.ask(retellMatchPrompt(intended, retold)).catch(() => ""));
   log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
   const cuts = t.length - 1;
   const notes = [
