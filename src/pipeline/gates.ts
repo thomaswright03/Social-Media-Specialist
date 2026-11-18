@@ -229,7 +229,7 @@ export const MAX_SHOTS = 14;
  * Can a stranger follow it? Thomas called the first test Reel incoherent
  * (2026-11-18): four places, two twists, no voice for the first shots.
  */
-export function clarityChecks(shots: Shot[], retell: RetellReads | null): Check[] {
+export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = []): Check[] {
   const places = new Set(shots.map((s) => (s.place ?? "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim()).filter(Boolean));
   const unnamed = shots.filter((s) => !s.place?.trim()).length;
   const voiced = shots.filter((s) => s.line?.trim()).length;
@@ -239,7 +239,7 @@ export function clarityChecks(shots: Shot[], retell: RetellReads | null): Check[
     check("One or two places", unnamed === 0 && places.size >= 1 && places.size <= 2, unnamed ? `${unnamed} shots don't name their place` : `${places.size}: ${[...places].join(", ")}`),
     check("The voice starts in the first shot", Boolean(shots[0]?.line?.trim())),
     check("The voice tells the story (a line in at least 3 of 4 shots)", shots.length > 0 && voiced / shots.length >= 0.75, `${voiced} of ${shots.length}`),
-    check("Cold viewers retell the story right (2 of 3)", retell !== null && right >= 2, retell === null ? "not read" : `${right} of ${retell.length}`),
+    check("Cold viewers retell the story right (2 of 3)", retell !== null && right >= 2, retell === null ? "not read" : `${right} of ${retell.length}${notes.length ? `. What the viewers who didn't get it said: ${notes.map((n) => `"${n}"`).join(" ")}` : ""}`),
   ];
 }
 

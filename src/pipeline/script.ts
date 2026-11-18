@@ -51,14 +51,18 @@ export const retellMatchPrompt = (intended: string, retelling: string) =>
   `A video's maker meant this story: "${intended}"\nA viewer who watched it once retold it as:\n"${retelling}"\n\nDid the viewer get the story right (who it's about, what happened and how it ended), and were they not confused about anything that matters? Answer with only YES or NO.`;
 
 /** Separate cold viewers retell the story; a separate call checks each against what was meant. */
-export async function retellReads(shots: Shot[], intended: string, ask: Ask, reads = RETELL_READS): Promise<RetellReads> {
+export async function retellReads(shots: Shot[], intended: string, ask: Ask, reads = RETELL_READS): Promise<RetellReads & { notes?: string[] }> {
   if (!shots.length) return [];
-  const out: boolean[] = [];
+  const out: boolean[] & { notes?: string[] } = [];
+  out.notes = [];
   for (let i = 0; i < reads; i++) {
     const a = (await ask(retellPrompt(shots)).catch(() => "")).trim();
     const confused = a.match(/CONFUSED:\s*(.*)$/im)?.[1]?.trim() ?? "";
     const clear = !confused || /^(nothing|none|no)\b/i.test(confused);
-    out.push(Boolean(a) && clear && isYes(await ask(retellMatchPrompt(intended, a)).catch(() => "")));
+    const ok = Boolean(a) && clear && isYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
+    out.push(ok);
+    // What a viewer who didn't get it said, so the next revision knows what to fix.
+    if (!ok) out.notes.push(a.replace(/\s+/g, " ").slice(0, 300) || "no answer");
   }
   return out;
 }
@@ -155,7 +159,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       if (s) lastDraft = s;
       const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
       const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
-      const clarity = clarityChecks(shots, shots.length ? await retellReads(shots, `${premise}\nHow it ends: ${s?.payoff ?? ""}`, cold) : null);
+      const reads = shots.length ? await retellReads(shots, `${premise}\nHow it ends: ${s?.payoff ?? ""}`, cold) : null;
+      const clarity = clarityChecks(shots, reads, reads?.notes ?? []);
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
       return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
     },
