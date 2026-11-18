@@ -26,13 +26,16 @@ export function pipelineFile(name: string): string {
   return readFileSync(join(PIPELINE_DIR, name), "utf8");
 }
 
-/** A stage's prompt with its {{PLACEHOLDERS}} filled (missing ones become empty). */
-export function stagePrompt(n: number, fill: Record<string, string>): string {
+/**
+ * A stage's prompt with its {{PLACEHOLDERS}} filled (missing ones become
+ * empty). `block` picks another prompt in the same file (<!-- art --> …).
+ */
+export function stagePrompt(n: number, fill: Record<string, string>, block = "prompt"): string {
   const stage = STAGES.find((s) => s.n === n);
   if (!stage) throw new Error(`No stage ${n}`);
   const md = pipelineFile(join("stages", stage.file));
-  const m = md.match(/<!-- prompt -->\n([\s\S]*?)<!-- \/prompt -->/);
-  if (!m) throw new Error(`Stage ${n} has no prompt`);
+  const m = md.match(new RegExp(`<!-- ${block} -->\\n([\\s\\S]*?)<!-- \\/${block} -->`));
+  if (!m) throw new Error(`Stage ${n} has no ${block} prompt`);
   return m[1]!.replace(/\{\{([A-Z_]+)\}\}/g, (_, k: string) => fill[k] ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
 

@@ -11,12 +11,13 @@
 // separate call each and become checks too.
 import type { Product, Vault } from "../vault.ts";
 import { formatBrief, gateFormat, type Choice, type FormatDraft } from "./formats.ts";
-import { check, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type Script, type ScriptReview, type SoundOffReads } from "./gates.ts";
+import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { parseJson, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
+export const RETELL_READS = 3;
 export const SCRIPT_TRIES = 5;
 
 const shotList = (o: Opening | null) =>
@@ -35,6 +36,43 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
   for (let i = 0; i < SOUND_OFF_READS; i++) {
     const a = (await ask(soundOffPrompt(o)).catch(() => "")).trim();
     out.push(Boolean(a) && !/^\W*nothing\b/i.test(a) && isYes(await ask(matchPrompt(o.intendedHook ?? "", a)).catch(() => "")));
+  }
+  return out;
+}
+
+/** What a viewer gets from each shot: what they see, read and hear. */
+export const viewerShots = (shots: Shot[]) =>
+  shots.map((s, i) => `Shot ${i + 1} (${s.start ?? "?"}-${s.end ?? "?"} s). You see: ${s.visual ?? ""}${s.onScreenText ? ` Text on screen: "${s.onScreenText}".` : ""}${s.line ? ` You hear: "${s.line}"` : ""}`).join("\n");
+
+export const retellPrompt = (shots: Shot[]) =>
+  `You just watched a short Instagram Reel once, with the sound on. This is everything you saw, read and heard:\n\n${viewerShots(shots)}\n\nIn two plain sentences, tell a friend what happened in it and who it was about. Then, on a new line, write CONFUSED: and what didn't make sense to you, or CONFUSED: nothing.`;
+
+export const retellMatchPrompt = (intended: string, retelling: string) =>
+  `A video's maker meant this story: "${intended}"\n\nA viewer who watched it once retold it as:\n"${retelling}"\n\nDid the viewer understand the story? Answer YES if they got who it's about, what happened and how it ends, even in their own words and even if they left out or mixed up a small detail. Answer NO only if they got one of those three wrong, or said something central confused them.\n\nWrite three short lines (Who: RIGHT or WRONG, What happened: RIGHT or WRONG, Ending: RIGHT or WRONG), then a last line: VERDICT: YES or VERDICT: NO.`;
+
+/** The verdict at the end of a retelling match (YES when it says so). */
+export const verdictYes = (answer: string) => {
+  const all = [...answer.matchAll(/VERDICT:\W*(YES|NO)\b/gi)];
+  return all.length ? all.at(-1)![1]!.toUpperCase() === "YES" : isYes(answer);
+};
+
+/** Separate cold viewers retell the story; a separate call checks each against what was meant. */
+export async function retellReads(shots: Shot[], intended: string, ask: Ask, reads = RETELL_READS): Promise<RetellReads & { notes?: string[] }> {
+  if (!shots.length) return [];
+  const out: boolean[] & { notes?: string[] } = [];
+  out.notes = [];
+  for (let i = 0; i < reads; i++) {
+    const a = (await ask(retellPrompt(shots)).catch(() => "")).trim();
+    // The match call weighs the whole answer, confusion included: a viewer
+    // unsure of a detail that doesn't matter still got the story.
+    const ok = Boolean(a) && verdictYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
+    out.push(ok);
+    // What a viewer who didn't get it said (what confused them first), so the next revision knows what to fix.
+    if (!ok) {
+      const confused = a.match(/CONFUSED:\s*([\s\S]*)$/i)?.[1]?.trim() ?? "";
+      const story = a.replace(/CONFUSED:[\s\S]*$/i, "").replace(/\s+/g, " ").trim();
+      out.notes.push(a ? `${confused ? `Confused by: ${confused.replace(/\s+/g, " ").slice(0, 200)}. ` : ""}Retold it as: ${story.slice(0, 220)}` : "no answer");
+    }
   }
   return out;
 }
@@ -60,7 +98,7 @@ export async function learnedChecks(vault: Vault, stage: number, output: unknown
   return out;
 }
 
-type ScriptOut = Script & { caption?: string; sources?: FormatDraft["sources"] };
+type ScriptOut = Script & { caption?: string; story?: string; sources?: FormatDraft["sources"] };
 export type ScriptResult = { subject: string; premise: string | null; opening: Opening | null; script: ScriptOut | null; passed: boolean; stage: 3 | 4; gate: GateResult; problem: string | null };
 
 /** The Reel to script next: the newest one that passed stage 2 and has no passed stage 4. */
@@ -130,8 +168,12 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
     gate: async (s) => {
       if (s) lastDraft = s;
       const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
+      const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+      const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
+      const reads = shots.length ? await retellReads(shots, intended, cold) : null;
+      const clarity = clarityChecks(shots, reads, reads?.notes ?? []);
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
-      return gate([...base.checks, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
+      return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
     },
     input: { premise, format: reel.format, product: product?.name ?? null },
     // Each revision fixes what the review found, so the script gets more rounds.

@@ -21,7 +21,7 @@ Premise: {{PREMISE}}
 Winning patterns: {{PATTERNS}}
 {{LESSONS}}
 
-Rules: start mid-action, no title card, no black or blank frame, and put the hook in on-screen text by 0.5 s so it works with the sound off. Say what the viewer should want to know (the intended hook).
+Rules: start mid-action, no title card, no black or blank frame, and put the hook in on-screen text by 0.5 s so it works with the sound off. The on-screen hook is 5 words at most (it must be read by 1.5 s at 4 words a second, counted from textAt). Say what the viewer should want to know (the intended hook).
 
 {{GATE_FAILURES}}
 

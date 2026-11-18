@@ -258,6 +258,12 @@ describe("stage 4, script", () => {
     expect(g.checks.find((c) => c.name.includes("3-second"))?.detail).toContain("3-6 s");
   });
 
+  it("counts a long spoken line as new caption words each second", () => {
+    const talky: Shot[] = [{ start: 0, end: 1.5, visual: "Mid-fall", onScreenText: "Go", textAt: 0.2 }, { start: 1.5, end: 6, visual: "hold", line: "one two three four five six seven eight nine ten" }, { start: 6, end: 9, visual: "next" }];
+    expect(emptySlices(talky, 9)).toEqual([]);
+    expect(emptySlices([{ start: 0, end: 9, visual: "hold", line: "hi" }], 9)).toEqual([3, 6]);
+  });
+
   it("fails a spoken claim not on screen, a reference to another part, a long script, and review problems", () => {
     const unshown = { ...script, shots: script.shots.map((s, i) => (i === 3 ? { ...s, line: "He's been falling for an hour", onScreen: "" } : s)) };
     expect(gateScript(unshown, opening, { problems: [] }).passed).toBe(false);
