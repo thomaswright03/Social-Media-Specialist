@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, requests, instagram-test, hitta-test]
+        options: [run, publish, preview, diagnose, research, requests, instagram-test, hitta-test, voice-test]
       accounts:
         description: For research, the Instagram usernames to study (comma separated)
         type: string
@@ -71,6 +71,10 @@ jobs:
       META_APP_ID: ${{ vars.META_APP_ID }}
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       GITHUB_TOKEN: ${{ github.token }}
+      # Thomas's ElevenLabs voice for the Reels (the voice id works as a
+      # variable or a secret).
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID || secrets.ELEVENLABS_VOICE_ID }}
       # Image (feed) posts: off since Thomas said "everything should be reels"
       # (2026-11-18); set this variable to "on" to draft them again.
       FEED_IMAGE_POSTS: ${{ vars.FEED_IMAGE_POSTS }}
@@ -108,7 +112,7 @@ jobs:
       # Pasted secrets can pick up line breaks or spaces. Strip them.
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
@@ -202,6 +206,13 @@ jobs:
         with:
           name: preview
           path: preview.jpg
+
+      - name: Keep the voice test
+        if: env.COMMAND == 'voice-test' && steps.social.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-test
+          path: voice-test.mp3
 
       - name: Mark today's morning run done
         if: always() && env.COMMAND == 'run' && steps.social.outcome != 'skipped'

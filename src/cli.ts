@@ -8,6 +8,7 @@
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   hitta-test      sends Hitta a low-urgency test report
+//   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
 //   research        stage 1: studies the Reels of the accounts Thomas admires
@@ -26,6 +27,7 @@ import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch } from "./pipeline/research.ts";
 import { Vault } from "./vault.ts";
+import { speak } from "./voice.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
@@ -67,6 +69,14 @@ async function main() {
     });
     log(result.message);
     process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "voice-test") {
+    const line = "Imagine you run a bakery, and the orders start coming in at two in the morning. Most of you said keep sleeping. Here's what happened.";
+    const s = await speak(line);
+    await writeFile("voice-test.mp3", s.audio);
+    log(`ElevenLabs read ${s.words.length} words (${s.words.at(-1)?.end.toFixed(1) ?? "?"} s) into voice-test.mp3. It's under this run's Artifacts as "voice-test".`);
+    return;
   }
 
   if (command === "requests") {
@@ -213,7 +223,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, voice-test, instagram-test or hitta-test.`);
     process.exit(2);
   }
 
