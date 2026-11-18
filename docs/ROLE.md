@@ -66,6 +66,12 @@ diagnosis, runs today (`social diagnose`). A finished Reel goes out on its own
 only as a Trial Reel (non-followers), and only when every pre-publish check
 passes; showing it to followers stays his call in the Instagram app.
 
+What it makes (Thomas, 2026-11-18): about 80% entertainment (standalone
+stick-figure stories, satisfying AI videos, and current events explained with
+bold graphics) and 20% ads (one product from the website, plus the business
+itself: custom AI agents and software for businesses). Code picks each
+Reel's format and checks the script against it (`src/pipeline/formats.ts`).
+
 ## History
 
 Everything it does is recorded and shown as History on its Vault page: posts,

@@ -14,6 +14,9 @@ made. Keep the top 3.
 <!-- prompt -->
 You are the Social Media Specialist. Stage 2: pitch 20 premises for standalone Reels (30 to 60 s) in our niche: {{NICHE}}.
 
+This Reel's format (every pitch must fit it):
+{{FORMAT}}
+
 Winning patterns (stage 1):
 {{PATTERNS}}
 

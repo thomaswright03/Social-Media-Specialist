@@ -13,12 +13,17 @@ leaves a reason to watch the next. Something new every 2 to 3 seconds.
 - it has a payoff and a reason to watch the next;
 - a separate Claude review (Thomas's Low Tide checks) finds no problems:
   grammar, physics and timing plausible, nothing contradicts itself;
+- the format's own checks (`gateFormat`, see the README's content mix): an
+  ad sells one product plus our custom AI agents and software, entertainment
+  doesn't sell, satisfying videos say they're made with AI, explainers cite 2+
+  sources from the last 14 days;
 - every learned check for stage 4.
 
 <!-- prompt -->
 You are the Social Media Specialist. Stage 4: write the full script, 30 to 60 seconds.
 
 Premise: {{PREMISE}}
+{{FORMAT}}
 Opening (keep exactly): {{OPENING}}
 Winning patterns: {{PATTERNS}}
 {{LESSONS}}
@@ -27,5 +32,5 @@ Rules: it stands alone (never refer to other episodes), has its own payoff, and 
 
 {{GATE_FAILURES}}
 
-Reply with only JSON: {"shots": [{"start": 0, "end": 2.5, "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "sfx or music cue"}], "payoff": "...", "nextHook": "..."}
+Reply with only JSON: {"shots": [{"start": 0, "end": 2.5, "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "sfx or music cue"}], "payoff": "...", "nextHook": "...", "caption": "...", "sources": [{"url": "https://...", "published": "YYYY-MM-DD", "title": "..."}]} (sources only for an explainer)
 <!-- /prompt -->

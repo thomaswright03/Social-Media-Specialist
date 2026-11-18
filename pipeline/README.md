@@ -23,6 +23,31 @@ series. Those videos are the examples of what to avoid (`avoid.md`).
 | 7 | Test small: 2 to 3 hooks as Trial Reels | after 48 h, the winner by 3-second hold, average watch % and shares per reach; too small after 7 days | gate only, posting code ready |
 | 8 | Learn | every lesson becomes a check for stages 3 to 6, the patterns list is updated, and double down or drop as the numbers say | gate only |
 
+## What it makes: 80% entertainment, 20% ads (Thomas, 2026-11-18)
+
+Each Reel is one of four formats, picked by code (`nextFormat` in
+`src/pipeline/formats.ts`) from what was already made:
+
+| Format | Kind | What it is |
+|--------|------|------------|
+| `story` | entertainment | a standalone stick-figure story (stage 1's patterns) |
+| `satisfying` | entertainment | a satisfying AI-made video |
+| `explainer` | entertainment | a current event explained with bold graphics and transitions |
+| `ad` | ad | one product from wright-ai-solutions.com, plus Wright AI Solutions itself: we build custom AI agents and software for businesses |
+
+An ad is made only when it keeps ads at 2 of the last 10 Reels and at least 3
+entertainment Reels came since the last one; ads take turns between the
+site's products. The entertainment formats take turns too. Each script also
+passes `gateFormat` with stage 4's gate:
+
+- an ad names its one product and no other, says we build custom AI agents
+  and software for businesses, and ends on a call to action;
+- entertainment doesn't sell (no "link in bio", sign-up, discount, product
+  or business names);
+- a satisfying video's caption says it was made with AI (Instagram expects AI
+  content to be labelled);
+- an explainer lists at least 2 linked sources dated within the last 14 days.
+
 ## What I added to Thomas's outline (2026-11-10)
 
 He said to fill gaps where I saw them. These are in the gates too:
