@@ -76,3 +76,13 @@ describe("stages 3 and 4", () => {
     expect(failed).toContain("Entertainment doesn't sell");
   });
 });
+
+describe("the title-card check", () => {
+  it("isn't fooled by a shot that says what it isn't", async () => {
+    const { withoutNegations, gateOpening } = await import("../src/pipeline/gates.ts");
+    expect(withoutNegations("Mid-action, no title card. A dark shop")).not.toMatch(/title/);
+    const o = (visual: string) => ({ intendedHook: "x", shots: [{ start: 0, end: 3, visual, kind: "action", onScreenText: "WHY", textAt: 0.1 }] });
+    expect(gateOpening(o("Mid-action, no title card, not black: a dog types"), [true, true, true]).checks.find((c) => c.name.startsWith("No title"))?.passed).toBe(true);
+    expect(gateOpening(o("A black screen, then a dog"), [true, true, true]).checks.find((c) => c.name.startsWith("No title"))?.passed).toBe(false);
+  });
+});

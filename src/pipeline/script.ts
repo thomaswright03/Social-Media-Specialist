@@ -17,6 +17,7 @@ import { parseJson, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
+export const SCRIPT_TRIES = 5;
 
 const shotList = (o: Opening | null) =>
   (o?.shots ?? []).map((s) => `${s.start ?? "?"}-${s.end ?? "?"} s: ${s.visual ?? ""}${s.onScreenText ? ` | text on screen: "${s.onScreenText}"` : ""}`).join("\n");
@@ -133,6 +134,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       return gate([...base.checks, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
     },
     input: { premise, format: reel.format, product: product?.name ?? null },
+    // Each revision fixes what the review found, so the script gets more rounds.
+    tries: SCRIPT_TRIES,
     log: d.log,
     now: d.now,
   });

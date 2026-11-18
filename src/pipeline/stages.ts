@@ -67,11 +67,13 @@ export async function runStage<T>(opts: {
   input?: unknown;
   log?: (m: string) => void;
   now?: () => Date;
+  /** Tries before it stops (MAX_TRIES unless a stage needs more). */
+  tries?: number;
 }): Promise<StageRun<T>> {
   const now = opts.now ?? (() => new Date());
   const name = STAGES.find((s) => s.n === opts.stage)?.name ?? `Stage ${opts.stage}`;
   let last: StageRun<T> | null = null;
-  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+  for (let attempt = 1; attempt <= (opts.tries ?? MAX_TRIES); attempt++) {
     const answer = await opts.ask(opts.prompt(failuresText(last?.gate ?? null)));
     const output = parseJson<T>(answer);
     const g = await opts.gate(output);
