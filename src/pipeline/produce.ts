@@ -20,7 +20,7 @@ type Ask = (p: string) => Promise<string>;
 export const KEY_FRAMES = 4;
 export const BENCHMARKS = 3;
 
-type ScriptOut = { shots?: Shot[]; payoff?: string; nextHook?: string; caption?: string };
+type ScriptOut = { shots?: Shot[]; story?: string; payoff?: string; nextHook?: string; caption?: string };
 
 /** The newest Reel whose script passed stage 4 and that has no passed stage 5. */
 export async function nextToProduce(vault: Vault, subject?: string): Promise<{ subject: string; format: string; script: ScriptOut } | null> {
@@ -241,9 +241,11 @@ export async function runProduce(d: {
       )
       .catch(() => "")
   ).trim();
-  const confused = retold.match(/CONFUSED:\s*(.*)$/im)?.[1]?.trim() ?? "";
-  const intended = `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
-  const followed = Boolean(retold) && (!confused || /^(nothing|none|no)\b/i.test(confused)) && verdictYes(await d.ask(retellMatchPrompt(intended, retold)).catch(() => ""));
+  const intended = reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
+  // Like stage 4: the match call weighs the whole answer, confusion included.
+  const verdict = retold ? await d.ask(retellMatchPrompt(intended, retold)).catch(() => "") : "";
+  const followed = Boolean(retold) && verdictYes(verdict);
+  if (!followed) log(`The match said: ${verdict.replace(/\s+/g, " ").slice(0, 300)}`);
   log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
   const cuts = t.length - 1;
   const notes = [
