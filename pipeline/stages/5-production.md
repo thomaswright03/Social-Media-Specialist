@@ -18,9 +18,10 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 - **Captions and text:** one caption band, like the benchmark: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).
-  No second line: on-screen text that adds something (a time, a day) is drawn
-  into the world, on a clock or a sign. The art keeps faces and the action
-  above the band. All inside Instagram's safe area.
+  On-screen text that adds something the voice doesn't say (a name, a time,
+  how two people are related) is a small label near the top (y 240). The art
+  keeps faces and the action between the label and the caption. All inside
+  Instagram's safe area.
 - **Sound:** a sound effect per shot from the script's cue, made by
   Thomas's ElevenLabs account (REEL_SFX=off skips them), over our own pad,
   room tone, a slow pulse and whooshes on the cuts made by ffmpeg, ducked
@@ -95,12 +96,13 @@ The camera for this shot is {{CAMERA}}. Frame it like that:
 - over-the-shoulder: the back of one character's head and shoulder big in the foreground, the other character facing us across from them.
 - low angle / high angle: look up at someone big and powerful, or down at someone small; the ground line tilts.
 - insert: the prop, object or number that matters, huge and detailed.
+If the style above gives its own framing for a camera, follow the style.
 When two characters share the shot they react to each other: they face each other, their eyes meet or one looks away, a hand points, gives, takes or reaches. Show the action itself happening (handing the cup over, the sign falling), not two figures standing still.
 Place: {{PLACE}}. Show the part of it this camera would see, so neighbouring shots don't look the same.
 
 Canvas: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">. Fill the whole canvas, top to bottom: no empty bands. The shot must read in half a second: one clear action, one clear feeling, the key thing lit.
-Code lays the big caption over y 1270 to 1500, below the action. Compose the shot so everything that matters (faces, hands doing the action, the key prop) sits between y 220 and 1250; below 1260 is floor, table top, ground or shadow, nothing anyone needs to see. Keep the top 220 px plain too (Instagram's own buttons sit there).
-Don't write these words, the caption adds them: {{OVERLAY_TEXT}}. {{IN_WORLD}} Text that's part of the world (a sign, a price, a clock) is fine: at least 48 px, inside x 80 to 940, between y 240 and 1250.
+Code lays the big caption over y 1270 to 1500, below the action. Compose the shot so everything that matters (faces, heads and hats, hands doing the action, the key prop) sits between y 330 and 1250; below 1260 is floor, table top, ground or shadow, nothing anyone needs to see. The top 330 px is wall, sky or ceiling: Instagram's buttons and a small text label sit there.
+Don't write these words, the caption adds them: {{OVERLAY_TEXT}}. {{IN_WORLD}} Text that's part of the world (a sign, a price, a clock) is fine: at least 48 px, inside x 80 to 940, between y 340 and 1250.
 Motion: 2 to 4 CSS @keyframes animations in a <style> inside the SVG that make the action move within {{SECONDS}} seconds: the arm handing over, the head turning, a blink, steam, leaves blowing, a sign swinging. Use transform-box: fill-box and a transform-origin on animated parts (a shoulder for an arm, the neck for a head).
 Not allowed: <script>, <image>, <foreignObject>, event handlers, external links or fonts. Keep it under 30 KB.
 

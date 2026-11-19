@@ -129,7 +129,7 @@ describe("timeline", () => {
     expect(c[2]!.to).toBeLessThanOrEqual(t[0]!.at + t[0]!.dur);
   });
 
-  it("shows on-screen text as the caption when nobody speaks, and has the art draw it when it adds something", async () => {
+  it("shows on-screen text as the caption when nobody speaks, and shows it as a small label when it adds something", async () => {
     const [quiet, said, extra] = timeline(
       [
         { start: 0, end: 2, onScreenText: "2:31 AM" },
@@ -142,8 +142,11 @@ describe("timeline", () => {
     expect(repeatsLine(said!.onScreenText, said!.line)).toBe(true);
     const prompts: string[] = [];
     for (const i of [1, 2]) await drawScene([said!, extra!], i - 1, "look", async (p) => (prompts.push(p), good));
-    expect(prompts[0]).not.toMatch(/also wants/);
-    expect(prompts[1]).toMatch(/also wants "DAY 3" seen/);
+    expect(prompts[0]).not.toMatch(/small label/);
+    expect(prompts[1]).toMatch(/small label "DAY 3"/);
+    const { labelFor } = await import("../src/pipeline/compose.ts");
+    expect([labelFor(quiet!), labelFor(said!), labelFor(extra!)]).toEqual(["", "", "DAY 3"]);
+    expect(composeHtml([extra!], [good])).toContain('"label":"DAY 3"');
     expect(prompts[1]).toMatch(/caption adds them: "He did it again."/);
     expect(composeHtml([said!], [good])).not.toContain('id="title"');
   });
