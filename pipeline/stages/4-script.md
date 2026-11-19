@@ -85,7 +85,7 @@ Code checks these, and one miss fails the script.
 
 ## The ending
 
-- The story finishes inside this video. `payoff` and `caption` describe the ending that actually happens in the shots.
+- The story finishes inside this video. `payoff` states the ending that actually happens in the shots, and `caption` never contradicts it.
 - `nextHook` is a reason to follow for a different story: a new question or a new mystery. It never suggests this video is unfinished.
 
 ## If a draft was rejected

@@ -10,7 +10,7 @@ const NOW = new Date("2026-11-18T19:00:00Z");
 const opening = { intendedHook: "why the dog is typing", shots: [{ start: 0, end: 1.5, visual: "a dog types at a desk at night", kind: "action", onScreenText: "WHY IS HE TYPING", textAt: 0.2 }, { start: 1.5, end: 3, visual: "the dog stares into the camera", kind: "action", onScreenText: "WHY IS HE TYPING" }] };
 const script = (over: Record<string, unknown> = {}) => ({
   shots: [
-    { ...opening.shots[0], place: "the shop", camera: "wide", line: "My dog types every night.", onScreen: "the dog at the keyboard" },
+    { ...opening.shots[0], place: "the shop", camera: "wide", line: "My dog types nightly.", onScreen: "the dog at the keyboard" },
     ...Array.from({ length: 11 }, (_, i) => ({ start: 1.5 + i * 2.6, end: 4.1 + i * 2.6, place: i < 6 ? "the shop" : "The Shop", camera: ["close-up", "medium", "insert"][i % 3], visual: `shot ${i}`, onScreenText: `beat ${i}`, line: `Line ${i}.`, onScreen: `beat ${i}` })),
   ],
   payoff: "He was ordering treats.",
@@ -23,11 +23,11 @@ function fakeClaude(over: { review?: string; script?: unknown; soundOff?: string
   const seen: string[] = [];
   const ask = async (p: string) => {
     seen.push(p);
-    if (p.includes("Stage 2")) return JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: `A dog types at night, version ${i + 1}.`, hook: i < 3 ? 5 : 2, shareable: 4, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
+    if (p.includes("Stage 2")) return JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: `A dog types at night, version ${i + 1}.`, answer: "He was ordering treats.", hook: i < 3 ? 5 : 2, shareable: 4, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
     if (p.includes("Stage 3")) return JSON.stringify(opening);
     if (p.includes("Stage 4")) return JSON.stringify(over.script ?? script());
     if (p.includes("sound OFF")) return over.soundOff ?? "Why the dog is typing.";
-    if (p.includes("strict editor")) return over.review ?? '{"problems": []}';
+    if (p.includes("last editor")) return over.review ?? '{"problems": []}';
     if (p.includes("meant this story")) return p.includes("CONFUSED: nothing") ? "Who: RIGHT\nVERDICT: YES" : "NO at first... VERDICT: NO";
     if (p.includes("tell a friend")) return over.retell ?? "A dog types at night and it turns out he was ordering treats.\nCONFUSED: nothing";
     return "YES";
@@ -90,7 +90,7 @@ describe("can a stranger follow it", () => {
     expect(r.passed).toBe(false);
     expect(r.gate.checks.find((x) => x.name.startsWith("Cold viewers retell"))?.passed).toBe(false);
     const retell = c.seen.find((p) => p.includes("tell a friend"))!;
-    expect(retell).toContain('You hear: "My dog types every night."');
+    expect(retell).toContain('You hear: "My dog types nightly."');
     expect(retell).not.toContain("ordering treats");
     expect(r.gate.checks.find((x) => x.name.startsWith("Cold viewers retell"))?.detail).toContain("Confused by: who is the man");
   });

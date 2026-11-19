@@ -16,7 +16,7 @@ import type { Check, GateResult } from "./gates.ts";
 import { check, gate } from "./gates.ts";
 import { join } from "node:path";
 import type { Product } from "../vault.ts";
-import { pipelineFile } from "./stages.ts";
+import { fillPrompt, pipelineFile } from "./stages.ts";
 
 export const ENTERTAINMENT = ["story", "satisfying", "explainer"] as const;
 export type Format = (typeof ENTERTAINMENT)[number] | "ad";
@@ -73,10 +73,13 @@ export function nextProduct(history: Made[], products: Product[]): Product | nul
   return [...products].sort((a, b) => last(a).localeCompare(last(b)) || a.name.localeCompare(b.name))[0] ?? null;
 }
 
-/** The format's prompt for stage 2 (ideas) or stages 3 and 4 (script), with the ad's product. */
-export function formatBrief(c: Choice, block: "ideas" | "script" = "script"): string {
+/**
+ * The format's prompt for stage 2 (ideas) or stages 3 and 4 (script), with the
+ * ad's product and the explainer's news (NEWS for ideas, SOURCES for script).
+ */
+export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fill: Record<string, string> = {}): string {
   const product = c.product ? `\nThe product: ${c.product.name} (${c.product.url}). ${c.product.description ?? ""}` : "";
-  return `${formatPrompt(c.format, block)}${product}`;
+  return `${fillPrompt(formatPrompt(c.format, block), fill)}${product}`;
 }
 
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */

@@ -6,7 +6,7 @@ channels that win in our niche (stage 1). It never sells.
 <!-- ideas -->
 Format: a stick-figure story. It is entertainment: it never names a product or the business, and never asks anyone to buy anything.
 
-What you are pitching: a story a stranger scrolling past can follow on one watch, in about 35 seconds, told by one narrator over still drawings of stick figures. That is very little room. There is no time to explain a world, a history or a set of rules, and one drawing has to make the place recognisable at a glance. So the pitches that win share a shape:
+What you are pitching: a story a stranger scrolling past can follow on one watch, in about 35 seconds, told by one narrator over stick-figure drawings that move a little. That is very little room. There is no time to explain a world, a history or a set of rules, and one drawing has to make the place recognisable at a glance. So the pitches that win share a shape:
 
 - An ordinary person, someone the viewer could be or could know. Who they are fits in three or four words: a night cleaner, a new neighbour, a kid with a paper round.
 - A familiar place that needs no explaining. The viewer already knows what it looks like and what normally happens there.
@@ -31,14 +31,14 @@ Pitches that fail, and why:
 - Two mysteries, or a twist that changes what the whole story meant. A stranger can't retell it after one watch.
 - An answer that cancels the story: it was a dream, or it is never explained. The viewer was promised an answer.
 - A story that lives in conversation. A narrator over still drawings can report a line or two, not an argument.
-- Crowds, chases, fights, or anything that only reads in motion. Each shot is one still drawing of one action.
+- Crowds, chases, fights, or anything that only reads in motion. Each shot is one drawing of one action.
 - A situation that needs backstory before it becomes strange.
 <!-- /ideas -->
 
 <!-- script -->
 Format: a stick-figure story. It is entertainment: no field, including the caption and the hashtags, names a product or the business, or asks anyone to buy anything.
 
-How this video is made, which is the reason for every rule below: one narrator's voice plays over a sequence of still drawings, one drawing per shot. The characters are white stick figures in a drawn place. The artist draws each shot from its `visual` and `camera`, and may see that shot alone.
+How this video is made, which is the reason for every rule below: one narrator's voice plays over a sequence of drawings, one per shot, each with a small motion (an arm moving, a head turning, a door swinging). The characters are white stick figures in a drawn place. The artist draws each shot from its `visual` and `camera`, and may see that shot alone.
 
 The examples in these rules show the size and kind of thing meant. Do not reuse their objects, places or wording in a script.
 
@@ -60,10 +60,10 @@ The narrator:
 
 The drawings (`visual`):
 
-- One action per shot, caught mid-move, that a single still drawing can show: she slides the envelope under the door; he lifts the tarp off the boat; the dog drops a glove on the step. Never two actions in a shot. If describing it needs "and then", it is two shots.
-- A still can't show something happening over time. Pick the instant that tells it: the hand on the handle, or the door already open, never "the door slowly opens".
+- One action per shot, caught mid-move, that one drawing with a small motion can show: she slides the envelope under the door; he lifts the tarp off the boat; the dog drops a glove on the step. Never two actions in a shot. If describing it needs "and then", it is two shots.
+- A drawing moves only a little, for two or three seconds. Pick one small motion that tells it: "the door swings open", never "she crosses the yard and opens the door".
 - At most two characters in a drawing. When the story has two, show them doing something to each other (handing over, taking, pointing, arguing face to face), not standing side by side.
-- Stick figures look alike. Give each character one marker that lasts the whole video (a cap, a ponytail, a scarf, a child's height), and name the character by it in every `visual`: "the boy in the cap".
+- Stick figures look alike. Give each character one thing on or by the head that lasts the whole video (a cap, a ponytail, round glasses, a bow), and name the character by it in every `visual`: "the boy in the cap".
 - Every `visual` stands on its own. Write it for an artist who sees only this shot: who is in it, where they are, what they are doing, with what, and what their face shows. Never "same as before", "he does it again" or "the room".
 - Name the real objects, specifically enough to draw them recognisably: not "a counter" but "a glass counter with a brass till"; not "a light" but "a bare bulb on a cord".
 - Each place has two or three fixed details, named the same way in every shot set there, so the viewer knows it is still the same place.
@@ -74,7 +74,7 @@ The drawings (`visual`):
 The camera:
 
 - `camera` is exactly one of: wide, medium, close-up, over-the-shoulder, low angle, high angle, insert.
-- wide: the whole place and where people stand in it. Use it for the first shot in each place.
+- wide: the whole place and where people stand in it. Use it early in each place, by the second shot there if the first is closer.
 - medium: one or two figures from the knees up, doing something.
 - close-up: a face, for the feeling.
 - over-the-shoulder: two people facing each other.
@@ -105,7 +105,7 @@ Three checks for this format before you answer:
 
 1. Read only the lines. Do they pass the ears-only test?
 2. Read each `visual` alone, as the artist will. Could you draw it without the others, and tell who is who?
-3. Is every shot one instant that a still drawing can hold?
+3. Is every shot one small motion that one drawing can hold?
 <!-- /script -->
 
 <!-- style -->
@@ -118,7 +118,7 @@ Characters:
 - White stick figures: stroke #f5f5f5, stroke-width 12 to 18, round caps and joins. Use the thicker end of the range when the figure is large in the frame, and the same width for every figure in one frame.
 - A round head, a spine, arms that bend at the elbow and legs that bend at the knee, so the pose itself shows the action: leaning, reaching, recoiling, crouching. A figure stands straight with its arms down only when the visual says it is frozen.
 - A simple expressive face: eyes, brows and a mouth that show the feeling the visual names. It should read from across a room.
-- When the visual gives a character a marker (a cap, a ponytail, a scarf, a child's height), draw it clearly. It is how the viewer tells people apart from shot to shot.
+- When the visual gives a character a marker (a cap, a ponytail, round glasses, a bow), draw it clearly. It is how the viewer tells people apart from shot to shot.
 - At most two figures. Whatever a figure holds is drawn at its hand, large enough to recognise.
 
 The place:
@@ -136,14 +136,4 @@ Light:
 Colour:
 
 - One accent, lime #a3e635, used small, for what matters (the key prop, a glow). Red #ef4444 only for danger. Nothing big and flat lime.
-
-Framing, by camera:
-
-- wide: the whole place. Figures are a quarter to a third of the frame's height.
-- medium: figures from the knees up, filling about two thirds of the height.
-- close-up: head and shoulders. The face is the picture.
-- over-the-shoulder: the back of one figure's head and shoulder, large at one side of the foreground, with the other figure facing us beyond it.
-- low angle: the horizon is low and we look up, so the subject towers.
-- high angle: we look down, the ground fills most of the frame, and the figure is small.
-- insert: the object fills most of the frame, with at most a hand beside it.
 <!-- /style -->

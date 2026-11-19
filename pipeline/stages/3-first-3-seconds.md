@@ -17,13 +17,54 @@ hook in on-screen text so it works with the sound off.
 <!-- prompt -->
 You are the Social Media Specialist. Stage 3: script ONLY the first 3 seconds of this Reel.
 
-Premise: {{PREMISE}}
-Winning patterns: {{PATTERNS}}
+These 3 seconds decide whether anyone sees the rest. Most people scroll with the sound off and give a video about one second. They stay only if that second leaves them with one question they want answered.
+
+<premise>
+{{PREMISE}}
+</premise>
+The format's rules for the narrator, the drawings, the cameras and the on-screen text apply to the opening too.
+
+<winning_patterns>
+{{PATTERNS}}
+</winning_patterns>
+
+<lessons>
 {{LESSONS}}
+</lessons>
 
-Rules: start mid-action, no title card, no black or blank frame, and put the hook in on-screen text by 0.5 s so it works with the sound off. The on-screen hook is 5 words at most (it must be read by 1.5 s at 4 words a second, counted from textAt). Say what the viewer should want to know (the intended hook).
+How the opening is tested: three viewers read only your shots' `visual` and `onScreenText`, with no sound. Each says what they want to find out by watching on. A viewer who wants nothing fails it. So does a viewer who wants something other than your `intendedHook`. Two of three must match.
 
+So:
+- One question. If the opening raises two, the viewers split and it fails. Choose the question first, then build everything to raise it.
+- It is the premise's question. The rest of the Reel has to answer what the opening asks, so never bait with something the Reel won't answer.
+- The picture shows the strange thing, and the text makes it a question. The on-screen hook never describes what the picture already shows. It adds the one fact that makes the picture odd. Picture: a man lowers a bucket into a storm drain. Text: "EVERY NIGHT AT 3 A.M." (An example of the idea. Don't reuse it.)
+- Write `intendedHook` the way a viewer would say it, about one thing: "Why is he...?", "What is in...?"
+
+Hard limits (code checks these):
+- The first shot starts at 0. Shots run in order with no gaps, and the last one ends at 3.
+- One or two shots, each at least 1 second. A cut inside the first 3 seconds gives the viewer something new.
+- The first frame is the action already under way. No title card, no logo, no black or blank frame, and no shot of an empty place to set the scene. Every shot's `kind` is "action".
+- The first shot's `onScreenText` is the hook: 5 words at most.
+- `textAt` is the second the text appears. It must be readable by 1.5 s at 4 words a second: textAt + (words ÷ 4) is 1.5 or less. Putting it on at 0.2 or earlier always passes.
+
+The sound (`audio`):
+- In a format with a narrator, the voice starts at 0 s. `audio` is the narrator's exact words over that shot, following the format's narrator rules. At about 2.5 words a second, that is seven or eight words across the whole opening.
+- In a format with no narrator, `audio` is the sound.
+- The opening has to work with the sound off. The voice adds to it for viewers with sound on; the hook never depends on it.
+
+The drawing (`visual`):
+- Follow the format's drawing rules: one action, real objects named, people named by the thing that tells them apart.
+- Any camera may open. Whichever it is, the viewer must be able to tell where this is.
+
+<last_failures>
 {{GATE_FAILURES}}
+</last_failures>
+If failures are listed above, fix every one of them.
+
+Before you answer:
+1. Cover `audio`. Read only each `visual` and `onScreenText`, as a stranger with the sound off. Say what you would want to find out. Is it your `intendedHook`, and only that?
+2. Count the hook's words and do the `textAt` sum.
+3. Check the shots run from 0 to 3 with no gap.
 
 Reply with only JSON: {"intendedHook": "why they keep watching", "shots": [{"start": 0, "end": 1.2, "camera": "close-up", "visual": "what's on screen", "kind": "action", "onScreenText": "...", "textAt": 0.2, "audio": "..."}]}
 <!-- /prompt -->

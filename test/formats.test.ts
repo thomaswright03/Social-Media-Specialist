@@ -43,8 +43,8 @@ describe("the content mix", () => {
     expect(formatPrompt("satisfying", "script")).toMatch(/Made with AI/);
     expect(formatPrompt("explainer", "script")).toMatch(/last 14 days/);
     expect(formatPrompt("story", "style")).toMatch(/stick figures/);
-    expect(formatPrompt("satisfying", "style")).toMatch(/No characters/);
-    expect(formatBrief({ format: "explainer", product: null }, "ideas")).toMatch(/Pick news you can confirm/);
+    expect(formatPrompt("satisfying", "style")).toMatch(/Never: characters/);
+    expect(formatBrief({ format: "explainer", product: null }, "ideas")).toMatch(/Never use news from memory/);
     expect([HAS_CAST.story, HAS_CAST.ad, HAS_CAST.satisfying, HAS_CAST.explainer]).toEqual([true, true, false, false]);
     expect(NARRATED.satisfying).toBe(false);
   });

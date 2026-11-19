@@ -313,6 +313,18 @@ export function unseal(sealed: string, key = sealKey()): string | null {
 /** Which pasted secret a stored token came from, without storing the secret. */
 export const seedOf = (token: string) => createHash("sha256").update(token).digest("hex").slice(0, 16);
 
+export type ReelStarted = {
+  subject: string;
+  format: string;
+  productId: string | null;
+  finalists: string[];
+  /** Each finalist with how it ends and, for an explainer, the news items it's built on. */
+  picks: { sentence: string; answer: string; news: number[] }[];
+  /** The explainer's news list from stage 2. */
+  news: { n: number; headline: string; publisher: string; url: string; published: string; summary: string }[];
+  at: string;
+};
+
 export class Vault {
   private ready = false;
   constructor(private db: Client) {}
@@ -517,24 +529,27 @@ export class Vault {
   }
 
   /** Every passed stage 2 (one per Reel in the making): its format, product and finalists, newest first. */
-  async reelsStarted(limit = 50): Promise<{ subject: string; format: string; productId: string | null; finalists: string[]; at: string }[]> {
+  async reelsStarted(limit = 50): Promise<ReelStarted[]> {
     await this.ensureTables();
     const rs = await this.db.execute({ sql: `SELECT "subject", "input", "output", "createdAt" FROM "SocialStage" WHERE "stage" = 2 AND "passed" = 1 AND "subject" LIKE 'reel:%' ORDER BY "createdAt" DESC LIMIT ?`, args: [limit] });
     // The first try saves the input; later tries don't, so read it from the reel's first row.
-    const out: { subject: string; format: string; productId: string | null; finalists: string[]; at: string }[] = [];
+    const out: ReelStarted[] = [];
     for (const r of rs.rows) {
       const subject = String(r.subject);
       const first = await this.db.execute({ sql: `SELECT "input" FROM "SocialStage" WHERE "stage" = 2 AND "subject" = ? AND "input" IS NOT NULL ORDER BY "createdAt" ASC LIMIT 1`, args: [subject] });
-      let input: { format?: string; productId?: string | null } = {};
-      let output: { pitches?: { id?: number; sentence?: string }[]; finalists?: number[] } = {};
+      let input: { format?: string; productId?: string | null; news?: ReelStarted["news"] } = {};
+      let output: { pitches?: { id?: number; sentence?: string; answer?: string; news?: number[] }[]; finalists?: number[] } = {};
       try {
         input = JSON.parse(String(first.rows[0]?.input ?? "{}"));
       } catch {}
       try {
         output = JSON.parse(String(r.output ?? "{}"));
       } catch {}
-      const finalists = (output.finalists ?? []).map((id) => output.pitches?.find((p) => p.id === id)?.sentence ?? "").filter(Boolean);
-      out.push({ subject, format: input.format ?? "story", productId: input.productId ?? null, finalists, at: iso(r.createdAt) ?? "" });
+      const picks = (output.finalists ?? [])
+        .map((id) => output.pitches?.find((p) => p.id === id))
+        .filter((p) => p?.sentence)
+        .map((p) => ({ sentence: p!.sentence!, answer: p!.answer ?? "", news: p!.news ?? [] }));
+      out.push({ subject, format: input.format ?? "story", productId: input.productId ?? null, finalists: picks.map((p) => p.sentence), picks, news: input.news ?? [], at: iso(r.createdAt) ?? "" });
     }
     return out;
   }

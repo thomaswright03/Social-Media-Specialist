@@ -9,13 +9,13 @@ import { randomUUID } from "node:crypto";
 import type { Product, Vault } from "../vault.ts";
 import { formatBrief, gateFormat, nextFormat, nextProduct, type Choice, type Format, type Made } from "./formats.ts";
 import { check, gate, gateIdeas, type ColdReads, type GateResult, type Ideas } from "./gates.ts";
+import { newsList, newsText, type NewsItem } from "./news.ts";
 import { NICHE } from "./research.ts";
-import { runStage, stagePrompt } from "./stages.ts";
+import { runStage, stagePrompt, testerPrompt } from "./stages.ts";
 
 export const COLD_READS = 3;
 
-export const coldPrompt = (sentence: string) =>
-  `You're scrolling Instagram Reels. This is the first sentence of a short video:\n\n"${sentence}"\n\nWould you want to hear the next sentence? Answer with only YES or NO.`;
+export const coldPrompt = (sentence: string) => testerPrompt("cold-read", { SENTENCE: sentence });
 
 export const isYes = (answer: string) => /^\W*yes\b/i.test(answer.trim());
 
@@ -32,11 +32,21 @@ export async function coldReads(x: Ideas | null, ask: (p: string) => Promise<str
 }
 
 /** Stage 2's gate: gateIdeas plus the format (an ad's finalists name its product; entertainment doesn't sell). */
-export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products: Product[], cold: (x: Ideas | null) => Promise<ColdReads>): Promise<GateResult> {
+export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products: Product[], cold: (x: Ideas | null) => Promise<ColdReads>, news: NewsItem[] = []): Promise<GateResult> {
   const base = gateIdeas(x, await cold(x));
-  const finalists = (x?.finalists ?? []).map((id) => ({ id, s: x?.pitches?.find((p) => p.id === id)?.sentence ?? "" }));
+  const finalists = (x?.finalists ?? []).map((id) => {
+    const p = x?.pitches?.find((q) => q.id === id);
+    return { id, s: p?.sentence ?? "", answer: p?.answer ?? "", news: p?.news ?? [] };
+  });
   const fmt: GateResult["checks"] = [];
   for (const f of finalists) {
+    fmt.push(check(`Finalist ${f.id} says how it ends`, Boolean(f.answer.trim())));
+    if (choice.format === "explainer") {
+      const items = [...new Set(f.news)].map((n) => news.find((i) => i.n === n));
+      const publishers = new Set(items.map((i) => i?.publisher).filter(Boolean));
+      const missing = items.filter((i) => !i).length;
+      fmt.push(check(`Finalist ${f.id} is built on 2+ news items from 2+ publishers`, missing === 0 && items.length >= 2 && publishers.size >= 2, missing ? `${missing} of its news numbers aren't on the list` : `${items.length} items, ${publishers.size} publishers`));
+    }
     if (choice.format === "ad") {
       fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}`, Boolean(choice.product) && f.s.toLowerCase().includes(choice.product!.name.toLowerCase())));
     } else {
@@ -49,12 +59,21 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
 
 export type IdeasResult = { subject: string; choice: Choice; passed: boolean; finalists: string[]; gate: GateResult; tries: number };
 
-export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: string) => Promise<string>; coldAsk?: (p: string) => Promise<string>; log?: (m: string) => void; now?: () => Date; format?: Format }): Promise<IdeasResult> {
+export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: string) => Promise<string>; coldAsk?: (p: string) => Promise<string>; log?: (m: string) => void; now?: () => Date; format?: Format; news?: (now: Date) => Promise<NewsItem[]> }): Promise<IdeasResult> {
   const started = await d.vault.reelsStarted();
   const made: Made[] = started.map((r) => ({ format: r.format as Format, productId: r.productId, at: r.at }));
   let choice = nextFormat(made, d.products);
   // A run by hand may ask for a format; an ad still takes its product in turn.
   if (d.format) choice = { format: d.format, product: d.format === "ad" ? nextProduct(made, d.products) : null };
+  // The explainer picks only from the news code gathered; with none, it doesn't run today.
+  let news: NewsItem[] = [];
+  if (choice.format === "explainer") {
+    news = await (d.news ?? ((now) => newsList(now, undefined, d.log)))(d.now?.() ?? new Date()).catch(() => []);
+    if (!news.length) {
+      d.log?.("No news in the last 14 days could be read, so no explainer today: making a story instead.");
+      choice = { format: "story", product: null };
+    }
+  }
   const subject = `reel:${randomUUID()}`;
   d.log?.(`Next Reel: ${choice.format}${choice.product ? ` for ${choice.product.name}` : ""}.`);
   const patterns = (await d.vault.lessons("pattern")).map((l) => `- ${l.text}`).join("\n") || "(none yet)";
@@ -68,14 +87,14 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
     prompt: (failures) =>
       stagePrompt(2, {
         NICHE,
-        FORMAT: formatBrief(choice, "ideas"),
+        FORMAT: formatBrief(choice, "ideas", { NEWS: newsText(news) }),
         PATTERNS: patterns,
         HISTORY: history,
         LESSONS: lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "",
         GATE_FAILURES: failures,
       }),
-    gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask)),
-    input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null },
+    gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask), news),
+    input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null, ...(news.length ? { news } : {}) },
     log: d.log,
     now: d.now,
   });

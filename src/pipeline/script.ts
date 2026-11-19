@@ -13,7 +13,8 @@ import type { Product, Vault } from "../vault.ts";
 import { formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
-import { parseJson, runStage, stagePrompt } from "./stages.ts";
+import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
+import { parseJson, runStage, stagePrompt, testerPrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
@@ -23,11 +24,9 @@ export const SCRIPT_TRIES = 5;
 const shotList = (o: Opening | null) =>
   (o?.shots ?? []).map((s) => `${s.start ?? "?"}-${s.end ?? "?"} s: ${s.visual ?? ""}${s.onScreenText ? ` | text on screen: "${s.onScreenText}"` : ""}`).join("\n");
 
-export const soundOffPrompt = (o: Opening | null) =>
-  `You're scrolling Instagram Reels with the sound OFF. These are the first 3 seconds of a video, shot by shot, with the text on screen:\n\n${shotList(o)}\n\nIn one sentence: what do you want to find out by watching on? If nothing, say NOTHING.`;
+export const soundOffPrompt = (o: Opening | null) => testerPrompt("sound-off", { SHOTS: shotList(o) });
 
-export const matchPrompt = (hook: string, answer: string) =>
-  `A video's maker wants viewers to keep watching because: "${hook}"\nA viewer who saw only the first 3 seconds, sound off, said they want to find out: "${answer}"\n\nIs that the same reason, close enough that the opening did its job? Answer with only YES or NO.`;
+export const matchPrompt = (hook: string, answer: string) => testerPrompt("sound-off-match", { HOOK: hook, ANSWER: answer });
 
 /** Stage 3's sound-off test. */
 export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundOffReads> {
@@ -44,11 +43,9 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
 export const viewerShots = (shots: Shot[]) =>
   shots.map((s, i) => `Shot ${i + 1} (${s.start ?? "?"}-${s.end ?? "?"} s). You see: ${s.visual ?? ""}${s.onScreenText ? ` Text on screen: "${s.onScreenText}".` : ""}${s.line ? ` You hear: "${s.line}"` : ""}`).join("\n");
 
-export const retellPrompt = (shots: Shot[]) =>
-  `You just watched a short Instagram Reel once, with the sound on. This is everything you saw, read and heard:\n\n${viewerShots(shots)}\n\nIn two plain sentences, tell a friend what happened in it and who it was about. Then, on a new line, write CONFUSED: and what didn't make sense to you, or CONFUSED: nothing.`;
+export const retellPrompt = (shots: Shot[]) => testerPrompt("retell", { SHOTS: viewerShots(shots) });
 
-export const retellMatchPrompt = (intended: string, retelling: string) =>
-  `A video's maker meant this story: "${intended}"\n\nA viewer who watched it once retold it as:\n"${retelling}"\n\nDid the viewer understand the story? Answer YES if they got who it's about, what happened and how it ends, even in their own words and even if they left out or mixed up a small detail. Answer NO only if they got one of those three wrong, or said something central confused them.\n\nWrite three short lines (Who: RIGHT or WRONG, What happened: RIGHT or WRONG, Ending: RIGHT or WRONG), then a last line: VERDICT: YES or VERDICT: NO.`;
+export const retellMatchPrompt = (intended: string, retelling: string) => testerPrompt("retell-match", { INTENDED: intended, RETELLING: retelling });
 
 /** The verdict at the end of a retelling match (YES when it says so). */
 export const verdictYes = (answer: string) => {
@@ -78,7 +75,7 @@ export async function retellReads(shots: Shot[], intended: string, ask: Ask, rea
 }
 
 export const reviewPrompt = (s: Script & { caption?: string }) =>
-  `Review this Reel script like a strict editor. Find the real errors: grammar and spelling mistakes, physics or timing that couldn't happen even in the story's own world (someone in two places at once, a 10-minute task in 2 seconds, talking through glass as if it weren't there), and anything the script contradicts later. A mystery the story means to leave open (a note that appears, a figure that vanishes) is not an error; don't ask for it to be explained. Ignore style and taste, and leave out minor nitpicks a viewer would never notice in a 40-second video.\n\n${JSON.stringify({ shots: s.shots, payoff: s.payoff, caption: s.caption }, null, 1)}\n\nReply with only JSON: {"problems": ["shot N: the error, in one sentence"]} (an empty list when there are none).`;
+  testerPrompt("review", { SCRIPT: JSON.stringify({ shots: s.shots, payoff: s.payoff, caption: s.caption }, null, 1) });
 
 /** Stage 4's separate review; null when it couldn't be read. */
 export async function reviewScript(s: Script | null, ask: Ask): Promise<ScriptReview | null> {
@@ -87,13 +84,17 @@ export async function reviewScript(s: Script | null, ask: Ask): Promise<ScriptRe
   return r && Array.isArray(r.problems) ? { problems: r.problems.map(String).filter((p) => p.trim()) } : null;
 }
 
+export const learnedCheckPrompt = (rule: string, output: unknown) => testerPrompt("learned-check", { RULE: rule, OUTPUT: JSON.stringify(output).slice(0, 6000) });
+
 /** Lessons of kind "check" for this stage, each put to a separate call. */
 export async function learnedChecks(vault: Vault, stage: number, output: unknown, ask: Ask): Promise<Check[]> {
   const rules = (await vault.lessons("check")).filter((l) => l.stage === stage);
   const out: Check[] = [];
   for (const l of rules) {
-    const a = await ask(`Rule: ${l.text}\n\nDoes this pass the rule?\n${JSON.stringify(output).slice(0, 6000)}\n\nAnswer with only YES or NO.`).catch(() => "");
-    out.push(check(`Learned: ${l.text.slice(0, 80)}`, isYes(a)));
+    const a = await ask(learnedCheckPrompt(l.text, output)).catch(() => "");
+    // "NO: the part that breaks it" tells the retry what to fix.
+    const why = a.match(/^\W*no\b\W*([\s\S]*)$/i)?.[1]?.replace(/\s+/g, " ").trim();
+    out.push(check(`Learned: ${l.text.slice(0, 80)}`, isYes(a), isYes(a) ? undefined : why?.slice(0, 200) || undefined));
   }
   return out;
 }
@@ -110,7 +111,7 @@ export async function nextToScript(vault: Vault) {
   return null;
 }
 
-export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask; coldAsk?: Ask; subject?: string; log?: (m: string) => void; now?: () => Date }): Promise<ScriptResult> {
+export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask; coldAsk?: Ask; subject?: string; log?: (m: string) => void; now?: () => Date; sources?: (items: NewsItem[]) => Promise<SourceText[]> }): Promise<ScriptResult> {
   const cold = d.coldAsk ?? d.ask;
   const reel = d.subject ? (await d.vault.reelsStarted()).find((r) => r.subject === d.subject) : await nextToScript(d.vault);
   const empty = (problem: string): ScriptResult => ({ subject: d.subject ?? "", premise: null, opening: null, script: null, passed: false, stage: 3, gate: gate([check(problem, false)]), problem });
@@ -126,13 +127,29 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   let opening: Opening | null = null;
   let premise: string | null = null;
   let last3: GateResult | null = null;
-  for (const p of reel.finalists) {
+  let brief = formatBrief(choice);
+  let supplied: SourceText[] = [];
+  const picks = reel.picks?.length ? reel.picks : reel.finalists.map((sentence) => ({ sentence, answer: "", news: [] as number[] }));
+  for (const pick of picks) {
+    // The premise is the finalist with the ending stage 2 chose for it.
+    const p = pick.answer?.trim() ? `${pick.sentence}\nHow it ends (the viewer doesn't know this yet): ${pick.answer.trim()}` : pick.sentence;
+    // An explainer is written from the text of the news items it's built on, and nothing else.
+    let sources: SourceText[] = [];
+    if (choice.format === "explainer") {
+      const items = (pick.news ?? []).map((n) => (reel.news ?? []).find((i) => i.n === n)).filter((i): i is NewsItem => Boolean(i));
+      sources = items.length ? await (d.sources ?? ((xs) => sourceTexts(xs)))(items).catch(() => []) : [];
+      if (!sources.length) {
+        d.log?.(`No sources could be read for "${pick.sentence.slice(0, 60)}"; trying the next idea.`);
+        continue;
+      }
+    }
+    const thisBrief = formatBrief(choice, "script", { SOURCES: sourcesText(sources) });
     const r = await runStage<Opening>({
       vault: d.vault,
       stage: 3,
       subject: reel.subject,
       ask: d.ask,
-      prompt: (failures) => stagePrompt(3, { PREMISE: `${p}\n${formatBrief(choice)}`, PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
+      prompt: (failures) => stagePrompt(3, { PREMISE: `${p}\n\n${thisBrief}`, PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
       gate: async (o) => gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold)),
       input: { premise: p, format: reel.format },
       log: d.log,
@@ -142,6 +159,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
     if (r.gate.passed) {
       opening = r.output;
       premise = p;
+      brief = thisBrief;
+      supplied = sources;
       break;
     }
     d.log?.(`The opening for "${p.slice(0, 60)}" didn't pass; trying the next idea.`);
@@ -159,7 +178,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
     prompt: (failures) =>
       stagePrompt(4, {
         PREMISE: premise!,
-        FORMAT: formatBrief(choice),
+        FORMAT: brief,
         OPENING: JSON.stringify(opening),
         PATTERNS: patterns,
         LESSONS: lessonText,
@@ -173,7 +192,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       const reads = shots.length ? await retellReads(shots, intended, cold) : null;
       const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
-      return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
+      const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
+      return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
     },
     input: { premise, format: reel.format, product: product?.name ?? null },
     // Each revision fixes what the review found, so the script gets more rounds.

@@ -23,6 +23,14 @@ export const BENCHMARKS = 3;
 
 type ScriptOut = { shots?: Shot[]; story?: string; payoff?: string; nextHook?: string; caption?: string };
 
+/** The follow check's PICTURES: line: the frames whose picture doesn't show what the voice says ("fine" passes; no line can't fail it). */
+export function picturesLine(answer: string): { ok: boolean; detail?: string } {
+  const m = answer.match(/PICTURES:\s*([^\n]*)/i);
+  if (!m) return { ok: true, detail: "the viewer gave no PICTURES line" };
+  const v = m[1]!.trim();
+  return /^\W*(fine|none|nothing)\b/i.test(v) || !v ? { ok: true } : { ok: false, detail: `doesn't match the voice: ${v.slice(0, 200)}` };
+}
+
 /** The newest Reel whose script passed stage 4 and that has no passed stage 5. */
 export async function nextToProduce(vault: Vault, subject?: string): Promise<{ subject: string; format: string; script: ScriptOut } | null> {
   for (const r of await vault.reelsStarted()) {
@@ -167,7 +175,7 @@ export async function runProduce(d: {
   const timed = t.map((s) => ({ ...s, start: Math.round(s.at * 10) / 10, end: Math.round((s.at + s.dur) * 10) / 10 }));
   const format: Format = isFormat(reel.format) ? reel.format : "story";
   const style = formatPrompt(format, "style");
-  const look = await lookSheet(timed, d.ask, style);
+  const look = await lookSheet(timed, d.ask, style, log);
   await writeFile(join(d.outDir, "look.txt"), look);
   const cast = HAS_CAST[format] ? await castSheet(timed, look, d.ask) : NO_CAST;
   await writeFile(join(d.outDir, "cast.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs>${cast.defs}</defs>${cast.parts.map((x, i) => `<use href="#${x.id}" transform="translate(${200 + (i % 3) * 340} ${300 + Math.floor(i / 3) * 420})"/>`).join("")}</svg>`);
@@ -243,7 +251,7 @@ export async function runProduce(d: {
   const retold = (
     await d
       .judge(followDir)(
-        `These are frames from a short Instagram Reel, one per shot, in order, with what the voice says over each:\n${watched.join("\n")}\n\nRead every image. You've watched it once. In two plain sentences, tell a friend what happened and who it was about. Then, on a new line, write CONFUSED: and what didn't make sense, or CONFUSED: nothing.`,
+        stagePrompt(5, { WATCHED: watched.join("\n") }, "follow"),
       )
       .catch(() => "")
   ).trim();
@@ -253,6 +261,7 @@ export async function runProduce(d: {
   const followed = Boolean(retold) && verdictYes(verdict);
   if (!followed) log(`The match said: ${verdict.replace(/\s+/g, " ").slice(0, 300)}`);
   log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
+  const pictures = picturesLine(retold);
   const cuts = t.length - 1;
   const notes = [
     `Ours: Thomas's paid ElevenLabs voice reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
@@ -267,10 +276,12 @@ export async function runProduce(d: {
     ask: d.judge(judgeDir),
     prompt: () => stagePrompt(5, { FRAMES: `ours: ${ours.join(", ")}; benchmark: ${bench.join(", ") || "none"} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
     gate: (j) => {
+      if (j?.seen) log(`The judge saw: ours: ${j.seen.ours ?? "?"} Benchmark: ${j.seen.benchmark ?? "?"}`);
       const g = gateProduction(j, { ours: ours.length, benchmarks: bench.length }, learned);
       return gate([
         check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
         check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),
+        check("Every picture shows what the voice says", pictures.ok, pictures.detail),
         ...g.checks,
       ]);
     },
