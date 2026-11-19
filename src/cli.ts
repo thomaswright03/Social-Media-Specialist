@@ -20,7 +20,7 @@
 //   research        stage 1: studies the Reels of the accounts Thomas admires
 //                   (RESEARCH_ACCOUNTS, or usernames after the command) and saves what works
 import "dotenv/config";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
@@ -162,10 +162,30 @@ async function main() {
   }
 
   if (command === "voice-test") {
-    const line = "Imagine you run a bakery, and the orders start coming in at two in the morning. Most of you said keep sleeping. Here's what happened.";
-    const s = await speak(line);
-    await writeFile("voice-test.mp3", s.audio);
-    log(`ElevenLabs read ${s.words.length} words (${s.words.at(-1)?.end.toFixed(1) ?? "?"} s) into voice-test.mp3. It's under this run's Artifacts as "voice-test".`);
+    // Takes to compare (Thomas, 2026-11-19: "it needs to sound more up beat").
+    // The same upbeat creator line, read with different settings and voices.
+    const plain = "Okay, imagine you run a bakery, and the orders start coming in at two in the morning. Most of you said keep sleeping. Here's what actually happened.";
+    const tagged = "[excited] Okay, imagine you run a bakery, and the orders start coming in at two in the morning! [laughs] Most of you said keep sleeping. [curious] But here's what actually happened.";
+    const own = process.env.ELEVENLABS_VOICE_ID?.trim();
+    const takes: { name: string; text: string; stability: number; voiceId?: string }[] = [
+      { name: "1-your-voice-calm", text: plain, stability: 0.5 },
+      { name: "2-your-voice-tags", text: tagged, stability: 0.5 },
+      { name: "3-your-voice-tags-creative", text: tagged, stability: 0 },
+      // ElevenLabs' own upbeat voices, to hear whether the voice or the settings are the problem.
+      { name: "4-liam-tags-creative", text: tagged, stability: 0, voiceId: "TX3LPaxmHKxFdv7VOQHJ" },
+      { name: "5-jessica-tags-creative", text: tagged, stability: 0, voiceId: "cgSgspJ2msm6clMCkdW9" },
+    ];
+    await mkdir("voice-test", { recursive: true });
+    for (const t of takes) {
+      try {
+        const s = await speak(t.text, { stability: t.stability, voiceId: t.voiceId ?? own });
+        await writeFile(`voice-test/${t.name}.mp3`, s.audio);
+        log(`Take ${t.name}: ${s.words.length} words, ${s.words.at(-1)?.end.toFixed(1) ?? "?"} s.`);
+      } catch (e) {
+        log(`Take ${t.name} failed: ${(e as Error).message}`);
+      }
+    }
+    log(`The takes are under this run's Artifacts as "voice-test".`);
     return;
   }
 
