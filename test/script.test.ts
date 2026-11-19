@@ -120,6 +120,17 @@ describe("can a stranger follow it", () => {
     expect(failed(true)).toHaveLength(2);
   });
 
+  it("catches series numbering, in the caption too", async () => {
+    const { gateScript } = await import("../src/pipeline/gates.ts");
+    const shots = [{ start: 0, end: 30, visual: "v", line: "x", onScreen: "x" }];
+    const standalone = (caption: string) => gateScript({ shots, payoff: "p", nextHook: "n", caption }, null, { problems: [] }).checks.find((c) => c.name.startsWith("Stands alone"))!.passed;
+    expect(standalone("Neighbour Mysteries #1. Follow for #2. #stickman #story")).toBe(false);
+    expect(standalone("Would you have opened it? Follow for 2")).toBe(false);
+    expect(standalone("Chapter 3 of the night shift")).toBe(false);
+    expect(standalone("Would you have opened it? Tell me below. #stickman #story #fyp")).toBe(true);
+    expect(standalone("Follow for what the dog does next")).toBe(true);
+  });
+
   it("wants the camera to change", async () => {
     const { cameraCheck } = await import("../src/pipeline/gates.ts");
     const s = (camera?: string) => ({ camera });

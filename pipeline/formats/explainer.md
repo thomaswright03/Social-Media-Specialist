@@ -13,7 +13,7 @@ A pitch is one sentence that states the news and the open question, with no jarg
 Format: a current-event explainer. Entertainment: no selling, no product, no business.
 - A narrator explains it out loud from the first second (the first shot has a line) and speaks in every shot: confident, plain words, short sentences, no jargon. With the sound on, the voice alone explains it.
 - Structure: the surprising fact (0 to 3 s), what happened (who, what, when), why it happened, what it means for the viewer, and one last surprising detail as the payoff.
-- 8 to 14 shots, 2.5 to 4 seconds each. Each shot shows ONE graphic that proves the line: a big number counting up, a map zooming in on a place, a before-and-after bar, a timeline with one date lit, an icon of the thing (a phone, a factory, a courthouse), a simple stick-figure presenter pointing at it.
+- 10 to 14 shots, 2 to 3 seconds each. Each shot shows ONE graphic that proves the line: a big number counting up, a map zooming in on a place, a before-and-after bar, a timeline with one date lit, an icon of the thing (a phone, a factory, a courthouse), a simple stick-figure presenter pointing at it.
 - Every number and claim is on screen as it's said ("onScreen") and comes from a source in "sources". At least 2 sources, each with its link and its date (YYYY-MM-DD), all from the last 14 days. Never invent a number; if a source doesn't say it, leave it out.
 - Cameras: use them as graphic moves: wide (the whole map or chart), close-up (one number), insert (one icon), high angle (a map from above). Never the same camera twice in a row.
 - "place" is the graphic space ("the map", "the chart", "the newsroom"). One or two.

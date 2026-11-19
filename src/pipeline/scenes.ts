@@ -136,7 +136,7 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
         LOOK: look,
         STYLE: style,
         OVERLAY_TEXT: (s.line?.trim() || s.onScreenText?.trim()) ? `"${(s.line?.trim() || s.onScreenText!.trim())}"` : "(none)",
-        IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `The script also wants "${s.onScreenText.trim()}" seen. Show it in the world itself if it fits (a clock, a sign, a calendar, a phone screen), or leave it out.` : "",
+        IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `A small label "${s.onScreenText.trim()}" is laid over y 240 to 300; don't draw it either.` : "",
         SECONDS: seconds,
         N: String(i + 1),
         TOTAL: String(shots.length),
