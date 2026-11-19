@@ -254,7 +254,7 @@ export function cameraCheck(shots: Shot[]): Check {
   );
 }
 
-export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = []): Check[] {
+export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = [], narrated = true): Check[] {
   const places = new Set(shots.map((s) => (s.place ?? "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim()).filter(Boolean));
   const unnamed = shots.filter((s) => !s.place?.trim()).length;
   const voiced = shots.filter((s) => s.line?.trim()).length;
@@ -262,9 +262,14 @@ export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: 
   return [
     check(`${MIN_SHOTS} to ${MAX_SHOTS} shots`, shots.length >= MIN_SHOTS && shots.length <= MAX_SHOTS, `${shots.length} shots`),
     check("One or two places", unnamed === 0 && places.size >= 1 && places.size <= 2, unnamed ? `${unnamed} shots don't name their place` : `${places.size}: ${[...places].join(", ")}`),
-    check("The voice starts in the first shot", Boolean(shots[0]?.line?.trim())),
+    // A satisfying video has no narrator; the others are told by the voice.
+    ...(narrated
+      ? [
+          check("The voice starts in the first shot", Boolean(shots[0]?.line?.trim())),
+          check("The voice tells the story (a line in at least 3 of 4 shots)", shots.length > 0 && voiced / shots.length >= 0.75, `${voiced} of ${shots.length}`),
+        ]
+      : []),
     cameraCheck(shots),
-    check("The voice tells the story (a line in at least 3 of 4 shots)", shots.length > 0 && voiced / shots.length >= 0.75, `${voiced} of ${shots.length}`),
     check("Cold viewers retell the story right (2 of 3)", retell !== null && right >= 2, retell === null ? "not read" : `${right} of ${retell.length}${notes.length ? `. What the viewers who didn't get it said: ${notes.map((n) => `"${n}"`).join(" ")}` : ""}`),
   ];
 }

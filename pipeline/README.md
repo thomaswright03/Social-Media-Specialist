@@ -35,6 +35,12 @@ Each Reel is one of four formats, picked by code (`nextFormat` in
 | `explainer` | entertainment | a current event explained with bold graphics and transitions |
 | `ad` | ad | one product from wright-ai-solutions.com, plus Wright AI Solutions itself: we build custom AI agents and software for businesses |
 
+Each format has its own prompts in `pipeline/formats/<format>.md`: `ideas`
+(what to pitch, stage 2), `script` (how it's told: narration, shots, cameras,
+caption; stages 3 and 4) and `style` (how it's drawn, stage 5). Edit those
+files to change a format. Stories and ads have characters drawn once and
+re-posed; the satisfying video has no narrator, so stage 4 doesn't ask for one.
+
 An ad is made only when it keeps ads at 2 of the last 10 Reels and at least 3
 entertainment Reels came since the last one; ads take turns between the
 site's products. The entertainment formats take turns too. Each script also

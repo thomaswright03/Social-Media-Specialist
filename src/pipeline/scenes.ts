@@ -4,6 +4,7 @@
 // with what was wrong, when one is broken.
 import type { Shot } from "./gates.ts";
 import { repeatsLine } from "./compose.ts";
+import { formatPrompt } from "./formats.ts";
 import { stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
@@ -42,8 +43,11 @@ export function svgProblems(svg: string | null): string[] {
 /** Strips anything that could reach outside the page, in case a check missed it. */
 export const safeSvg = (svg: string) => svg.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "");
 
-export async function lookSheet(shots: Shot[], ask: Ask): Promise<string> {
-  const a = (await ask(stagePrompt(5, { SHOTS: shotList(shots) }, "look"))).trim();
+/** The story format's style: the default when no format is given. */
+export const DEFAULT_STYLE = () => formatPrompt("story", "style");
+
+export async function lookSheet(shots: Shot[], ask: Ask, style = DEFAULT_STYLE()): Promise<string> {
+  const a = (await ask(stagePrompt(5, { SHOTS: shotList(shots), STYLE: style }, "look"))).trim();
   return a.slice(0, 3000);
 }
 
@@ -97,10 +101,12 @@ export async function castSheet(shots: Shot[], look: string, ask: Ask): Promise<
   return NO_CAST;
 }
 
+const CAST_USE = `Place a character with <use href="#c-NAME" transform="translate(X Y) scale(S)"/>: the head's centre lands on X,Y, its radius is 70×S. Then draw, in this shot's pose, the stick body hanging from the neck (X, Y+70×S): torso, arms and legs as thick round-capped strokes in proportion (torso about 4 heads long, legs about 4.5), and draw the eyes, brows and mouth on the head for this moment's feeling. Joints bend the way real ones do; arms and legs never cross through the body or each other. Place a prop the same way (its bottom centre lands on X,Y). Never redraw a cast member or prop by hand.`;
+
 const castNote = (c: Cast) =>
   c.parts.length
-    ? `These are already drawn and defined; place them, never redraw them:\n${c.parts.map((x) => `- #${x.id}: ${x.note || "(no note)"}`).join("\n")}\nTheir SVG, for reference (don't copy it into your answer):\n${c.defs}`
-    : "(none: draw everyone yourself, following the look sheet)";
+    ? `These are already drawn and defined; place them, never redraw them:\n${c.parts.map((x) => `- #${x.id}: ${x.note || "(no note)"}`).join("\n")}\nTheir SVG, for reference (don't copy it into your answer):\n${c.defs}\n${CAST_USE}`
+    : "(none: draw everything yourself, following the look sheet)";
 
 /** <use href="#…"> that points at nothing in the drawing or the cast. */
 export function missingRefs(svg: string, cast: Cast): string[] {
@@ -115,7 +121,7 @@ export const withCast = (svg: string, cast: Cast) => (cast.defs ? svg.replace(/<
 export type Scene = { svg: string | null; tries: number; problems: string[] };
 
 /** One shot's drawing, asked again (with what was wrong) up to SCENE_TRIES times. */
-export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask, cast: Cast = NO_CAST): Promise<Scene> {
+export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask, cast: Cast = NO_CAST, style = DEFAULT_STYLE()): Promise<Scene> {
   const s = shots[i]!;
   const seconds = Math.max(0, (s.end ?? 0) - (s.start ?? 0)).toFixed(1);
   const context = shots
@@ -128,6 +134,7 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
       5,
       {
         LOOK: look,
+        STYLE: style,
         OVERLAY_TEXT: (s.line?.trim() || s.onScreenText?.trim()) ? `"${(s.line?.trim() || s.onScreenText!.trim())}"` : "(none)",
         IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `The script also wants "${s.onScreenText.trim()}" seen. Show it in the world itself if it fits (a clock, a sign, a calendar, a phone screen), or leave it out.` : "",
         SECONDS: seconds,
@@ -152,13 +159,13 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
 }
 
 /** Every shot's drawing, a few at a time. */
-export async function drawScenes(shots: Shot[], look: string, ask: Ask, log?: (m: string) => void, cast: Cast = NO_CAST): Promise<Scene[]> {
+export async function drawScenes(shots: Shot[], look: string, ask: Ask, log?: (m: string) => void, cast: Cast = NO_CAST, style = DEFAULT_STYLE()): Promise<Scene[]> {
   const out: Scene[] = new Array(shots.length);
   let next = 0;
   const worker = async () => {
     while (next < shots.length) {
       const i = next++;
-      out[i] = await drawScene(shots, i, look, ask, cast);
+      out[i] = await drawScene(shots, i, look, ask, cast, style);
       log?.(`Shot ${i + 1}: ${out[i]!.svg ? `drawn${out[i]!.tries > 1 ? ` on try ${out[i]!.tries}` : ""}` : `no usable drawing (${out[i]!.problems.join(" ")})`}.`);
     }
   };

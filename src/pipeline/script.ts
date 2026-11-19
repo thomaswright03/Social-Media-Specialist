@@ -10,7 +10,7 @@
 // (formats.ts) run with it. Lessons of kind "check" for a stage are put to a
 // separate call each and become checks too.
 import type { Product, Vault } from "../vault.ts";
-import { formatBrief, gateFormat, type Choice, type FormatDraft } from "./formats.ts";
+import { formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { parseJson, runStage, stagePrompt } from "./stages.ts";
@@ -171,7 +171,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
       const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
       const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-      const clarity = clarityChecks(shots, reads, reads?.notes ?? []);
+      const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
       const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
       return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks]);
     },

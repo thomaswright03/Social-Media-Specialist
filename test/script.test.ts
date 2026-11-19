@@ -57,7 +57,7 @@ describe("stages 3 and 4", () => {
     expect(r.passed).toBe(true);
     expect(r.stage).toBe(4);
     expect(c.seen.filter((p) => p.includes("sound OFF"))).toHaveLength(3);
-    expect(c.seen.some((p) => p.includes("Format: story"))).toBe(true);
+    expect(c.seen.some((p) => p.includes("Format: a stick-figure story"))).toBe(true);
     // Done: there's nothing left to script.
     expect((await runScript({ vault, products: P, ask: c.ask, now: () => NOW })).problem).toContain("No Reel waiting");
   });
@@ -109,6 +109,15 @@ describe("can a stranger follow it", () => {
       "The voice tells the story (a line in at least 3 of 4 shots)",
       "Cold viewers retell the story right (2 of 3)",
     ]);
+  });
+
+  it("doesn't ask a satisfying video for a narrator", async () => {
+    const { clarityChecks } = await import("../src/pipeline/gates.ts");
+    const cams = ["wide", "insert", "close-up"];
+    const quiet = Array.from({ length: 10 }, (_, i) => ({ start: 0, end: 3, place: "the table", camera: cams[i % 3], visual: "v", line: "" }));
+    const failed = (narrated: boolean) => clarityChecks(quiet, [true, true, true], [], narrated).filter((c) => !c.passed).map((c) => c.name);
+    expect(failed(false)).toEqual([]);
+    expect(failed(true)).toHaveLength(2);
   });
 
   it("wants the camera to change", async () => {

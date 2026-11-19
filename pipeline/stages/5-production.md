@@ -46,17 +46,19 @@ Reply with only JSON: {"ours": {"art": 3, "readability": 4, "voice": 2, "sound":
 <!-- /prompt -->
 
 <!-- look -->
-You're the art director of an animated Instagram Reel drawn as flat vector stick figures. Here is its shot list (each with its camera and place):
+You're the art director of an animated Instagram Reel. Here is its shot list (each with its camera and place):
 
 {{SHOTS}}
 
-The style is fixed, don't change it: a moody flat-vector film still; white stick figures (stroke #f5f5f5, 12 to 18 px, round caps, filled white heads with simple expressive faces); places drawn edge to edge with depth and light from a source in the scene; dark falloff; one accent lime #a3e635, used small (red #ef4444 only for danger). Captions are laid on top by code, so leave them out.
+The style is fixed, don't change it:
+{{STYLE}}
+Captions are laid on top by code, so leave them out.
 
-Write the look sheet every shot is drawn from. Be exact, like a model sheet, so twelve separate drawings can't disagree:
-- Each character: name, height on the canvas in a medium shot, and the ONE thing on or by the head that tells them apart at a glance, with its shape and colour (a ponytail, a top hat, round glasses, a cap, floppy ears, a bow). Grown-ups tall, kids about two thirds as tall. Things on the body (a sash, a tie, an apron) are thin and in a muted colour, never a big lime block.
-- Each recurring prop (the stand, the pitcher, the sign, the phone): its exact shape, size next to a character, colours, and the detail that makes it obviously that object.
-- Each place: what's in it, front to back, and what's seen from each side, so a wide shot, a close-up and a reverse angle all show different parts of the same place (a wall behind one character, the street behind the other).
-- The light: where it comes from in each place and its colour.
+Write the look sheet every shot is drawn from. Be exact, like a model sheet, so a dozen separate drawings can't disagree:
+- Each character, if there are any: name, height on the canvas in a medium shot, and the ONE thing on or by the head that tells them apart at a glance, with its shape and colour (a ponytail, a top hat, round glasses, a cap, floppy ears, a bow). Grown-ups tall, kids about two thirds as tall. Things on the body (a sash, a tie, an apron) are thin and in a muted colour, never a big accent-coloured block.
+- Each recurring object, prop or graphic (the stand, the pitcher, the marble track, the map, the big number card): its exact shape, size on the canvas, colours, and the detail that makes it obviously that thing.
+- Each place or background: what's in it, front to back, and what each camera sees, so a wide, a close-up and a reverse angle all show different parts of the same place.
+- The light and the palette: where light comes from and the exact colours used.
 Plain text, under 300 words.
 <!-- /look -->
 
@@ -80,20 +82,19 @@ Reply with only the SVG.
 <!-- art -->
 You draw one shot of an animated Instagram Reel as an SVG, like one frame of a film storyboard by a great cinematographer.
 
-Style, the same in every shot: a moody flat-vector film still, like the best stick-figure story channels. Characters are white stick figures (stroke #f5f5f5, stroke-width 12 to 18, round caps and joins, simple expressive faces: eyes, brows and a mouth that show the feeling). Places are drawn in full, edge to edge, with depth: a floor or ground plane in perspective, walls or sky behind, 2 or 3 layers where far things are smaller and darker, and real detail that says where we are (bricks, a fence, a tree, a doorway, a car). Light comes from something in the scene (a lamp, a window, the sun, a streetlight) as soft radial gradients with a pool of light on the ground and a soft shadow under each character; the rest falls off into dark (#0e1117 to #3a4150). One accent, lime #a3e635, used small, for what matters (the key prop, a glow); red #ef4444 only for danger. Nothing big and flat lime.
+Style, the same in every shot:
+{{STYLE}}
 
 Look sheet (follow it exactly): {{LOOK}}
 
 The cast: {{CAST}}
-Place a character with <use href="#c-NAME" transform="translate(X Y) scale(S)"/>: the head's centre lands on X,Y, its radius is 70×S. Then draw, in this shot's pose, the stick body hanging from the neck (X, Y+70×S): torso, arms and legs as thick round-capped strokes in proportion (torso about 4 heads long, legs about 4.5), and draw the eyes, brows and mouth on the head for this moment's feeling. Place a prop the same way (its bottom centre lands on X,Y). Never redraw a cast member or prop by hand.
-
 The camera for this shot is {{CAMERA}}. Frame it like that:
 - wide: the whole place and everyone in it, characters about a third of the frame tall; this is where we learn where we are.
 - medium: one or two characters from the knees up, big (head scale 1.3 to 1.8), the place behind them.
 - close-up: one face fills the upper half of the frame (head scale 3 to 4), the feeling is the shot.
 - over-the-shoulder: the back of one character's head and shoulder big in the foreground, the other character facing us across from them.
 - low angle / high angle: look up at someone big and powerful, or down at someone small; the ground line tilts.
-- insert: the prop or the thing that matters, huge and detailed, a hand touching it.
+- insert: the prop, object or number that matters, huge and detailed.
 When two characters share the shot they react to each other: they face each other, their eyes meet or one looks away, a hand points, gives, takes or reaches. Show the action itself happening (handing the cup over, the sign falling), not two figures standing still.
 Place: {{PLACE}}. Show the part of it this camera would see, so neighbouring shots don't look the same.
 

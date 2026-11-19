@@ -68,7 +68,7 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
     prompt: (failures) =>
       stagePrompt(2, {
         NICHE,
-        FORMAT: formatBrief(choice),
+        FORMAT: formatBrief(choice, "ideas"),
         PATTERNS: patterns,
         HISTORY: history,
         LESSONS: lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "",

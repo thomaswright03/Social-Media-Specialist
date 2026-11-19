@@ -14,7 +14,9 @@
 // made, and gateFormat checks each script against its format.
 import type { Check, GateResult } from "./gates.ts";
 import { check, gate } from "./gates.ts";
+import { join } from "node:path";
 import type { Product } from "../vault.ts";
+import { pipelineFile } from "./stages.ts";
 
 export const ENTERTAINMENT = ["story", "satisfying", "explainer"] as const;
 export type Format = (typeof ENTERTAINMENT)[number] | "ad";
@@ -29,15 +31,24 @@ export const NEWS_MAX_DAYS = 14;
 export type Made = { format: Format; productId?: string | null; at: string };
 export type Choice = { format: Format; product: Product | null };
 
-export const FORMAT_BRIEFS: Record<Format, string> = {
-  story:
-    "Entertainment: a standalone stick-figure story with a cliffhanger moment and its own payoff. Use the winning patterns (audience-vote captions, 'Imagine you...' hooks, word-by-word captions). No selling: don't name a product or the business.",
-  satisfying:
-    "Entertainment: a satisfying AI-made video (perfect loops, things fitting exactly, smooth transformations, oddly precise motion). The picture carries it; something new every 2 to 3 seconds. The caption says it was made with AI. No selling.",
-  explainer:
-    "Entertainment: explain one current event from the last 14 days with bold motion graphics and fast transitions. Every fact comes from a dated source you list (at least 2, each with its link). No selling.",
-  ad: "Ad: market ONE product (below) and Wright AI Solutions as a whole: we build custom AI agents and software for businesses. Lead with the viewer's problem, show the product solving it, then say we can build one for their business too. End on a clear call to action (link in bio).",
-};
+/** Characters drawn once and re-posed (the cast sheet) only in formats that have them. */
+export const HAS_CAST: Record<Format, boolean> = { story: true, ad: true, explainer: false, satisfying: false };
+/** Formats told by a narrator (stage 4 checks the voice runs through it). */
+export const NARRATED: Record<Format, boolean> = { story: true, ad: true, explainer: true, satisfying: false };
+
+/**
+ * A format's own prompt (pipeline/formats/<format>.md, between <!-- block -->
+ * markers): "ideas" for stage 2, "script" for stages 3 and 4, "style" for
+ * stage 5's art.
+ */
+export function formatPrompt(format: Format, block: "ideas" | "script" | "style"): string {
+  const md = pipelineFile(join("formats", `${format}.md`));
+  const m = md.match(new RegExp(`<!-- ${block} -->\\n([\\s\\S]*?)<!-- \\/${block} -->`));
+  if (!m) throw new Error(`Format ${format} has no ${block} prompt`);
+  return m[1]!.trim();
+}
+
+export const isFormat = (f: string): f is Format => f === "ad" || (ENTERTAINMENT as readonly string[]).includes(f);
 
 /**
  * The next format: an ad when that keeps ads at 20% or less of the last 10
@@ -62,10 +73,10 @@ export function nextProduct(history: Made[], products: Product[]): Product | nul
   return [...products].sort((a, b) => last(a).localeCompare(last(b)) || a.name.localeCompare(b.name))[0] ?? null;
 }
 
-/** The format's brief for the stage 2 and 4 prompts. */
-export function formatBrief(c: Choice): string {
+/** The format's prompt for stage 2 (ideas) or stages 3 and 4 (script), with the ad's product. */
+export function formatBrief(c: Choice, block: "ideas" | "script" = "script"): string {
   const product = c.product ? `\nThe product: ${c.product.name} (${c.product.url}). ${c.product.description ?? ""}` : "";
-  return `Format: ${c.format}. ${FORMAT_BRIEFS[c.format]}${product}`;
+  return `${formatPrompt(c.format, block)}${product}`;
 }
 
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
