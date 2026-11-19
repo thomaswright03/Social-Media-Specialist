@@ -4,7 +4,8 @@ Art, voice, music and captions, compared with the best Reels from stage 1.
 
 How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 
-- **Voice:** Thomas's ElevenLabs voice reads each shot's line (with the lines
+- **Voice:** an upbeat ElevenLabs narrator (Liam, on v3's most expressive
+  setting, Thomas's pick 2026-11-19) reads the whole script in one take, cut back into each shot's line (with the lines
   around it, so it sounds like one read). A shot is stretched when its line
   needs longer than the script gave it.
 - **Art:** Claude writes a look sheet for the cast and places, draws the
