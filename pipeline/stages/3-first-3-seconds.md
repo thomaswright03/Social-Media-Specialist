@@ -50,6 +50,7 @@ Hard limits (code checks these):
 
 The sound (`audio`):
 - In a format with a narrator, the voice starts at 0 s. `audio` is the narrator's exact words over that shot, following the format's narrator rules. At about 2.5 words a second, that is seven or eight words across the whole opening.
+- The narrator may open with one audio tag in square brackets that sets the delivery ([curious], [whispers], [excited]). It isn't counted as a word.
 - In a format with no narrator, `audio` is the sound.
 - The opening has to work with the sound off. The voice adds to it for viewers with sound on; the hook never depends on it.
 

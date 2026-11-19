@@ -15,6 +15,7 @@ import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type G
 import { isYes } from "./ideas.ts";
 import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
 import { parseJson, runStage, stagePrompt, testerPrompt } from "./stages.ts";
+import { spokenText } from "../voice.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
@@ -41,7 +42,7 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
 
 /** What a viewer gets from each shot: what they see, read and hear. */
 export const viewerShots = (shots: Shot[]) =>
-  shots.map((s, i) => `Shot ${i + 1} (${s.start ?? "?"}-${s.end ?? "?"} s). You see: ${s.visual ?? ""}${s.onScreenText ? ` Text on screen: "${s.onScreenText}".` : ""}${s.line ? ` You hear: "${s.line}"` : ""}`).join("\n");
+  shots.map((s, i) => `Shot ${i + 1} (${s.start ?? "?"}-${s.end ?? "?"} s). You see: ${s.visual ?? ""}${s.onScreenText ? ` Text on screen: "${s.onScreenText}".` : ""}${s.line ? ` You hear: "${spokenText(s.line)}"` : ""}`).join("\n");
 
 export const retellPrompt = (shots: Shot[]) => testerPrompt("retell", { SHOTS: viewerShots(shots) });
 
