@@ -6,6 +6,7 @@
 //
 // Every gate returns the list of checks with which ones failed; the runner
 // (run.ts) feeds the failed ones back to Claude for the next try.
+import { spokenText } from "../voice.ts";
 
 export type Check = { name: string; passed: boolean; detail?: string };
 export type GateResult = { passed: boolean; checks: Check[] };
@@ -150,7 +151,7 @@ export const withoutNegations = (s: string) => s.replace(/\b(no|not|never|withou
 
 /** A spoken line may run at most this many words a second. */
 export const MAX_SPOKEN_WPS = 3;
-const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+const wordCount = (t: string) => spokenText(t).split(/\s+/).filter(Boolean).length;
 
 export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned: Check[] = [], narrated = false): GateResult {
   const shots = o?.shots ?? [];

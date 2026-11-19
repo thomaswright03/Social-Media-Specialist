@@ -83,6 +83,12 @@ Code checks these, and one miss fails the script.
 - In narrated formats (everything except the satisfying video), the voice speaks in the first shot and in at least three of every four shots.
 - No field may contain "part 2", "episode", "last time", "previously", "as we saw" or "to be continued", or refer to any other video.
 
+## The voice
+
+The narrator reads the whole script in one take, with ElevenLabs v3, so write the lines as one person talking, not as headlines.
+
+Write the narration first, as one piece, before you split it into shots: 80 to 110 words, the way a sharp creator would tell it to a friend who hasn't heard. Full sentences with their verbs, contractions, one turn of phrase that sounds like a person ("Here's the thing", "and that's where it gets weird"). Never a headline fragment ("Metacritic average: 99 out of 100.") and never a sentence missing its noun ("She called it the most explicit."). Then cut it into shots at natural breaks, one beat per shot, so each `line` is a real piece of a sentence someone would say. Read it out loud in your head: if it sounds like a news ticker, rewrite it. v3 follows audio tags in square brackets at the start of a line: [curious], [excited], [serious], [whispers], [sighs], [laughs]. Use one where the delivery should turn, about one every two or three lines, never two in a row of the same. Tags aren't counted as words and never appear on screen.
+
 ## The ending
 
 - The story finishes inside this video. `payoff` states the ending that actually happens in the shots, and `caption` never contradicts it.

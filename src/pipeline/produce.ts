@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
-import type { SoundEffect, Speak } from "../voice.ts";
+import { splitRead, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
@@ -140,12 +140,41 @@ export async function runProduce(d: {
   const work = join(d.outDir, "work");
   await mkdir(work, { recursive: true });
 
-  // Voice, line by line, with the lines around it for a natural read.
+  // Voice: the whole script in one take, so it sounds like one person telling
+  // it, then cut back into each shot's line. Line by line if that fails.
   const lines = shots.map((s) => s.line?.trim() || null);
   const voices: ({ seconds: number; words: { word: string; start: number; end: number }[] } | null)[] = [];
   const voiceFiles: (string | null)[] = [];
   let voiceProblem: string | null = null;
-  for (let i = 0; i < shots.length; i++) {
+  const spokenLines = lines.filter((l): l is string => Boolean(l));
+  if (spokenLines.length) {
+    try {
+      const take = await d.speak(spokenLines.join(" "));
+      const whole = join(work, "voice-take.mp3");
+      await writeFile(whole, take.audio);
+      const parts = splitRead(take.words, spokenLines);
+      if (!parts) throw new Error(`the take's ${take.words.length} timed words don't match the script's lines`);
+      let k = 0;
+      for (let i = 0; i < shots.length; i++) {
+        if (!lines[i]) {
+          voices.push(null);
+          voiceFiles.push(null);
+          continue;
+        }
+        const p = parts[k++]!;
+        const file = join(work, `voice-${String(i + 1).padStart(2, "0")}.wav`);
+        await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", whole, "-af", `atrim=start=${p.from.toFixed(3)}:end=${p.to.toFixed(3)},asetpts=PTS-STARTPTS,afade=t=out:st=${Math.max(0, p.to - p.from - 0.03).toFixed(3)}:d=0.03`, file]);
+        voices.push({ seconds: p.words.at(-1)!.end, words: p.words });
+        voiceFiles.push(file);
+      }
+      log(`Voiced the script in one take (${take.words.length} words) and cut it into ${spokenLines.length} lines.`);
+    } catch (err) {
+      log(`One take didn't work (${(err as Error).message}); voicing line by line.`);
+      voices.length = 0;
+      voiceFiles.length = 0;
+    }
+  }
+  for (let i = voices.length ? shots.length : 0; i < shots.length; i++) {
     const line = lines[i];
     if (!line) {
       voices.push(null);
@@ -246,7 +275,7 @@ export async function runProduce(d: {
     const f = Math.max(1, Math.round((s.at + Math.min(s.dur * 0.6, s.dur - 0.1)) * FPS));
     const name = `shot-${String(i + 1).padStart(2, "0")}.jpg`;
     await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
-    watched.push(`${name}${s.line ? ` (you hear: "${s.line}")` : " (no voice)"}`);
+    watched.push(`${name}${s.line ? ` (you hear: "${spokenText(s.line)}")` : " (no voice)"}`);
   }
   const retold = (
     await d
