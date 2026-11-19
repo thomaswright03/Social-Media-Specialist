@@ -313,7 +313,7 @@ export async function runProduce(d: {
   const pictures = picturesLine(retold);
   const cuts = t.length - 1;
   const notes = [
-    `Ours: Thomas's paid ElevenLabs voice reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
+    `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
     `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
     `Benchmark: the most liked Reels of the accounts Thomas admires (cover images only; Instagram gives no audio for other accounts). Judge their voice and sound as what top stick-figure story accounts use: a clear narrator over trending music with sound effects.`,
   ].join(" ");

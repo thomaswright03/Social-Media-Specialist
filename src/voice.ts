@@ -1,5 +1,7 @@
-// Thomas's ElevenLabs voice (he chose it 2026-11-18) for the story and
-// explainer Reels. ELEVENLABS_API_KEY (secret) and ELEVENLABS_VOICE_ID.
+// The narrator for the story and explainer Reels, on Thomas's ElevenLabs
+// account (ELEVENLABS_API_KEY, secret). Thomas, 2026-11-19, after hearing five
+// takes: Liam, ElevenLabs' own voice, with audio tags, on v3's most expressive
+// setting. ELEVENLABS_NARRATOR_VOICE picks another voice id.
 // The with-timestamps endpoint also gives each character's timing, which the
 // word-by-word captions are cut from.
 
@@ -52,17 +54,21 @@ export type Speak = (text: string, opts?: SpeakOpts) => Promise<Spoken>;
  * Eleven v3 is ElevenLabs' most expressive model and follows audio tags such
  * as [excited] or [whispers]; ELEVENLABS_MODEL overrides it.
  */
+/** Liam, an ElevenLabs premade voice (Thomas picked it over his own, 2026-11-19). */
+export const LIAM = "TX3LPaxmHKxFdv7VOQHJ";
+export const NARRATOR_VOICE = () => process.env.ELEVENLABS_NARRATOR_VOICE?.trim() || LIAM;
+
 export const VOICE_MODEL = () => process.env.ELEVENLABS_MODEL?.trim() || "eleven_v3";
 const isV3 = (model: string) => /^eleven_v3/.test(model);
 
 /** Text without its audio tags: what a listener actually hears. */
 export const spokenText = (t: string) => t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
 
-/** v3's stability is one of 0 (creative), 0.5 (natural) or 1 (robust); ELEVENLABS_STABILITY picks another. */
+/** v3's stability is one of 0 (creative, Thomas's pick), 0.5 (natural) or 1 (robust); ELEVENLABS_STABILITY picks another. */
 function voiceSettings(model: string, stability?: number) {
   if (stability !== undefined) return isV3(model) ? { stability } : { stability, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true };
   const env = Number(process.env.ELEVENLABS_STABILITY);
-  if (isV3(model)) return { stability: Number.isFinite(env) && process.env.ELEVENLABS_STABILITY?.trim() ? env : 0.5 };
+  if (isV3(model)) return { stability: Number.isFinite(env) && process.env.ELEVENLABS_STABILITY?.trim() ? env : 0 };
   return { stability: Number.isFinite(env) && process.env.ELEVENLABS_STABILITY?.trim() ? env : 0.35, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true };
 }
 
@@ -70,9 +76,8 @@ const said = (d: { message?: string; status?: string } | string | undefined, sta
 
 export async function speak(text: string, opts: SpeakOpts = {}): Promise<Spoken> {
   const apiKey = opts.apiKey ?? process.env.ELEVENLABS_API_KEY?.trim();
-  const voiceId = opts.voiceId ?? process.env.ELEVENLABS_VOICE_ID?.trim();
+  const voiceId = opts.voiceId ?? NARRATOR_VOICE();
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY isn't set");
-  if (!voiceId) throw new Error("ELEVENLABS_VOICE_ID isn't set");
   const model = VOICE_MODEL();
   const f = opts.fetchImpl ?? fetch;
   const res = await f(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps?output_format=mp3_44100_128`, {
