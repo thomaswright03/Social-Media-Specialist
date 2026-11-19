@@ -8,6 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import type { Shot, TextBox } from "./gates.ts";
+import { motionRuntime, type ShotMotion } from "./motion.ts";
 
 export const W = 1080;
 export const H = 1920;
@@ -104,17 +105,36 @@ const scriptJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-/** The page every frame is drawn from. */
-export function composeHtml(t: TimedShot[], svgs: string[]): string {
-  const shots = t.map((s, i) => ({ at: s.at, dur: s.dur, label: labelFor(s), ...cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`), i }));
+/** Seconds a whip or zoom into a shot takes. */
+export const TRANSITION = 0.22;
+
+/** How a shot comes in: its motion plan's pick, a flash for a hard cut, a whip between graphics, otherwise a cut. */
+export function transitionFor(i: number, motion: ShotMotion | null, flash: boolean): string {
+  if (i === 0) return "cut";
+  if (motion?.transition) return motion.transition;
+  if (flash) return "flash";
+  return motion ? "whip" : "cut";
+}
+
+/**
+ * The page every frame is drawn from. A shot shows its drawing, or, when the
+ * motion kit plans it, its animated pieces (pipeline/motion/runtime.js).
+ */
+export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion | null)[] = []): string {
+  const shots = t.map((s, i) => {
+    const cam = cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`);
+    const m = motions[i] ?? null;
+    const move = m ? { from: 1, to: 1.035 } : {};
+    return { at: s.at, dur: s.dur, label: labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
+  });
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=block">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
-.scene{position:absolute;inset:0;display:none;transform-origin:50% 50%}
-.scene svg{width:${W}px;height:${H}px;display:block}
+.scene{position:absolute;inset:0;display:none;transform-origin:50% 50%;overflow:hidden}
+.scene>svg{width:${W}px;height:${H}px;display:block}
 #grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
 #flash{position:absolute;inset:0;background:#fff;opacity:0}
@@ -124,12 +144,15 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #cap b{color:${LIME};font-weight:900}
 #cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>
-${svgs.map((s, i) => `<div class="scene" id="s${i}">${s}</div>`).join("\n")}
+${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ?? "")}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
 <div id="label"></div><div id="cap"></div>
+<script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
 <script>
 const SHOTS=${scriptJson(shots)};
+const MOUNTED=SHOTS.map(s=>s.motion&&window.MK?window.MK.mount(s.motion,document.getElementById('s'+s.i)):null);
+const TR=${TRANSITION};
 const CHUNKS=${scriptJson(chunks)};
 const ease=(x)=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
 const esc=(s)=>s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
@@ -137,14 +160,26 @@ let shown=-1, capKey=null, labelText=null;
 window.render=(t)=>{
   let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
   const s=SHOTS[i], local=t-s.at, p=Math.min(1,local/s.dur);
-  if(i!==shown){ if(shown>=0) document.getElementById('s'+shown).style.display='none'; document.getElementById('s'+i).style.display='block'; shown=i; }
+  const tp=(s.tr==='whip'||s.tr==='zoom')&&i>0&&local<TR?local/TR:1;
+  for(let k=0;k<SHOTS.length;k++){ const on=k===i||(k===i-1&&tp<1); const e=document.getElementById('s'+k); const want=on?'block':'none'; if(e.style.display!==want) e.style.display=want; }
+  shown=i;
   const el=document.getElementById('s'+i);
-  el.style.transform='scale('+(s.from+(s.to-s.from)*ease(p))+')';
+  const zoom=s.from+(s.to-s.from)*ease(p);
+  const te=ease(tp);
+  if(s.tr==='whip'&&tp<1){ el.style.transform='translateX('+((1-te)*1080)+'px) scale('+zoom+')'; el.style.filter='blur('+((1-te)*18)+'px)'; }
+  else if(s.tr==='zoom'&&tp<1){ el.style.transform='scale('+(zoom*(1.3-0.3*te))+')'; el.style.filter='blur('+((1-te)*10)+'px)'; el.style.opacity=String(te); }
+  else { el.style.transform='scale('+zoom+')'; el.style.filter=''; el.style.opacity=''; }
+  el.style.zIndex='2';
+  if(i>0&&tp<1){ const pv=SHOTS[i-1], pe=document.getElementById('s'+(i-1)); pe.style.zIndex='1'; const pz=pv.to;
+    if(s.tr==='whip'){ pe.style.transform='translateX('+(-te*1080)+'px) scale('+pz+')'; pe.style.filter='blur('+(te*18)+'px)'; pe.style.opacity=''; }
+    else { pe.style.transform='scale('+(pz*(1-0.1*te))+')'; pe.style.filter=''; pe.style.opacity=String(1-te); }
+    const pl=t-pv.at; if(MOUNTED[i-1]) MOUNTED[i-1].update(pl,pv.dur,t); for(const a of pe.getAnimations({subtree:true})){ a.pause(); a.currentTime=pl*1000; } }
   getComputedStyle(el).transform;
+  if(MOUNTED[i]) MOUNTED[i].update(local,s.dur,t);
   for(const a of el.getAnimations({subtree:true})){ a.pause(); a.currentTime=local*1000; }
   const g=document.getElementById('grain'); g.style.opacity=s.grain?'.18':'0';
   if(s.grain){ document.getElementById('turb').setAttribute('seed',String(Math.floor(t*30)%97+1)); g.style.transform='translate('+(Math.floor(t*30)%7-3)+'px,'+(Math.floor(t*30*3)%7-3)+'px)'; }
-  document.getElementById('flash').style.opacity=s.flash&&local<.1?String(.55*(1-local/.1)):'0';
+  document.getElementById('flash').style.opacity=(s.tr==='flash'||s.flash)&&local<.1?String(.55*(1-local/.1)):'0';
   const label=document.getElementById('label');
   if(labelText!==s.label){ label.innerHTML=s.label?'<span>'+esc(s.label)+'</span>':''; labelText=s.label; }
   label.style.opacity=s.label?String(i===0?1:Math.min(1,local/.18)):'0';

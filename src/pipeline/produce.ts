@@ -13,6 +13,7 @@ import { splitRead, spokenText, type SoundEffect, type Speak } from "../voice.ts
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
+import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { runStage, stagePrompt } from "./stages.ts";
@@ -200,24 +201,43 @@ export async function runProduce(d: {
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
-  // Art: a look sheet, the cast drawn once, then every shot drawn in that style with the cast placed in it.
+  // Art. Formats made of graphics (the explainer) use the motion kit: Claude
+  // picks and fills a ready-made animated piece per shot. The others get a
+  // look sheet, the cast drawn once, then every shot drawn in that style.
   const timed = t.map((s) => ({ ...s, start: Math.round(s.at * 10) / 10, end: Math.round((s.at + s.dur) * 10) / 10 }));
   const format: Format = isFormat(reel.format) ? reel.format : "story";
   const style = formatPrompt(format, "style");
-  const look = await lookSheet(timed, d.ask, style, log);
-  await writeFile(join(d.outDir, "look.txt"), look);
-  const cast = HAS_CAST[format] ? await castSheet(timed, look, d.ask) : NO_CAST;
-  await writeFile(join(d.outDir, "cast.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs>${cast.defs}</defs>${cast.parts.map((x, i) => `<use href="#${x.id}" transform="translate(${200 + (i % 3) * 340} ${300 + Math.floor(i / 3) * 420})"/>`).join("")}</svg>`);
-  log(cast.parts.length ? `Cast drawn once: ${cast.parts.map((x) => x.id).join(", ")}.` : "No cast sheet; each shot draws its own characters.");
-  const scenes = await drawScenes(timed, look, d.ask, log, cast, style);
-  const missing = scenes.map((s, i) => (s.svg ? null : i + 1)).filter((x): x is number => x !== null);
-  const svgs = scenes.map((s) => s.svg ?? "");
-  await writeSvgs(join(d.outDir, "scenes"), svgs.filter(Boolean));
-  if (missing.length) {
-    const g = gate([check("Every shot has a drawing that passed the checks", false, `shots ${missing.join(", ")}: ${scenes[missing[0]! - 1]!.problems.join(" ")}`)]);
-    await d.vault.saveStage({ stage: 5, subject: reel.subject, attempt: 1, passed: false, output: { look, missing }, gate: g }, now());
-    await d.vault.logAction({ kind: "stage", summary: `Stage 5, Production: stopped, ${missing.length} shots couldn't be drawn.`, detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
-    return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
+  let look = "";
+  let svgs: string[] = t.map(() => "");
+  let motions: (ShotMotion | null)[] = [];
+  if (USES_MOTION[format]) {
+    const m = await motionPlan(timed, d.ask, log, style);
+    await writeFile(join(d.outDir, "motion.json"), JSON.stringify(m.plan, null, 1));
+    look = `motion kit: ${(m.plan?.shots ?? []).map((s) => `${s.shot}. ${s.pieces.map((p) => p.kind).join(" + ")}`).join("; ")}`;
+    if (m.problems.length) {
+      const g = gate([check("Every shot has a motion plan that passed the checks", false, m.problems.slice(0, 6).join(" "))]);
+      await d.vault.saveStage({ stage: 5, subject: reel.subject, attempt: 1, passed: false, output: { motion: m.plan, problems: m.problems }, gate: g }, now());
+      await d.vault.logAction({ kind: "stage", summary: "Stage 5, Production: stopped, the motion plan didn't pass its checks.", detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
+      return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
+    }
+    motions = t.map((_, i) => shotMotion(m.plan, i));
+    log(`Motion plan: ${look}.`);
+  } else {
+    look = await lookSheet(timed, d.ask, style, log);
+    await writeFile(join(d.outDir, "look.txt"), look);
+    const cast = HAS_CAST[format] ? await castSheet(timed, look, d.ask) : NO_CAST;
+    await writeFile(join(d.outDir, "cast.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs>${cast.defs}</defs>${cast.parts.map((x, i) => `<use href="#${x.id}" transform="translate(${200 + (i % 3) * 340} ${300 + Math.floor(i / 3) * 420})"/>`).join("")}</svg>`);
+    log(cast.parts.length ? `Cast drawn once: ${cast.parts.map((x) => x.id).join(", ")}.` : "No cast sheet; each shot draws its own characters.");
+    const scenes = await drawScenes(timed, look, d.ask, log, cast, style);
+    const missing = scenes.map((s, i) => (s.svg ? null : i + 1)).filter((x): x is number => x !== null);
+    svgs = scenes.map((s) => s.svg ?? "");
+    await writeSvgs(join(d.outDir, "scenes"), svgs.filter(Boolean));
+    if (missing.length) {
+      const g = gate([check("Every shot has a drawing that passed the checks", false, `shots ${missing.join(", ")}: ${scenes[missing[0]! - 1]!.problems.join(" ")}`)]);
+      await d.vault.saveStage({ stage: 5, subject: reel.subject, attempt: 1, passed: false, output: { look, missing }, gate: g }, now());
+      await d.vault.logAction({ kind: "stage", summary: `Stage 5, Production: stopped, ${missing.length} shots couldn't be drawn.`, detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
+      return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
+    }
   }
 
   // Sound effects for each shot's cue (a failed one is left out, not fatal).
@@ -243,7 +263,7 @@ export async function runProduce(d: {
   let boxes: TextBox[] = [];
   const framesDir = join(work, "frames");
   try {
-    const html = composeHtml(t, svgs);
+    const html = composeHtml(t, svgs, motions);
     await writeFile(join(work, "compose.html"), html);
     boxes = (await renderFrames(browser, html, seconds, framesDir, log)).boxes;
   } finally {

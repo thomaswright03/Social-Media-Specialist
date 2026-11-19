@@ -15,6 +15,14 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   drawn edge to edge with depth and light, big white stick figures with
   simple faces, one lime accent, small CSS animations. Code checks each drawing
   (size, no scripts or outside files) and asks again when one is broken.
+- **Motion kit (explainers):** instead of drawings, Claude picks one ready-made
+  animated piece per shot (title, news card, counter, bars, line, compare,
+  quote, list, icon, timeline) and fills it in as JSON (the "motion" prompt);
+  the pieces are built once in `pipeline/motion/runtime.js` with proper
+  easing, readable by 0.6 s, over a moving background, and shots whip or zoom
+  into each other. Code checks the plan (`src/pipeline/motion.ts`): every
+  shot has 1 or 2 valid pieces, and every figure on screen is one the script
+  says.
 - **Captions and text:** one caption band, like the benchmark: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).
@@ -304,6 +312,45 @@ Before you answer, check:
 
 Reply with only the SVG, starting with <svg and ending with </svg>.
 <!-- /art -->
+
+<!-- motion -->
+You are the motion designer for a vertical Instagram Reel (1080x1920). A narrator speaks over one animated graphic per shot. The graphics are ready-made pieces, built and animated in code with proper easing; your job is to pick the right piece for each shot and fill it in.
+
+<style>
+{{STYLE}}
+</style>
+
+<shot_list>
+{{SHOTS}}
+</shot_list>
+
+The pieces (every field not marked optional is required):
+- title: {"kind":"title","text":"WAIT, WHAT?","highlight":"what"} Big words that drop in one by one. At most 40 characters; highlight (optional) is one word shown in lime. For a hook or a turn, never to repeat the voice word for word.
+- headline: {"kind":"headline","publisher":"NPR","text":"…","date":"Nov 17"} A news card that drops in. Use the publisher and headline as the shot gives them. At most 110 characters.
+- counter: {"kind":"counter","to":3.1,"from":0,"prefix":"","suffix":"%","label":"egg prices this month"} A big number that counts up with a ring filling around it. from is optional (default 0). label at most 40 characters.
+- bars: {"kind":"bars","title":"…","items":[{"name":"2024","value":3.2},{"name":"2026","value":4.2}],"highlight":1,"prefix":"$","unit":""} 2 to 5 bars that grow from zero, values counting. highlight (optional) is the bar's index from 0; default the last. Names at most 18 characters.
+- line: {"kind":"line","title":"…","points":[{"label":"Jan","value":2.1},{"label":"Nov","value":4.2}],"prefix":"$","unit":""} A line that draws itself, ending on the last value in big type. 2 to 8 points, labels at most 10 characters.
+- compare: {"kind":"compare","left":{"name":"Before","value":"$59"},"right":{"name":"Now","value":"$80"},"highlight":"right"} Two cards slide in with VS between. A value may be a number (it counts up) or short text, at most 9 characters.
+- quote: {"kind":"quote","text":"…","who":"the company"} Words appear one by one. At most 120 characters, copied from the shot exactly.
+- list: {"kind":"list","title":"…","items":["…","…"]} 2 to 4 items that tick in. Each at most 30 characters.
+- icon: {"kind":"icon","name":"phone","label":"…"} One big icon that draws itself, with a ripple. name is one of: {{ICONS}}. label at most 30 characters.
+- timeline: {"kind":"timeline","items":[{"date":"2023","label":"…"},{"date":"Nov 2026","label":"…"}],"highlight":1} 2 to 4 dates on a line; the highlighted one pulses.
+
+How to choose:
+1. The picture proves what the voice says in that shot. A shot that says a number shows that number (counter, bars, line, compare). A shot that says who did what shows the news card or an icon of the thing. A shot that says what changes for the viewer shows a compare or a list.
+2. Every figure on screen comes from that shot's own visual or line, exactly as written there. Never round, never add a number the script doesn't say. Code checks this.
+3. One piece per shot, two only when the shot really needs both (a headline over a counter). Never the same kind three shots in a row.
+4. The first shot grabs: its piece is the most surprising thing in the video, usually the number.
+5. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
+6. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.
+7. transition is how the shot comes in: whip (default, fast slide), zoom (a reveal or a big turn), flash (a shock), cut (the same idea continuing).
+
+<last_refusal>
+{{PROBLEMS}}
+</last_refusal>
+
+Reply with only JSON: {"shots":[{"shot":1,"bg":"navy","transition":"cut","pieces":[{…}]}, …]}, one entry for every shot in the list, numbered as there.
+<!-- /motion -->
 
 <!-- follow -->
 These are frames from a short Instagram Reel, one per shot, in order, with what the voice says over each:
