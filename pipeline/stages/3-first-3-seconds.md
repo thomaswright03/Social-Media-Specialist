@@ -45,6 +45,7 @@ Hard limits (code checks these):
 - One or two shots, each at least 1 second. A cut inside the first 3 seconds gives the viewer something new.
 - The first frame is the action already under way. No title card, no logo, no black or blank frame, and no shot of an empty place to set the scene. Every shot's `kind` is "action".
 - The first shot's `onScreenText` is the hook: 5 words at most.
+- In a format with a narrator, each shot's `audio` is at most 3 words a second of that shot (a 1.5 s shot holds 4 words).
 - `textAt` is the second the text appears. It must be readable by 1.5 s at 4 words a second: textAt + (words ÷ 4) is 1.5 or less. Putting it on at 0.2 or earlier always passes.
 
 The sound (`audio`):

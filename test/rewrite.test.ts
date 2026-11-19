@@ -6,7 +6,7 @@ import { fillPrompt, stagePrompt, testerPrompt } from "../src/pipeline/stages.ts
 import { lookProblems, lookSheet } from "../src/pipeline/scenes.ts";
 import { picturesLine } from "../src/pipeline/produce.ts";
 import { figures, newsList, parseFeed, sourceChecks, sourcedFigure, type SourceText } from "../src/pipeline/news.ts";
-import { gateScript } from "../src/pipeline/gates.ts";
+import { gateOpening, gateScript } from "../src/pipeline/gates.ts";
 import { gateIdeasFormat, runIdeas } from "../src/pipeline/ideas.ts";
 import { learnedChecks, runScript } from "../src/pipeline/script.ts";
 import { formatBrief } from "../src/pipeline/formats.ts";
@@ -68,6 +68,13 @@ describe("learned checks", () => {
 });
 
 describe("words a second", () => {
+  it("stage 3 catches it in a narrated opening, where stage 4 can't change it", () => {
+    const o = { intendedHook: "h", shots: [{ start: 0, end: 1.5, kind: "action", visual: "a", onScreenText: "WHY", textAt: 0.1, audio: "one two three four five" }, { start: 1.5, end: 3, kind: "action", visual: "b", audio: "fine" }] };
+    const name = (c: { name: string }) => c.name.startsWith("Every line can be said");
+    expect(gateOpening(o, [true, true, true], [], true).checks.find(name)).toMatchObject({ passed: false, detail: "shot at 0 s: 5 words in 1.5 s" });
+    expect(gateOpening(o, [true, true, true]).checks.find(name)).toBeUndefined();
+  });
+
   it("fails a line too long for its shot", () => {
     const shots = [
       { start: 0, end: 1, line: "one two three four five", onScreen: "x", visual: "a" },
