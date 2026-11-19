@@ -42,6 +42,8 @@ export type SpeakOpts = {
   /** The lines around this one, so a Reel read line by line still sounds like one read. */
   previousText?: string;
   nextText?: string;
+  /** Overrides the stability setting for this call (voice tests compare takes). */
+  stability?: number;
 };
 export type Speak = (text: string, opts?: SpeakOpts) => Promise<Spoken>;
 
@@ -57,7 +59,8 @@ const isV3 = (model: string) => /^eleven_v3/.test(model);
 export const spokenText = (t: string) => t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
 
 /** v3's stability is one of 0 (creative), 0.5 (natural) or 1 (robust); ELEVENLABS_STABILITY picks another. */
-function voiceSettings(model: string) {
+function voiceSettings(model: string, stability?: number) {
+  if (stability !== undefined) return isV3(model) ? { stability } : { stability, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true };
   const env = Number(process.env.ELEVENLABS_STABILITY);
   if (isV3(model)) return { stability: Number.isFinite(env) && process.env.ELEVENLABS_STABILITY?.trim() ? env : 0.5 };
   return { stability: Number.isFinite(env) && process.env.ELEVENLABS_STABILITY?.trim() ? env : 0.35, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true };
@@ -78,7 +81,7 @@ export async function speak(text: string, opts: SpeakOpts = {}): Promise<Spoken>
     body: JSON.stringify({
       text,
       model_id: model,
-      voice_settings: voiceSettings(model),
+      voice_settings: voiceSettings(model, opts.stability),
       // v3 reads the whole script in one take, so it needs no neighbouring lines.
       ...(!isV3(model) && opts.previousText ? { previous_text: opts.previousText } : {}),
       ...(!isV3(model) && opts.nextText ? { next_text: opts.nextText } : {}),

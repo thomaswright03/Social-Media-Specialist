@@ -234,7 +234,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: voice-test
-          path: voice-test.mp3
+          path: voice-test/
 
       - name: Mark today's morning run done
         if: always() && env.COMMAND == 'run' && steps.social.outcome != 'skipped'
