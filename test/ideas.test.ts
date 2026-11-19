@@ -13,7 +13,7 @@ async function memoryVault() {
 }
 
 const pitches = (sentence: (i: number) => string) =>
-  JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: sentence(i + 1), hook: i < 3 ? 5 : 3, shareable: i < 3 ? 5 : 3, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
+  JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: sentence(i + 1), answer: `It ends ${i + 1}.`, hook: i < 3 ? 5 : 3, shareable: i < 3 ? 5 : 3, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
 
 describe("stage 2: ideas", () => {
   it("reads yes and no", () => {

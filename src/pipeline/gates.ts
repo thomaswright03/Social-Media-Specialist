@@ -101,7 +101,7 @@ export function gateResearch(r: Research | null, notReadable: (url: string) => r
 
 // --- Stage 2: Ideas -----------------------------------------------------------
 
-export type Ideas = { pitches?: { id?: number; sentence?: string; hook?: number; shareable?: number; standalone?: number; different?: number }[]; finalists?: number[] };
+export type Ideas = { pitches?: { id?: number; sentence?: string; answer?: string; news?: number[]; hook?: number; shareable?: number; standalone?: number; different?: number }[]; finalists?: number[] };
 /** For each finalist id, what the cold readers said: true = they want the next sentence. */
 export type ColdReads = Record<number, boolean[]>;
 
@@ -206,12 +206,17 @@ export function emptySlices(shots: Shot[], length: number): number[] {
   return empty;
 }
 
+/** A spoken line may run at most this many words a second. */
+export const MAX_SPOKEN_WPS = 3;
+const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
 export function gateScript(s: Script | null, opening: Opening | null, review: ScriptReview | null, learned: Check[] = []): GateResult {
   const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
   const length = shots.length ? Math.max(...shots.map((x) => x.end ?? 0)) : 0;
   const gaps = shots.slice(1).filter((x, i) => Math.abs((x.start ?? 0) - (shots[i]!.end ?? 0)) > 0.05).length;
   const empty = emptySlices(shots, length);
   const unshown = shots.filter((x) => x.line?.trim() && !x.onScreen?.trim());
+  const rushed = shots.filter((x) => x.line?.trim() && wordCount(x.line) / Math.max(0.01, (x.end ?? 0) - (x.start ?? 0)) > MAX_SPOKEN_WPS);
   const text = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook, s?.caption].filter(Boolean).join(" \n");
   const openingFirst = opening?.shots?.[0];
   return gate([
@@ -219,6 +224,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
     check("Shots run in order with no gaps", shots.length > 0 && (shots[0]!.start ?? 0) === 0 && gaps === 0, gaps ? `${gaps} gaps` : undefined),
     check("Opens with the opening that passed stage 3", Boolean(openingFirst) && shots[0]?.visual === openingFirst!.visual && shots[0]?.onScreenText === openingFirst!.onScreenText),
     check("Something new in every 3-second slice", empty.length === 0, empty.length ? `nothing new at ${empty.map((t) => `${t}-${t + SLICE_SECONDS} s`).join(", ")}` : undefined),
+    check(`Every line can be said in its shot (${MAX_SPOKEN_WPS} words a second at most)`, rushed.length === 0, rushed.length ? rushed.map((x) => `shot at ${x.start} s: ${wordCount(x.line!)} words in ${((x.end ?? 0) - (x.start ?? 0)).toFixed(1)} s`).join("; ") : undefined),
     check("Every spoken claim is visible on screen", unshown.length === 0, unshown.length ? unshown.map((x) => `"${(x.line ?? "").slice(0, 50)}" at ${x.start} s`).join("; ") : undefined),
     check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text), text.match(REFERS_TO_OTHER_EPISODES)?.[0] ? `says "${text.match(REFERS_TO_OTHER_EPISODES)![0]}"` : undefined),
     check("Has its own payoff", Boolean(s?.payoff?.trim())),
@@ -277,7 +283,7 @@ export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: 
 // --- Stage 5: Production ------------------------------------------------------
 
 export const PRODUCTION_AXES = ["art", "readability", "voice", "sound"] as const;
-export type ProductionJudgement = { ours?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; benchmark?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; fixFirst?: string };
+export type ProductionJudgement = { seen?: { ours?: string; benchmark?: string }; ours?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; benchmark?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; fixFirst?: string };
 
 export function gateProduction(j: ProductionJudgement | null, frames: { ours: number; benchmarks: number }, learned: Check[] = []): GateResult {
   return gate([

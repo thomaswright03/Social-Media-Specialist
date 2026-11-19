@@ -36,7 +36,21 @@ export function stagePrompt(n: number, fill: Record<string, string>, block = "pr
   const md = pipelineFile(join("stages", stage.file));
   const m = md.match(new RegExp(`<!-- ${block} -->\\n([\\s\\S]*?)<!-- \\/${block} -->`));
   if (!m) throw new Error(`Stage ${n} has no ${block} prompt`);
-  return m[1]!.replace(/\{\{([A-Z_]+)\}\}/g, (_, k: string) => fill[k] ?? "").replace(/\n{3,}/g, "\n\n").trim();
+  return fillPrompt(m[1]!, fill);
+}
+
+/** Fill {{PLACEHOLDERS}} (missing ones become empty) and drop wrapper tags left empty (<last_refusal></last_refusal>). */
+export function fillPrompt(template: string, fill: Record<string, string>): string {
+  return template
+    .replace(/<([a-z_]+)>\s*\{\{([A-Z_]+)\}\}\s*<\/\1>\n?/g, (all, _t: string, k: string) => (fill[k]?.trim() ? all : ""))
+    .replace(/\{\{([A-Z_]+)\}\}/g, (_, k: string) => fill[k] ?? "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** A tester's prompt (pipeline/testers/<name>.md): the cold reads, matches, the editor and learned checks. */
+export function testerPrompt(name: string, fill: Record<string, string>): string {
+  return fillPrompt(pipelineFile(join("testers", `${name}.md`)), fill);
 }
 
 /** The JSON object in Claude's answer (it may wrap it in a code fence or a sentence). */

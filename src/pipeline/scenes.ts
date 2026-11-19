@@ -46,9 +46,36 @@ export const safeSvg = (svg: string) => svg.replace(/<script[\s\S]*?<\/script>/g
 /** The story format's style: the default when no format is given. */
 export const DEFAULT_STYLE = () => formatPrompt("story", "style");
 
-export async function lookSheet(shots: Shot[], ask: Ask, style = DEFAULT_STYLE()): Promise<string> {
-  const a = (await ask(stagePrompt(5, { SHOTS: shotList(shots), STYLE: style }, "look"))).trim();
-  return a.slice(0, 3000);
+export const LOOK_HEADINGS = ["PALETTE", "LIGHT", "CHARACTERS", "OBJECTS", "PLACES", "SHOT BY SHOT"] as const;
+export const LOOK_TRIES = 3;
+
+/** What's wrong with a look sheet: a missing heading, or SHOT BY SHOT without one line per shot. */
+export function lookProblems(look: string, shots: number): string[] {
+  const p: string[] = [];
+  const has = (h: string) => new RegExp(`^\\W*${h}\\b`, "im").test(look);
+  const missing = LOOK_HEADINGS.filter((h) => !has(h));
+  if (missing.length) p.push(`It has no ${missing.join(", ")} heading.`);
+  const tail = look.split(/^\W*SHOT BY SHOT\b.*$/im)[1] ?? "";
+  const numbered = new Set([...tail.matchAll(/^\W*(?:shot\s*)?(\d+)\b/gim)].map((m) => Number(m[1])));
+  const without = Array.from({ length: shots }, (_, i) => i + 1).filter((n) => !numbered.has(n));
+  if (has("SHOT BY SHOT") && without.length) p.push(`SHOT BY SHOT has no line for shot ${without.join(", ")}: give every shot its own numbered line.`);
+  return p;
+}
+
+export async function lookSheet(shots: Shot[], ask: Ask, style = DEFAULT_STYLE(), log?: (m: string) => void): Promise<string> {
+  const base = stagePrompt(5, { SHOTS: shotList(shots), STYLE: style }, "look");
+  let best = "";
+  let fewest = Infinity;
+  let problems: string[] = [];
+  for (let t = 1; t <= LOOK_TRIES; t++) {
+    const prompt = problems.length ? `${base}\n\nYour last look sheet was refused: ${problems.join(" ")} Fix that.` : base;
+    const a = (await ask(prompt).catch(() => "")).trim().slice(0, 6000);
+    problems = a ? lookProblems(a, shots.length) : ["It was empty."];
+    if (problems.length < fewest) [best, fewest] = [a, problems.length];
+    if (!problems.length) return a;
+  }
+  log?.(`The look sheet still has problems after ${LOOK_TRIES} tries (${problems.join(" ")}); drawing from the best one.`);
+  return best;
 }
 
 /**
@@ -136,7 +163,7 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
         LOOK: look,
         STYLE: style,
         OVERLAY_TEXT: (s.line?.trim() || s.onScreenText?.trim()) ? `"${(s.line?.trim() || s.onScreenText!.trim())}"` : "(none)",
-        IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `A small label "${s.onScreenText.trim()}" is laid over y 240 to 300; don't draw it either.` : "",
+        IN_WORLD: s.line?.trim() && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? `A small label "${s.onScreenText.trim()}" is laid over y 240 to 300; don't draw it either.` : "No label is laid over this shot.",
         SECONDS: seconds,
         N: String(i + 1),
         TOTAL: String(shots.length),

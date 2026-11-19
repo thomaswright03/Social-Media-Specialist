@@ -30,7 +30,9 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   H.264/AAC mp4.
 
 **Gate (code, `gateProduction`):**
+- the look sheet has its six headings and a SHOT BY SHOT line for every shot (asked again up to 3 times, then the best one is used);
 - every shot has a drawing that passed the checks, and every line was voiced;
+- the cold viewer's PICTURES line names no frame whose picture doesn't show what the voice says;
 - a cold viewer who sees one frame of every shot with what the voice says
   over it retells the story right and isn't confused;
 - key frames from our video and from at least 2 benchmark Reels, side by side;
@@ -41,75 +43,276 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 - every learned check for stage 5.
 
 <!-- prompt -->
-You are judging stage 5. Look at our frames and the benchmark frames side by side ({{FRAMES}}). Score each from 1 to 5 on art, readability (on-screen text), voice and sound (from the notes: {{AUDIO_NOTES}}). Be strict: the benchmark is what people already choose to watch.
+You are judging stage 5 of a Reel pipeline: is our finished Reel as good as the Reels people already choose to watch?
 
-Reply with only JSON: {"ours": {"art": 3, "readability": 4, "voice": 2, "sound": 3}, "benchmark": {"art": 4, "readability": 4, "voice": 4, "sound": 4}, "fixFirst": "the single biggest gap"}
+Your scores decide whether it ships, and your fixFirst note is what gets fixed if it doesn't. A generous score ships a weak Reel. A harsh one sends good work back. Be strict, and make every point you take off stand on something you can point to.
+
+<frames>
+{{FRAMES}}
+</frames>
+- Ours: one frame from every shot, in order.
+- The benchmark: the cover image of each benchmark Reel. A cover is the one frame its maker chose to represent it.
+
+<audio_notes>
+{{AUDIO_NOTES}}
+</audio_notes>
+You cannot hear anything. Judge voice and sound only from these notes. If the notes don't cover something, don't assume it is good or bad. For the benchmark you have only an assumed description: score it from that description as written, and don't move it on a guess.
+
+Score ours and the benchmark from 1 to 5, in whole numbers, on the four things below. Score each against the levels as written, not against the other side, and use the same levels for both.
+
+ART (the pictures)
+Look for: can you tell in half a second who is there, where they are and what is happening? Do the people, places, colours and light stay the same from frame to frame? Is there depth and one lit centre of attention? Is anything broken: limbs that don't join, objects that float, empty bands, things cut off?
+5: every frame could be a cover. Instantly clear, consistent throughout, nothing broken.
+4: clear and consistent. One or two frames are plainer than the rest, and nothing looks wrong.
+3: readable but uneven. Some frames are flat or sparse, or people and places shift between frames, or one frame is visibly broken.
+2: several frames are hard to read or visibly broken.
+1: in most frames you cannot tell what is happening.
+
+READABILITY (the text on screen)
+Look for: is it big enough to read on a phone? Does it stand out from what is behind it? Is it inside the frame and clear of faces and the action? Is it short enough to read in the time one shot gives?
+5: every piece of text is big, clear, well placed and short.
+4: all of it can be read; one piece is a little small, faint or long.
+3: one piece is hard to read, or sits over a face or the action.
+2: several pieces are hard to read.
+1: most of it cannot be read, or it is missing where it was needed.
+
+VOICE (from the notes)
+Look for: is every line there, clear over the music and effects, at a natural pace, with nothing cut off?
+5: everything in the notes is on target.
+4: one small miss a listener might not notice.
+3: one clear miss a listener would notice.
+2: several clear misses.
+1: the voice is missing or mostly cannot be followed.
+
+SOUND (from the notes)
+Look for: is the loudness on target? Does the music stay under the voice? Do the effects land on the actions? Is there silence where sound was meant?
+5: everything in the notes is on target.
+4: one small miss a listener might not notice.
+3: one clear miss a listener would notice.
+2: several clear misses.
+1: the sound is missing or gets in the way.
+
+Write `seen` first, then the scores, then `fixFirst`.
+- `seen.ours`: two sentences on what our frames show at their best and at their worst, naming shot numbers.
+- `seen.benchmark`: one sentence on what the covers show.
+- `fixFirst`: the one change that would close the biggest gap. Name the score, the shots, what is wrong and what to do instead. If we are level or ahead on all four, name the weakest thing still worth fixing.
+
+Reply with only JSON: {"seen": {"ours": "...", "benchmark": "..."}, "ours": {"art": 3, "readability": 4, "voice": 2, "sound": 3}, "benchmark": {"art": 4, "readability": 4, "voice": 4, "sound": 4}, "fixFirst": "..."}
 <!-- /prompt -->
 
 <!-- look -->
-You're the art director of an animated Instagram Reel. Here is its shot list (each with its camera and place):
+You are the art director of an animated Instagram Reel.
 
+The Reel is drawn one shot at a time. Each shot's artist sees your look sheet, their own shot and the two shots either side, and nothing else. Whatever you leave open, a dozen artists will each decide differently, and the Reel will look like a dozen different films. Your look sheet is the only thing that makes it one.
+
+<shot_list>
 {{SHOTS}}
+</shot_list>
 
-The style is fixed, don't change it:
+<style>
 {{STYLE}}
-Captions are laid on top by code, so leave them out.
+</style>
+The style is fixed. Choose inside its ranges; never change or contradict it.
 
-Write the look sheet every shot is drawn from. Be exact, like a model sheet, so a dozen separate drawings can't disagree:
-- Each character, if there are any: name, height on the canvas in a medium shot, and the ONE thing on or by the head that tells them apart at a glance, with its shape and colour (a ponytail, a top hat, round glasses, a cap, floppy ears, a bow). Grown-ups tall, kids about two thirds as tall. Things on the body (a sash, a tie, an apron) are thin and in a muted colour, never a big accent-coloured block.
-- Each recurring object, prop or graphic (the stand, the pitcher, the marble track, the map, the big number card): its exact shape, size on the canvas, colours, and the detail that makes it obviously that thing.
-- Each place or background: what's in it, front to back, and what each camera sees, so a wide, a close-up and a reverse angle all show different parts of the same place.
-- The light and the palette: where light comes from and the exact colours used.
-Plain text, under 300 words.
+How every frame is laid out, so you can plan for it:
+- The canvas is 1080 wide and 1920 tall.
+- Everything that matters (faces, hands, the key object) sits between y 330 and y 1250.
+- Above y 330 is wall, sky or ceiling. Below y 1260 is floor, ground, table top or shadow.
+- Code lays captions and labels on top. Leave them out of the look sheet.
+- A standing adult at normal size is about 1000 px tall. Give sizes against that.
+
+Write the look sheet under the six headings below, in this order. Be exact, like a model sheet: hex codes for colours, pixels for sizes, and left / centre / right and near / far for positions. Never "warm", "big" or "nearby". Take the names of people, objects and places from the shot list and spell them the same way every time.
+
+PALETTE
+Six to eight colours in all, counting the style's own. For each: its hex code and its one job (back wall, floor, key light, and so on). One accent colour, and the one thing it is saved for. Every shot uses these colours and no others.
+
+LIGHT
+For each place: the one thing the light comes from, exactly where it sits in that place, its colour, and which way shadows fall. It stays there in every shot unless the shot list moves it.
+
+CHARACTERS (write "none" if the shot list has none)
+For each character:
+- an id: c- and a lowercase name (c-mia, c-mayor). Every shot will use it.
+- who they are, in a few words.
+- the ONE thing on or by the head that tells them apart at a glance, with its shape and colour (a ponytail, a flat cap, round glasses, a bow, floppy ears). If the shot list already gives them one, use that.
+- height: adults full height, children about two thirds.
+- anything on the body (a sash, a tie, an apron): thin and in a muted colour, never a big block of the accent colour.
+- which side of the frame they stand on when two characters share a shot. They keep that side for the whole Reel unless the shot list moves them.
+
+OBJECTS (props, recurring objects and graphics)
+For each thing that appears in two or more shots, or that the Reel turns on:
+- an id: p- and a lowercase name (p-ledger).
+- its exact shape, its size in pixels, and its colours from the palette.
+- the one detail that makes it obviously that thing.
+- if it changes during the Reel (closed then open, empty then full), what each state looks like.
+
+PLACES
+For each place, under the name the shot list gives it:
+- three to five landmarks, each with where it is (left, centre or right; near or far) and its colour.
+- where the floor meets the wall, or the ground meets the sky, as a y value in a wide shot.
+- what is at each side, so a shot facing the other way still shows the same place.
+
+SHOT BY SHOT
+One line for every shot: its number, its camera, which landmarks are behind the action, and where the light falls in the frame. Neighbouring shots in the same place show different parts of it. Every line agrees with PLACES and LIGHT: a close-up facing the door shows the door's wall, not the window's.
+
+Plain text, under 600 words. No story, no captions, no advice: only what an artist needs in order to draw.
 <!-- /look -->
 
 <!-- cast -->
-You draw the cast of an animated Instagram Reel once, so every shot can reuse them. Look sheet:
+You draw the cast of an animated Instagram Reel once, as reusable pieces.
 
+Each shot's artist will place your pieces at anything from about half size (a wide shot) to four times size (a close-up), sometimes mirrored, and will then draw the face and the stick body themselves. So every piece has to read at any size: bold, simple shapes, no detail smaller than 8 px, no stroke thinner than 4 px.
+
+<look_sheet>
 {{LOOK}}
+</look_sheet>
 
-Shots: 
+<shot_list>
 {{SHOTS}}
+</shot_list>
 
-Reply with one SVG: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs> … </defs></svg>. Inside <defs>:
-- For each character, one <g id="c-NAME" data-note="who they are and what the group holds"> (NAME lowercase letters and hyphens, e.g. c-mia, c-mayor): the head as a filled white circle of radius 70 centred on 0,0, with the neck coming down to 0,70, plus everything on or by the head that tells them apart (hair, hat, ears, glasses, a bow, a collar), in the look sheet's shapes and colours. No eyes, brows or mouth: each shot draws those for the feeling it needs. No body: each shot draws the stick body in its own pose under the neck.
-- For each prop that appears in 2 or more shots, one <g id="p-NAME" data-note="what it is and its size"> drawn at its real size next to a character (a 180 px head means a standing adult about 1000 px tall), standing on 0,0 (its bottom centre is the origin), with the detail that makes it obviously that thing (a striped awning, a price sign, a glass pitcher with lemon slices).
-Flat vector, the look sheet's colours, soft gradients allowed (define them inside <defs> too, with ids starting g-). Under 12 KB. No <script>, <image>, <foreignObject>, event handlers or outside links.
+Reply with one SVG, with everything inside <defs> so the sheet itself draws nothing:
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs> … </defs></svg>
+
+Characters. For each character in the look sheet, one group: <g id="c-NAME" data-note="...">
+- Use the look sheet's id exactly (lowercase letters and hyphens, such as c-mia or c-mayor).
+- The head is a filled white circle of radius 70 centred on 0,0, with the neck coming down to 0,70. The shot attaches the body there.
+- Add everything on or by the head that tells this character apart (hair, a hat, ears, glasses, a bow, a collar), in the look sheet's shapes and colours.
+- Keep the face clear. Nothing covers the area from x -45 to 45 and y -30 to 45, where the shot draws the eyes, brows and mouth. Glasses are frames only, so the eyes show through.
+- No eyes, brows or mouth: each shot draws those for the feeling it needs. No body: each shot draws the stick body in its own pose under the neck.
+- It must still be right when mirrored: no letters or numbers on a head piece.
+- data-note says who they are and what the group holds, for example "Mia, a girl, two thirds height: head, brown ponytail, red bow".
+
+Props. For each object in the look sheet that appears in 2 or more shots, one group: <g id="p-NAME" data-note="...">
+- Use the look sheet's id exactly.
+- Draw it at its real size next to a character (the head circle is 140 px across, and a standing adult is about 1000 px tall).
+- It stands on 0,0: its bottom centre is the origin.
+- Include the detail that makes it obviously that thing, as the look sheet describes it.
+- If the look sheet gives it two states, draw each as its own group (p-box-closed, p-box-open).
+- data-note says what it is and its size, for example "the cash box, lid closed, 220 wide and 140 tall".
+
+Drawing rules:
+- Flat vector, in the look sheet's colours and no others. Soft gradients are allowed: define them inside <defs> too, with ids starting g-.
+- Every id is unique and starts with c-, p- or g-.
+- Under 12 KB. Round coordinates to whole numbers and prefer simple shapes to long paths.
+- Not allowed: <script>, <image>, <foreignObject>, event handlers or outside links.
+
+<last_refusal>
 {{PROBLEMS}}
+</last_refusal>
+If a refusal is given above, fix exactly that and keep everything else.
+
+Before you answer, check: every character in the look sheet has a c- group, every id matches the look sheet, and nothing is drawn outside <defs>.
 
 Reply with only the SVG.
 <!-- /cast -->
 
 <!-- art -->
-You draw one shot of an animated Instagram Reel as an SVG, like one frame of a film storyboard by a great cinematographer.
+You draw one shot of an animated Instagram Reel as an SVG, the way a great cinematographer would frame one moment of a film.
 
-Style, the same in every shot:
+The shot is on screen for two or three seconds, on a phone, between shots drawn by other artists from the same look sheet. Two things decide whether it is good:
+- A stranger reads it in half a second: who is here, where they are, and the one thing happening.
+- It looks like part of the same film as its neighbours: the same people, the same place, the same light.
+
+<style>
 {{STYLE}}
+</style>
+The style is the same in every shot. Follow it exactly.
 
-Look sheet (follow it exactly): {{LOOK}}
+<look_sheet>
+{{LOOK}}
+</look_sheet>
+Follow the look sheet exactly: its colours and no others, its light where it says, its people and objects as it describes them, and its SHOT BY SHOT line for this shot as your background.
 
-The cast: {{CAST}}
-The camera for this shot is {{CAMERA}}. Frame it like that:
-- wide: the whole place and everyone in it, characters about a third of the frame tall; this is where we learn where we are.
-- medium: one or two characters from the knees up, big (head scale 1.3 to 1.8), the place behind them.
-- close-up: one face fills the upper half of the frame (head scale 3 to 4), the feeling is the shot.
-- over-the-shoulder: the back of one character's head and shoulder big in the foreground, the other character facing us across from them.
-- low angle / high angle: look up at someone big and powerful, or down at someone small; the ground line tilts.
-- insert: the prop, object or number that matters, huge and detailed.
-If the style above gives its own framing for a camera, follow the style.
-When two characters share the shot they react to each other: they face each other, their eyes meet or one looks away, a hand points, gives, takes or reaches. Show the action itself happening (handing the cup over, the sign falling), not two figures standing still.
-Place: {{PLACE}}. Show the part of it this camera would see, so neighbouring shots don't look the same.
+<cast>
+{{CAST}}
+</cast>
+Use a cast piece wherever one exists for a person or object in this shot. Never redraw by hand something the cast already has, and never use an id that is not in the list.
 
-Canvas: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">. Fill the whole canvas, top to bottom: no empty bands. The shot must read in half a second: one clear action, one clear feeling, the key thing lit.
-Code lays the big caption over y 1270 to 1500, below the action. Compose the shot so everything that matters (faces, heads and hats, hands doing the action, the key prop) sits between y 330 and 1250; below 1260 is floor, table top, ground or shadow, nothing anyone needs to see. The top 330 px is wall, sky or ceiling: Instagram's buttons and a small text label sit there.
-Don't write these words, the caption adds them: {{OVERLAY_TEXT}}. {{IN_WORLD}} Text that's part of the world (a sign, a price, a clock) is fine: at least 48 px, inside x 80 to 940, between y 340 and 1250.
-Motion: 2 to 4 CSS @keyframes animations in a <style> inside the SVG that make the action move within {{SECONDS}} seconds: the arm handing over, the head turning, a blink, steam, leaves blowing, a sign swinging. Use transform-box: fill-box and a transform-origin on animated parts (a shoulder for an arm, the neck for a head).
-Not allowed: <script>, <image>, <foreignObject>, event handlers, external links or fonts. Keep it under 30 KB.
+THE SHOT
 
-Shot {{N}} of {{TOTAL}}, {{SECONDS}} s: {{VISUAL}}
-The story around it:
+<shot>
+Shot {{N}} of {{TOTAL}}, {{SECONDS}} s
+Camera: {{CAMERA}}
+Place: {{PLACE}}
+What happens: {{VISUAL}}
+</shot>
+
+<story_around_it>
 {{CONTEXT}}
+</story_around_it>
+The neighbours are for continuity only. Keep people on the side of the frame they were on, objects in the state they were left in, and the light where it was. Draw only this shot's moment, and show a different part of the place from the shot before.
+
+FRAMING
+
+Frame it the way this shot's camera says. If the style gives its own framing for a camera, follow the style.
+- wide: the whole place and everyone in it, characters about a third of the frame tall. This is where the viewer learns where we are, so the place's landmarks are in view.
+- medium: one or two characters from the knees up, big (head scale 1.3 to 1.8), the place behind them.
+- close-up: one face fills the upper half of the frame (head scale 3 to 4). The feeling is the shot.
+- over-the-shoulder: the back of one character's head and shoulder, big, in shadow and with no face, in the foreground. The other character faces us across from them, in the light.
+- low angle: we look up at someone big and powerful. The ground line is low and tilts.
+- high angle: we look down on someone small. The ground fills most of the frame and tilts.
+- insert: the one prop, object or number that matters, huge and detailed. At most a hand comes into the frame.
+
+COMPOSITION
+
+- One action, one feeling. Show the action itself happening (the envelope halfway under the door, the lid lifting), never figures standing still. Add nothing that changes what the moment means.
+- When two characters share the shot they react to each other: they face each other, their eyes meet or one looks away, a hand points, gives, takes or reaches.
+- The key thing is lit. The brightest, sharpest part of the frame is the action, and the frame gets darker and plainer away from it.
+- Build it back to front: the far background, the middle of the place with its landmarks, the light, the shadows on the ground, the characters and props, then anything in the near foreground.
+- Give it depth: far things are smaller, darker and plainer, and near things overlap far ones.
+- Everything is attached and grounded. A body starts at its head's neck point. Arms and legs bend at the elbow and the knee and join the body. A hand touches what it holds. Feet stand on the ground. Every person and object has a shadow where it meets a surface.
+- Faces: draw the eyes, brows and mouth for the feeling this shot names, big enough to read at this size, and shifted toward the side the character is looking.
+- Fill the whole canvas, top to bottom. No empty bands.
+
+CANVAS AND SAFE ZONES
+
+Start with: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+- Everything that matters (faces, heads and hats, the hands doing the action, the key prop) sits between y 330 and y 1250.
+- Code lays the big caption over y 1270 to 1500. Below y 1260, draw only floor, table top, ground or shadow: nothing anyone needs to see.
+- The top 330 px is wall, sky or ceiling. Instagram's buttons and a small text label sit there.
+
+TEXT
+
+- Don't write these words; the caption adds them: {{OVERLAY_TEXT}}
+- {{IN_WORLD}}
+- Text that is part of the world (a sign, a price, a clock) is fine: at least 48 px, inside x 80 to 940, between y 340 and 1250, spelled exactly as the shot gives it.
+
+MOTION
+
+Add 2 to 4 CSS @keyframes animations, in a <style> inside the SVG, that make the action move within {{SECONDS}} seconds.
+- One of them is the action itself: the arm handing over, the head turning, the lid lifting. The others are small signs of life: a blink, steam, leaves blowing, a sign swinging.
+- Put each moving part in its own group, with transform-box: fill-box and a transform-origin at its joint (the shoulder for an arm, the neck for a head).
+- Keep each move small enough that nothing comes apart, leaves the y 330 to 1250 zone or covers a face.
+- The drawing has to read at every moment of the motion, because any one frame may be pulled out and judged on its own.
+
+LIMITS
+
+- Under 30 KB. Round coordinates to whole numbers.
+- Draw a finished scene. The code accepts as few as 6 shapes, but that is a floor, not a target.
+- Not allowed: <script>, <image>, <foreignObject>, event handlers, external links or fonts.
+
+<last_refusal>
 {{PROBLEMS}}
+</last_refusal>
+If a refusal is given above, fix exactly that and keep what worked.
+
+Before you answer, check:
+1. Cover everything but the picture. Is it clear in half a second who, where and what?
+2. Is everything that matters between y 330 and y 1250, with nothing needed below y 1260?
+3. Does every body join its head, every hand reach its object, and every foot touch the ground?
+4. Is every colour from the look sheet, and every cast id from the list?
 
 Reply with only the SVG, starting with <svg and ending with </svg>.
 <!-- /art -->
+
+<!-- follow -->
+These are frames from a short Instagram Reel, one per shot, in order, with what the voice says over each:
+
+{{WATCHED}}
+
+Look at every image. You have watched it once, as a stranger. Go only by what the pictures show and the voice says: if something isn't shown or said, you don't know it.
+
+In two plain sentences, tell a friend what happened and who it was about.
+Then, on a new line, write CONFUSED: and what didn't make sense, or CONFUSED: nothing.
+Then, on a new line, write PICTURES: and the number of each frame where the picture doesn't show what the voice is saying, or PICTURES: fine.
+<!-- /follow -->

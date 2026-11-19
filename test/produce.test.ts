@@ -72,7 +72,7 @@ describe("drawings", () => {
     const r = await drawScene(shots, 0, "look", async (p) => (drawn.push(p), tries.shift()!), cast);
     expect(r.tries).toBe(2);
     expect(drawn[0]).toMatch(/#c-mia: Mia, 8/);
-    expect(drawn[0]).toMatch(/camera for this shot is close-up/);
+    expect(drawn[0]).toMatch(/Camera: close-up/);
     expect(drawn[1]).toMatch(/#c-bob, which isn't defined/);
     expect(r.svg).toContain('<g id="c-mia"');
   });
@@ -81,12 +81,12 @@ describe("drawings", () => {
     const { formatPrompt } = await import("../src/pipeline/formats.ts");
     const { lookSheet } = await import("../src/pipeline/scenes.ts");
     const seen: string[] = [];
-    await lookSheet([{ visual: "marbles drop" }], async (p) => (seen.push(p), "look"), formatPrompt("satisfying", "style"));
+    await lookSheet([{ visual: "marbles drop" }], async (p) => (seen.push(p), "PALETTE\nLIGHT\nCHARACTERS none\nOBJECTS\nPLACES\nSHOT BY SHOT\n1. close-up"), formatPrompt("satisfying", "style"));
     await drawScene([{ start: 0, end: 2, visual: "marbles drop" }], 0, "look", async (p) => (seen.push(p), good), NO_CAST, formatPrompt("explainer", "style"));
     expect(seen[0]).toMatch(/candy colours/);
     expect(seen[1]).toMatch(/editorial motion graphics/);
     expect(seen[1]).not.toMatch(/white stick figures \(stroke #f5f5f5, stroke-width 12 to 18/);
-    expect(seen[1]).toMatch(/cast: \(none/);
+    expect(seen[1]).toMatch(/<cast>\n\(none/);
   });
 
   it("the art and look prompts exist and fill in", () => {
