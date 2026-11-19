@@ -23,7 +23,7 @@ export function failuresText(g: GateResult | null): string {
   return ["Your last answer failed these checks. Fix every one:", ...failed.map((c) => `- ${c.name}${c.detail ? `: ${c.detail}` : ""}`)].join("\n");
 }
 
-const REFERS_TO_OTHER_EPISODES = /\b(part\s*(\d+|one|two|three|four|five|six|i{1,3}|iv|v)\b|episode|last time|previously|as we saw|in the last (video|one|reel)|continued from|to be continued|see part)/i;
+const REFERS_TO_OTHER_EPISODES = /\b(part\s*(\d+|one|two|three|four|five|six|i{1,3}|iv|v)\b|episode|last time|previously|as we saw|in the last (video|one|reel)|continued from|to be continued|see part|chapter\s*\d+|(?<![\w#])#\d+\b|(follow|stay tuned|come back) for (part |number |#)?\d+\b)/i;
 
 // --- Stage 0: Diagnose --------------------------------------------------------
 
@@ -170,7 +170,7 @@ export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned:
 
 // --- Stage 4: Script ----------------------------------------------------------
 
-export type Script = { shots?: Shot[]; payoff?: string; nextHook?: string };
+export type Script = { shots?: Shot[]; payoff?: string; nextHook?: string; caption?: string };
 /** Problems the separate review found (grammar, physics, timing, contradictions). */
 export type ScriptReview = { problems: string[] };
 
@@ -212,7 +212,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
   const gaps = shots.slice(1).filter((x, i) => Math.abs((x.start ?? 0) - (shots[i]!.end ?? 0)) > 0.05).length;
   const empty = emptySlices(shots, length);
   const unshown = shots.filter((x) => x.line?.trim() && !x.onScreen?.trim());
-  const text = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook].filter(Boolean).join(" \n");
+  const text = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook, s?.caption].filter(Boolean).join(" \n");
   const openingFirst = opening?.shots?.[0];
   return gate([
     check("30 to 60 seconds long", length >= 30 && length <= 60, `${length.toFixed(1)} s`),
