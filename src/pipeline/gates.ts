@@ -148,8 +148,14 @@ const TITLE_LIKE = /\b(title (card|screen|frame|slide)|(black|blank|empty) (scre
 /** "no title card", "not black", "without a logo": a shot that says what it isn't. */
 export const withoutNegations = (s: string) => s.replace(/\b(no|not|never|without|isn't|is not)\s+(an?\s+|the\s+)?[\w-]+(\s+(card|frame|screen))?/gi, " ");
 
-export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned: Check[] = []): GateResult {
+/** A spoken line may run at most this many words a second. */
+export const MAX_SPOKEN_WPS = 3;
+const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
+export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned: Check[] = [], narrated = false): GateResult {
   const shots = o?.shots ?? [];
+  // In a narrated format each shot's audio becomes its spoken line, which stage 4 keeps as is.
+  const rushed = narrated ? shots.filter((x) => x.audio?.trim() && wordCount(x.audio) / Math.max(0.01, (x.end ?? 0) - (x.start ?? 0)) > MAX_SPOKEN_WPS) : [];
   const first = shots[0];
   const words = (first?.onScreenText ?? "").trim().split(/\s+/).filter(Boolean).length;
   const textAt = typeof first?.textAt === "number" ? first.textAt : first?.onScreenText ? (first.start ?? 0) : Infinity;
@@ -163,6 +169,7 @@ export function gateOpening(o: Opening | null, soundOff: SoundOffReads, learned:
     check("The hook is on screen by 0.5 s", textAt <= 0.5, Number.isFinite(textAt) ? `appears at ${textAt} s` : "no on-screen text in the first shot"),
     check("The hook can be read by 1.5 s", words > 0 && readBy <= 1.5, `${words} words, read by ${Number.isFinite(readBy) ? readBy.toFixed(2) : "never"} s`),
     check("The opening covers the first 3 seconds", shots.length > 0 && Math.max(...shots.map((s) => s.end ?? 0)) >= 3),
+    ...(narrated ? [check(`Every line can be said in its shot (${MAX_SPOKEN_WPS} words a second at most)`, rushed.length === 0, rushed.length ? rushed.map((x) => `shot at ${x.start} s: ${wordCount(x.audio!)} words in ${((x.end ?? 0) - (x.start ?? 0)).toFixed(1)} s`).join("; ") : undefined)] : []),
     check("Sound-off viewers know why to keep watching", soundOff.length >= 3 && yes >= 2, `${yes} of ${soundOff.length}`),
     ...learned,
   ]);
@@ -205,10 +212,6 @@ export function emptySlices(shots: Shot[], length: number): number[] {
   }
   return empty;
 }
-
-/** A spoken line may run at most this many words a second. */
-export const MAX_SPOKEN_WPS = 3;
-const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 
 export function gateScript(s: Script | null, opening: Opening | null, review: ScriptReview | null, learned: Check[] = []): GateResult {
   const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));

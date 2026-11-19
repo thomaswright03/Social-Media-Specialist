@@ -150,7 +150,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       subject: reel.subject,
       ask: d.ask,
       prompt: (failures) => stagePrompt(3, { PREMISE: `${p}\n\n${thisBrief}`, PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
-      gate: async (o) => gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold)),
+      gate: async (o) => gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold), NARRATED[choice.format]),
       input: { premise: p, format: reel.format },
       log: d.log,
       now: d.now,
