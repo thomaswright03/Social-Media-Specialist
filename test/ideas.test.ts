@@ -31,7 +31,7 @@ describe("stage 2: ideas", () => {
     expect(r.choice.format).toBe("story");
     expect(r.passed).toBe(true);
     expect(r.finalists).toHaveLength(3);
-    expect(prompts[0]).toContain("Format: story");
+    expect(prompts[0]).toContain("Format: a stick-figure story");
     expect(prompts.filter((p) => p.includes("Answer with only YES"))).toHaveLength(9);
     const started = await vault.reelsStarted();
     expect(started[0]).toMatchObject({ format: "story", finalists: r.finalists });

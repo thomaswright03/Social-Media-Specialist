@@ -14,7 +14,7 @@ made. Keep the top 3.
 <!-- prompt -->
 You are the Social Media Specialist. Stage 2: pitch 20 premises for standalone Reels (30 to 60 s) in our niche: {{NICHE}}.
 
-This Reel's format (every pitch must fit it):
+This Reel's format (every pitch must fit it; its rules come first):
 {{FORMAT}}
 
 Winning patterns (stage 1):
@@ -25,7 +25,7 @@ What we've already made (be different from it):
 
 {{LESSONS}}
 
-Every pitch must work as a story a stranger follows on one watch in 35 seconds: one or two characters, one or two places, one question set up at the start and answered at the end.
+Every pitch must work for a stranger on one watch in 35 seconds.
 
 For each pitch write it as ONE sentence that makes a cold reader want the next sentence, then score it 1 to 5 on hook, shareable, standalone, different. Then list the ids of the top 3 by total.
 

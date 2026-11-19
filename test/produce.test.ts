@@ -77,6 +77,18 @@ describe("drawings", () => {
     expect(r.svg).toContain('<g id="c-mia"');
   });
 
+  it("draws in the format's own style", async () => {
+    const { formatPrompt } = await import("../src/pipeline/formats.ts");
+    const { lookSheet } = await import("../src/pipeline/scenes.ts");
+    const seen: string[] = [];
+    await lookSheet([{ visual: "marbles drop" }], async (p) => (seen.push(p), "look"), formatPrompt("satisfying", "style"));
+    await drawScene([{ start: 0, end: 2, visual: "marbles drop" }], 0, "look", async (p) => (seen.push(p), good), NO_CAST, formatPrompt("explainer", "style"));
+    expect(seen[0]).toMatch(/candy colours/);
+    expect(seen[1]).toMatch(/editorial motion graphics/);
+    expect(seen[1]).not.toMatch(/white stick figures \(stroke #f5f5f5, stroke-width 12 to 18/);
+    expect(seen[1]).toMatch(/cast: \(none/);
+  });
+
   it("the art and look prompts exist and fill in", () => {
     expect(stagePrompt(5, { VISUAL: "A dog types", LOOK: "the dog: lime collar" }, "art")).toMatch(/A dog types[\s\S]*Reply with only the SVG/);
     expect(stagePrompt(5, { LOOK: "the dog" }, "art")).toContain("the dog");

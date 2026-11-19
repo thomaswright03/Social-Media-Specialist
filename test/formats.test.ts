@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBrief, gateFormat, nextFormat, type Made } from "../src/pipeline/formats.ts";
+import { ENTERTAINMENT, formatBrief, formatPrompt, gateFormat, HAS_CAST, NARRATED, nextFormat, type Format, type Made } from "../src/pipeline/formats.ts";
 import type { Product } from "../src/vault.ts";
 
 const P: Product[] = [
@@ -35,6 +35,18 @@ describe("the content mix", () => {
 
   it("makes no ads when there are no products", () => {
     expect(nextFormat(made(["story", "satisfying", "explainer", "story"]), []).format).not.toBe("ad");
+  });
+
+  it("has its own ideas, script and style prompt for every format", () => {
+    for (const f of [...ENTERTAINMENT, "ad"] as Format[]) for (const b of ["ideas", "script", "style"] as const) expect(formatPrompt(f, b).length).toBeGreaterThan(200);
+    expect(formatPrompt("satisfying", "script")).toMatch(/No narrator/);
+    expect(formatPrompt("satisfying", "script")).toMatch(/Made with AI/);
+    expect(formatPrompt("explainer", "script")).toMatch(/last 14 days/);
+    expect(formatPrompt("story", "style")).toMatch(/stick figures/);
+    expect(formatPrompt("satisfying", "style")).toMatch(/No characters/);
+    expect(formatBrief({ format: "explainer", product: null }, "ideas")).toMatch(/Pick news you can confirm/);
+    expect([HAS_CAST.story, HAS_CAST.ad, HAS_CAST.satisfying, HAS_CAST.explainer]).toEqual([true, true, false, false]);
+    expect(NARRATED.satisfying).toBe(false);
   });
 
   it("puts the product in an ad's brief", () => {
