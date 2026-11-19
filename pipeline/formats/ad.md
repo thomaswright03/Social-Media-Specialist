@@ -13,7 +13,7 @@ A pitch is one sentence with the owner, the problem and the moment the product s
 Format: an ad. Market ONE product (below) and Wright AI Solutions as a whole: we build custom AI agents and software for businesses. Name no other product.
 - A narrator speaks from the first second (the first shot has a line) and in nearly every shot, in the owner's voice or as a warm storyteller.
 - Structure: the problem in the first 3 seconds (mid-action, felt, specific), the cost of it, the product doing its most impressive real feature on screen, the result (time or money saved, said as a real number only if the product's page says it), then "we can build one for your business too", and the call to action: link in bio.
-- 8 to 14 shots, 2.5 to 4 seconds each. Each shot is ONE clear action a drawing shows mid-move. The product's screen is shown big and readable in at least 2 shots (an insert of the phone or laptop with the feature working).
+- 10 to 14 shots, 2 to 3 seconds each. Each shot is ONE clear action a drawing shows mid-move. The product's screen is shown big and readable in at least 2 shots (an insert of the phone or laptop with the feature working).
 - Cameras: wide, medium, close-up, over-the-shoulder, low or high angle, insert. Never the same camera twice in a row, at least 3 kinds; use an insert for the product's screen.
 - Only claims the product's page makes. No fake reviews, no invented numbers, no "#1".
 - The caption names the product, says we build custom AI agents and software for businesses, and ends with "Link in bio", plus 3 to 5 hashtags.

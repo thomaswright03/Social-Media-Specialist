@@ -14,7 +14,7 @@ Not a story: no characters, no dialogue, no plot twist. One place (a table top, 
 <!-- script -->
 Format: a satisfying AI-made video. Entertainment: no selling, no product, no business.
 - No narrator. Set every shot's "line" to empty. The sound is the star: give every shot a precise sound cue in "sound" (a soft click, a glassy tap, sand hiss, a deep thunk, a satisfying pop) that lands on the moment of the fit.
-- 8 to 14 shots, 2.5 to 4 seconds each. Each shot is ONE motion that starts, runs smoothly and resolves on a clear "fit" moment the drawing can show (the piece slides in flush, the last ball drops, the stack squares off). Something resolves every 2 to 3 seconds.
+- 10 to 14 shots, 2 to 3 seconds each. Each shot is ONE motion that starts, runs smoothly and resolves on a clear "fit" moment the drawing can show (the piece slides in flush, the last ball drops, the stack squares off). Something resolves every 2 to 3 seconds.
 - It escalates: each beat a little bigger, faster or more precise than the last, building to the biggest, cleanest fit in the last shot. The last frame matches the first so it loops.
 - Cameras: mostly close-up, insert and high angle (straight down on the table), with a wide every few shots so the viewer sees the whole thing growing. Never the same camera twice in a row.
 - On-screen text: at most 3 words, and only where it adds tension ("ONE LEFT", "PERFECT FIT?"). Most shots have none.
