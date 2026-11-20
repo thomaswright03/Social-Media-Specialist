@@ -3,8 +3,10 @@
 // The list is pipeline/research/accounts.json, two or three accounts a
 // format, so one creator's template doesn't pass for "what wins". Edit that
 // file to change it for good. For one run, the workflow's accounts box (or
-// RESEARCH_ACCOUNTS) wins: "story: a, b; ad: c", or plain "a, b" for the
-// format being studied.
+// RESEARCH_RUN_ACCOUNTS) wins: "story: a, b; ad: c", or plain "a, b" for the
+// format being studied. Each account carries what `social accounts-test`
+// found for it; "also tested" lists accounts that were tried and aren't
+// studied, so nobody tries them twice. Only the four formats' lists are read.
 import { ENTERTAINMENT, isFormat, type Format } from "./formats.ts";
 import { pipelineFile } from "./stages.ts";
 

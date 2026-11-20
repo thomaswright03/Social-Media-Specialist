@@ -38,7 +38,8 @@ accounts aren't readable.
 
 Reading other accounts has an hourly allowance, shared by everything the app
 does on Instagram, and it is small: the first test of 21 accounts was refused
-after about 48 requests of 50 posts each. So a run reads no further back
+after about 48 requests of 50 posts each, and a later test measured 13
+requests as 15% of the hour. So a run reads no further back
 than it needs, and reads no new account once Meta says 75% of the allowance
 is used: that account is reported as not read, and the format fails its gate
 rather than using the hour up. In a run of all four formats, the labelling

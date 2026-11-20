@@ -126,8 +126,9 @@ need his approval on the Vault page.
 - Reading other accounts has its own hourly allowance for the whole app, and
   it counts time as well as requests. On 2026-11-20 it ran out after about
   48 requests of 50 posts each within 20 minutes ("(#4) Application request
-  limit reached"), well short of the 200 an hour Meta's docs name. Each
-  answer's `X-App-Usage` header says how much is used; stage 1 reads it,
+  limit reached"), well short of the 200 an hour Meta's docs name; an hour
+  later, 13 requests used 15% of it. Each answer's `X-App-Usage` header
+  says how much is used; stage 1 reads it,
   stops paging an account once it has enough Reels, and reads no new account
   past 75%.
 - Videos are fetched by Instagram from a public URL; with Instagram Login
