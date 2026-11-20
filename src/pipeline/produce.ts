@@ -110,7 +110,7 @@ export function keyFrameNumbers(t: TimedShot[], n = KEY_FRAMES): number[] {
 }
 
 /** Each word's time in a take by WhisperX forced alignment (pipeline/align/align.py), or null when it isn't installed or fails. */
-export async function alignWords(take: string, words: string[], work: string): Promise<{ start: number | null; end: number | null }[] | null> {
+export async function alignWords(take: string, words: string[], work: string, log?: (m: string) => void): Promise<{ start: number | null; end: number | null }[] | null> {
   if (process.env.WHISPERX === "off") return null;
   try {
     const wav = join(work, "align-16k.wav");
@@ -119,8 +119,11 @@ export async function alignWords(take: string, words: string[], work: string): P
     await writeFile(list, JSON.stringify(words));
     const out = await runOut(process.env.PYTHON ?? "python3", [pipelinePath("align/align.py"), wav, list]);
     const j = JSON.parse(out.toString("utf8")) as { start: number | null; end: number | null }[];
-    return Array.isArray(j) && j.length === words.length ? j : null;
-  } catch {
+    if (Array.isArray(j) && j.length === words.length) return j;
+    log?.(`WhisperX gave ${Array.isArray(j) ? j.length : "no"} words for ${words.length}; using the speech service's stamps.`);
+    return null;
+  } catch (err) {
+    log?.(`WhisperX didn't run (${(err as Error).message.slice(-300)}); using the speech service's stamps.`);
     return null;
   }
 }
@@ -183,7 +186,7 @@ export async function runProduce(d: {
       await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", `atempo=${speed}`, whole]);
       const stamps = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
       // When each word is really heard, by forced alignment (WhisperX); the speech service's stamps run a few tenths off.
-      const aligned = await alignWords(whole, stamps.map((w) => w.word), work);
+      const aligned = await alignWords(whole, stamps.map((w) => w.word), work, log);
       if (aligned) log(`WhisperX placed ${aligned.filter((a) => a.start != null).length} of ${stamps.length} words from the audio.`);
       const words = mergeAligned(stamps, aligned);
       // Cut where the narrator really pauses, found in the audio; the stamps alone clip words.

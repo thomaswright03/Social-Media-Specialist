@@ -12,7 +12,9 @@ import { parseJson, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 
-export const PHYSICS_KINDS = ["escape-rings", "growing-ball", "multiply", "galton", "race"] as const;
+// Every scene has an end the viewer roots for (Thomas, 2026-11-20): getting free, winning, filling it up.
+// The bell curve (galton) was dropped: the balls just fall and there is nothing to hope for.
+export const PHYSICS_KINDS = ["escape-rings", "growing-ball", "multiply", "race"] as const;
 export type PhysicsKind = (typeof PHYSICS_KINDS)[number];
 export const PALETTES = {
   neon: { bg: ["#07070f", "#141432"], colors: ["#39ff88", "#ff3df2", "#33d6ff", "#ffe23d", "#ff6a3d"] },
@@ -30,7 +32,7 @@ export type PhysicsPlan = {
   palette?: Palette;
   /** escape-rings: how many rings (3 to 14). */
   rings?: number;
-  /** escape-rings, race: balls (1 to 4); galton: balls dropped (30 to 160); multiply: the most balls (20 to 150). */
+  /** escape-rings, race: balls (1 to 4); multiply: how many balls fill the circle (60 to 250). */
   balls?: number;
   /** escape-rings: the gap in each ring, in degrees (18 to 70). */
   gap?: number;
@@ -40,7 +42,7 @@ export type PhysicsPlan = {
   names?: string[];
 };
 
-export type SimEvent = { t: number; kind: "hit" | "break" | "spawn" | "land" | "win" | "done"; strength: number };
+export type SimEvent = { t: number; kind: "hit" | "break" | "spawn" | "win" | "done"; strength: number };
 /** One recorded frame: balls as [x, y, r, colour], ring angles, which rings are still there, the counter. */
 export type SimFrame = { b: number[]; a: number[]; on: number[]; n: number };
 export type SimResult = {
@@ -54,6 +56,8 @@ export type SimResult = {
   doneAt: number | null;
   winner: number | null;
   tempo: number;
+  /** How many times a ball had to be kicked loose. */
+  kicks: number;
 };
 
 const W = 1080;
@@ -61,6 +65,11 @@ const CX = 540;
 const CY = 900;
 const R = 440;
 const STEPS = 8;
+/** Seconds a ball may sit still before it's kicked loose. */
+export const STUCK_AFTER = 0.5;
+const RACE_BALL = 20;
+/** multiply: balls sized so `balls` of them fill the circle. */
+const multiplyRadius = (plan: PhysicsPlan) => Math.max(14, Math.min(40, Math.sqrt((0.5 * (R - 15) ** 2) / int(plan.balls, 150, 60, 250))));
 /** Laps in a race. */
 export const RACE_LAPS = 3;
 
@@ -101,7 +110,7 @@ function ball(x: number, y: number, r: number, colour: number, bounce = 1): Ball
   (b as Matter.Body & { colour: number; r: number }).r = r;
   return b as Ball;
 }
-type Ball = Matter.Body & { colour: number; r: number; landed?: boolean };
+type Ball = Matter.Body & { colour: number; r: number; landed?: boolean; stillSince?: number; readyAt?: number };
 
 /** Runs a plan for `seconds` and records every frame, collision and the finish. */
 export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1, fps = 30): SimResult {
@@ -117,8 +126,9 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
   let doneAt: number | null = null;
   let winner: number | null = null;
   let counter = 0;
+  let kicks = 0;
   let t = 0;
-  const steps = plan.kind === "galton" || plan.kind === "multiply" ? 4 : STEPS;
+  const steps = plan.kind === "multiply" ? 4 : STEPS;
   const dt = 1000 / fps / steps;
   const add = (b: Ball) => {
     balls.push(b);
@@ -157,56 +167,53 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
     arena = ringBody(R, 0, 0, 30);
     Matter.Composite.add(world, arena);
     scene.arena = [CX, CY, R];
-    const b = ball(CX + (rand() - 0.5) * 80, CY - 150, kind === "multiply" ? 14 : 22, 0);
+    const b = ball(CX + (rand() - 0.5) * 80, CY - 150, kind === "multiply" ? multiplyRadius(plan) : 22, 0);
     Matter.Body.setVelocity(b, { x: (rand() - 0.5) * 16, y: 0 });
     add(b);
     minSpeed = 6;
     maxSpeed = 18;
     counter = kind === "multiply" ? 1 : 0;
-  } else if (kind === "galton" || kind === "race") {
+    if (kind === "multiply") engine.gravity.y = 0.35;
+  } else if (kind === "race") {
     const left = 120;
     const right = W - 120;
     const top = 520;
-    const rows = kind === "galton" ? 11 : 13;
-    const gapX = (right - left) / (kind === "galton" ? 12 : 10);
+    const rows = 13;
+    const gapX = (right - left) / 10;
     for (let r = 0; r < rows; r++) {
       const y = top + r * 52;
       const off = r % 2 ? gapX / 2 : 0;
       for (let x = left + off; x <= right + 1; x += gapX) {
-        if (kind === "galton" && Math.abs(x - CX) > 60 + r * gapX * 0.52) continue;
-        const p = Matter.Bodies.circle(x, y, 8, { isStatic: true, restitution: kind === "galton" ? 0.1 : 0.5, friction: 0 });
+        // No peg close enough to a wall to trap a ball between them.
+        if (x - 8 - (left - 40) < RACE_BALL * 2 + 14 || right + 40 - (x + 8) < RACE_BALL * 2 + 14) continue;
+        const p = Matter.Bodies.circle(x, y, 8, { isStatic: true, restitution: 0.5, friction: 0 });
         Matter.Composite.add(world, p);
         scene.pegs.push([x, y, 8]);
       }
     }
     const wall = (x: number, y: number, w: number, h: number) => {
-      Matter.Composite.add(world, Matter.Bodies.rectangle(x + w / 2, y + h / 2, w, h, { isStatic: true, friction: 0.02, restitution: kind === "galton" ? 0.05 : 0.3 }));
+      Matter.Composite.add(world, Matter.Bodies.rectangle(x + w / 2, y + h / 2, w, h, { isStatic: true, friction: 0, restitution: 0.3 }));
       scene.walls.push([x, y, w, h]);
     };
     wall(left - 60, 380, 20, 1060);
     wall(right + 40, 380, 20, 1060);
     wall(left - 60, 1440, right - left + 120, 20);
-    if (kind === "galton") {
-      for (let x = left - 40 + gapX; x < right + 40; x += gapX) wall(x - 3, 1180, 6, 260);
-      counter = int(plan.balls, 90, 30, 160);
-      maxSpeed = 9;
-    } else {
+    {
       // A funnel to one hole at the bottom.
       Matter.Composite.add(world, Matter.Bodies.rectangle(CX - 250, 1270, 420, 18, { isStatic: true, angle: 0.32, friction: 0, restitution: 0.3 }));
       Matter.Composite.add(world, Matter.Bodies.rectangle(CX + 250, 1270, 420, 18, { isStatic: true, angle: -0.32, friction: 0, restitution: 0.3 }));
       scene.walls.push([CX - 460, 1261, 420, 18, 0.32], [CX + 40, 1261, 420, 18, -0.32]);
       const nb = int(plan.balls, 4, 2, 4);
-      for (let k = 0; k < nb; k++) add(ball(CX + (k - (nb - 1) / 2) * 70 + (rand() - 0.5) * 10, 430, 20, k, 0.55));
+      for (let k = 0; k < nb; k++) add(ball(CX + (k - (nb - 1) / 2) * 70 + (rand() - 0.5) * 10, 430, RACE_BALL, k, 0.55));
       counter = 0;
       engine.gravity.y = 0.45 * tempo;
     }
   }
 
-  let nextDrop = 0;
-  let nextSpawn = 0;
   const laps = new Map<number, number>();
-  let dropped = 0;
-  const galtonTotal = kind === "galton" ? counter : 0;
+  // multiply: each ball makes a new one on its next wall hit once it's ready, so the count doubles again and again.
+  const most = int(plan.balls, 150, 60, 250);
+  const cooldown = (0.7 * seconds * Math.LN2) / Math.log(most) / tempo;
   const lastHit = new Map<number, number>();
   Matter.Events.on(engine, "collisionStart", (e) => {
     for (const pair of e.pairs) {
@@ -233,10 +240,11 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
         }
       }
       if (kind === "multiply" && other === arena && doneAt == null) {
-        const max = int(plan.balls, 80, 20, 150);
-        if (t >= nextSpawn && balls.length < max) {
-          nextSpawn = t + (0.7 * seconds) / (max - 1) / tempo;
-          const nb = ball(mover.position.x, mover.position.y, 14, balls.length % 5);
+        const max = most;
+        if (t >= (mover.readyAt ?? 0) && balls.length < max) {
+          mover.readyAt = t + cooldown;
+          const nb = ball(mover.position.x, mover.position.y, multiplyRadius(plan), balls.length % 5);
+          nb.readyAt = t + cooldown;
           Matter.Body.setVelocity(nb, { x: -mover.velocity.x * 0.9 + (rand() - 0.5) * 3, y: -mover.velocity.y * 0.9 });
           // Spawn just inside the wall.
           const dx = CX - mover.position.x;
@@ -244,7 +252,7 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
           const d = Math.hypot(dx, dy) || 1;
           Matter.Body.setPosition(nb, { x: mover.position.x + (dx / d) * 30, y: mover.position.y + (dy / d) * 30 });
           add(nb);
-          counter = balls.length;
+          counter = Math.round((100 * balls.length) / max);
           events.push({ t, kind: "spawn", strength: 0.6 });
           if (balls.length >= max) {
             doneAt = t;
@@ -260,19 +268,21 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
     for (let s = 0; s < steps; s++) {
       t += dt / 1000;
       for (const r of rings) if (r.on) Matter.Body.setAngle(r.body, r.body.angle + (r.spin * dt) / 1000);
-      if (kind === "galton" && dropped < galtonTotal && t >= nextDrop) {
-        const g = ball(CX + (rand() < 0.5 ? -1 : 1) * (5 + rand() * 8), 400, 11, dropped % 5, 0.1);
-        // Air drag keeps each ball near its pegs, so the bins build a bell curve.
-        g.frictionAir = 0.045;
-        add(g);
-        dropped++;
-        nextDrop = t + (0.62 * seconds) / galtonTotal / tempo;
-      }
       Matter.Engine.update(engine, dt);
       for (const b of balls) {
         const sp = Matter.Body.getSpeed(b);
         if (minSpeed && sp < minSpeed && sp > 0.001) Matter.Body.setSpeed(b, minSpeed);
         else if (sp > maxSpeed) Matter.Body.setSpeed(b, maxSpeed);
+        // Nothing gets stuck (Thomas, 2026-11-20): a ball that has barely moved
+        // for STUCK_AFTER seconds, and isn't finished, gets a kick up and inward.
+        if (b.landed || Matter.Body.getSpeed(b) > 0.8) b.stillSince = undefined;
+        else if (b.stillSince == null) b.stillSince = t;
+        else if (t - b.stillSince > STUCK_AFTER) {
+          const dx = CX - b.position.x;
+          Matter.Body.setVelocity(b, { x: Math.sign(dx || (rand() - 0.5)) * (2 + rand() * 2), y: -3 - rand() * 2 });
+          b.stillSince = undefined;
+          kicks++;
+        }
       }
       if (kind === "escape-rings") {
         for (const b of balls) {
@@ -297,7 +307,7 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
           }
         }
       }
-      if (kind === "galton" || kind === "race") {
+      if (kind === "race") {
         for (const b of balls) {
           if (b.landed) continue;
           if (kind === "race" && b.position.y > 1420) {
@@ -318,19 +328,8 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
               events.push({ t, kind: "break", strength: lap / RACE_LAPS });
             }
           }
-          // A ball balanced on a peg gets a tiny nudge.
-          if (kind === "galton" && b.position.y < 1100 && Matter.Body.getSpeed(b) < 0.05) Matter.Body.setVelocity(b, { x: rand() < 0.5 ? -0.6 : 0.6, y: 0 });
-          if (kind === "galton" && b.position.y > 1100) {
-            b.landed = true;
-            counter--;
-            events.push({ t, kind: "land", strength: 0.4 });
-            if (counter <= 0 && doneAt == null) {
-              doneAt = t;
-              events.push({ t, kind: "done", strength: 1 });
-            }
-          }
         }
-        if (kind === "race") {
+        {
           // Finished balls rest below the hole.
           for (const b of balls) if (b.landed && b.position.y > 1600) Matter.Body.setPosition(b, { x: CX + (b.colour - 1.5) * 50, y: 1600 }), Matter.Body.setVelocity(b, { x: 0, y: 0 });
         }
@@ -344,7 +343,7 @@ export function simulate(plan: PhysicsPlan, seconds: number, seed = 1, tempo = 1
     });
   }
   Matter.Engine.clear(engine);
-  return { plan, seconds, fps, frames, scene, events, doneAt, winner, tempo };
+  return { plan, seconds, fps, frames, scene, events, doneAt, winner, tempo, kicks };
 }
 
 /** What's wrong with a plan before it's run; an empty list when it can run. */
@@ -358,8 +357,7 @@ export function physicsProblems(plan: PhysicsPlan | null): string[] {
   };
   range(plan.rings, 3, 14, "rings");
   range(plan.gap, 18, 70, "gap");
-  if (plan.kind === "galton") range(plan.balls, 30, 160, "balls");
-  else if (plan.kind === "multiply") range(plan.balls, 20, 150, "balls");
+  if (plan.kind === "multiply") range(plan.balls, 60, 250, "balls");
   else range(plan.balls, 1, 4, "balls");
   if (plan.counter != null && (typeof plan.counter !== "string" || !plan.counter.includes("{n}") || plan.counter.length > 24)) p.push('counter is short text with {n} in it, like "{n} RINGS LEFT" (at most 24 characters).');
   if (plan.kind === "race" && plan.names != null && (!Array.isArray(plan.names) || plan.names.some((n) => typeof n !== "string" || n.length > 10))) p.push("names are short colour names, at most 10 characters each.");
@@ -445,7 +443,7 @@ export function collisionAudio(run: SimResult, rate = 44100): Buffer {
   let k = 0;
   let lastAt = -1;
   for (const e of run.events) {
-    if (e.kind === "hit" || e.kind === "spawn" || e.kind === "land") {
+    if (e.kind === "hit" || e.kind === "spawn") {
       if (e.t - lastAt < 0.035) continue;
       lastAt = e.t;
       const chord = CHORDS[Math.floor(k / 8) % CHORDS.length]!;
@@ -488,9 +486,8 @@ export function counterText(plan: PhysicsPlan, n: number, winner: number | null,
     const names = plan.names?.length ? plan.names : ["GREEN", "PINK", "BLUE", "YELLOW"];
     return `${(names[winner] ?? "?").toUpperCase()} WINS!`;
   }
-  if (done && plan.kind === "galton") return "A PERFECT CURVE!";
-  if (done) return plan.kind === "escape-rings" ? "FREE!" : plan.kind === "growing-ball" ? `FULL IN ${n} BOUNCES!` : `${n} BALLS!`;
-  const fallback = { "escape-rings": "{n} RINGS LEFT", "growing-ball": "{n} BOUNCES", multiply: "{n} BALLS", galton: "{n} TO GO", race: "" }[plan.kind];
+  if (done) return plan.kind === "escape-rings" ? "FREE!" : plan.kind === "growing-ball" ? `FULL IN ${n} BOUNCES!` : "FULL!";
+  const fallback = { "escape-rings": "{n} RINGS LEFT", "growing-ball": "{n} BOUNCES", multiply: "{n}% FULL", race: "" }[plan.kind];
   return (plan.counter?.includes("{n}") ? plan.counter : fallback).replace("{n}", String(n)).toUpperCase();
 }
 

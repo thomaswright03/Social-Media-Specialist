@@ -367,14 +367,13 @@ You are making a satisfying Instagram Reel (1080x1920, {{SECONDS}} seconds, no v
 The scenes (every field not marked optional is required):
 - escape-rings: {"kind":"escape-rings","rings":8,"gap":34,"balls":1,"counter":"{n} RINGS LEFT"} Spinning rings inside each other, each with a gap; a ball bounces inside and breaks out ring by ring. rings 3 to 14, gap in degrees 18 to 70 (smaller is harder), balls 1 to 4. The finish: the last ring breaks.
 - growing-ball: {"kind":"growing-ball","counter":"{n} BOUNCES"} One ball bounces inside a circle and grows a little on every bounce until it fills the circle. The finish: it fills it.
-- multiply: {"kind":"multiply","balls":80,"counter":"{n} BALLS"} One ball; some bounces make a new ball, until there are `balls` of them (20 to 150). The finish: the last one appears.
-- galton: {"kind":"galton","balls":90,"counter":"{n} TO GO"} Balls drop one by one through a triangle of pegs into bins, building a bell curve. balls 30 to 160. The finish: the last ball lands.
+- multiply: {"kind":"multiply","balls":150,"counter":"{n}% FULL"} One ball; every ball that hits the wall makes a new one, so the count doubles faster and faster until the balls fill the whole circle. balls 60 to 250 (more means smaller balls). The finish: the circle is full.
 - race: {"kind":"race","balls":4,"names":["Green","Pink","Blue","Yellow"]} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. names are the colours in order (green, pink, blue, yellow on neon). The counter shows the lap, then the winner.
 
 Every scene also takes palette (optional): neon (default), sunset, ocean or candy.
 
 How to choose:
-1. The scene whose finish is the story's payoff. A story about getting out is escape-rings; filling up is growing-ball; more and more is multiply; order out of chaos is galton; a contest is race.
+1. The scene whose finish is the story's payoff, something the viewer roots for. Getting free is escape-rings; filling it up is growing-ball or multiply; a contest the viewer picks a side in is race.
 2. The counter (optional) is short words with {n}, at most 24 characters, in capitals, counting toward the finish. It sits near the top for the whole video.
 3. Code runs the scene and moves its timing so the finish lands between 55% and 90% of the video. If it can't, it tells you, and you change the settings.
 
