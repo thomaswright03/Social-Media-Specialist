@@ -8,4 +8,5 @@ Write four lines:
 ABOUT: what the video is about, in one plain sentence.
 STORY: what happened and why it matters, in two plain sentences.
 PEOPLE: each person or company named, and who they are as the video told you ("not said" when it never said who they are).
-CONFUSED: anything you couldn't follow: a jump from one line to the next you couldn't connect, a word you didn't know, a "it" or "they" you couldn't place. Or CONFUSED: nothing.
+CONFUSED: anything that stopped you following the story: a jump from one line to the next you couldn't connect, a word you didn't know, an "it" or "they" you couldn't place. Or CONFUSED: nothing.
+A detail the video simply didn't give (an exact date, a currency, a price, a precise place, who counted a number) is not confusion: a 30-second video leaves those out on purpose. Don't list them.
