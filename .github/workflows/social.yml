@@ -35,6 +35,10 @@ on:
         description: 'For research and accounts-test, other accounts for this run, like "story: name1, name2; ad: name3"; empty uses pipeline/research/accounts.json'
         type: string
         required: false
+      subject:
+        description: For script and produce, the subject of a Reel to make again (as the Vault shows it); empty takes the next one waiting
+        type: string
+        required: false
 
 concurrency:
   group: social
@@ -94,6 +98,7 @@ jobs:
       RESEARCH_RUN_ACCOUNTS: ${{ inputs.accounts }}
       RESEARCH_TRANSCRIBE: ${{ vars.RESEARCH_TRANSCRIBE }}
       REEL_FORMAT: ${{ inputs.format }}
+      REEL_SUBJECT: ${{ inputs.subject }}
       # Scheduled runs start as the hourly check; the "due" step below turns
       # one into the morning run. A run by hand does what it was asked.
       COMMAND: ${{ github.event_name == 'schedule' && 'hourly' || inputs.command || 'run' }}
@@ -229,7 +234,7 @@ jobs:
       - name: social ${{ env.COMMAND }}
         id: social
         if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hourly' && env.COMMAND != 'requests'
-        run: npx social "$COMMAND"
+        run: npx social "$COMMAND" "$REEL_SUBJECT"
 
       - name: Keep the preview
         if: env.COMMAND == 'preview' && steps.social.outcome == 'success'

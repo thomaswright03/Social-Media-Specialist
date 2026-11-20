@@ -467,6 +467,13 @@ export type Packaging = {
 
 /** Where Instagram's buttons, caption and header cover a 1080x1920 Reel. */
 export const SAFE = { top: 220, bottom: 420, right: 140, left: 60 } as const;
+/**
+ * Every Reel ends on the company's end card: the logo, the name and the
+ * website, for this many seconds after the last shot (Thomas, 2026-11-20:
+ * "for every outro it displays my company logo and website domain every time
+ * as the final slide").
+ */
+export const END_CARD = 2.2;
 export const CTA = /\b(follow|link in (the )?bio|comment|save this|share this|send this|tap|visit|try it|watch (the )?next)\b/i;
 
 export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, learned: Check[] = []): GateResult {
@@ -478,7 +485,7 @@ export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, le
     check("1080x1920 (9:16)", m.width === 1080 && m.height === 1920, `${m.width}x${m.height}`),
     check("H.264 video with AAC audio", m.videoCodec === "h264" && m.audioCodec === "aac", `${m.videoCodec} / ${m.audioCodec ?? "no audio"}`),
     check("24 to 60 fps", m.fps >= 23.9 && m.fps <= 60, `${m.fps} fps`),
-    check("30 to 60 seconds", m.seconds >= 30 && m.seconds <= 60, `${m.seconds.toFixed(1)} s`),
+    check("30 to 60 seconds, plus the end card", m.seconds >= 30 && m.seconds <= 60 + END_CARD + 0.1, `${m.seconds.toFixed(1)} s`),
     check("Loudness about -14 LUFS (-16 to -12)", m.lufs !== null && m.lufs >= -16 && m.lufs <= -12, m.lufs === null ? "not measured" : `${m.lufs.toFixed(1)} LUFS`),
     check("True peak at or below -1 dBTP", m.truePeak !== null && m.truePeak <= -1, m.truePeak === null ? "not measured" : `${m.truePeak.toFixed(1)} dBTP`),
     check("No text where Instagram's buttons and caption sit", outside.length === 0, outside.length ? outside.map((b) => `"${b.text.slice(0, 30)}"`).join(", ") : undefined),

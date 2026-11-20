@@ -85,7 +85,7 @@ export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fil
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
 export type FormatDraft = {
   caption: string;
-  shots: { onScreenText?: string; line?: string }[];
+  shots: { onScreenText?: string; line?: string; start?: number }[];
   /** Explainers: where each fact comes from. */
   sources?: { url?: string; published?: string; title?: string }[];
 };
@@ -121,6 +121,9 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
       return /^https?:\/\//.test(s.url ?? "") && Number.isFinite(t) && t <= now.getTime() + 86_400_000 && now.getTime() - t <= NEWS_MAX_DAYS * 86_400_000;
     });
     checks.push(check(`At least 2 dated sources from the last ${NEWS_MAX_DAYS} days`, fresh.length >= 2, `${fresh.length} of ${(d.sources ?? []).length} sources are linked, dated and recent`));
+    // Thomas (2026-11-20): an explainer ends with a question to the viewer.
+    const last = [...d.shots].sort((a, b) => (a.start ?? 0) - (b.start ?? 0)).at(-1)?.line?.trim() ?? "";
+    checks.push(check("Ends on a question to the viewer", /\?["'”’)]*$/.test(last), last ? `the last line is "${last.slice(-80)}"` : "the last shot has no line"));
   }
   return gate(checks);
 }

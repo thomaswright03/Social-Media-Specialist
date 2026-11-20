@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
-import type { Shot, TextBox } from "./gates.ts";
+import { END_CARD, type Shot, type TextBox } from "./gates.ts";
 import { motionRuntime, type ShotMotion } from "./motion.ts";
 
 export const W = 1080;
@@ -27,6 +27,8 @@ export const CAPTION_TOP = 1290;
 /** The brand header on every Reel (Thomas, 2026-11-20): the name, the site under it. */
 export const BRAND = { name: "Wright AI Solutions", site: "wright-ai-solutions.com" } as const;
 export const BRAND_TOP = 228;
+/** The company mark from wright-ai-solutions.com (its favicon): a gradient tile with a black bolt. */
+export const LOGO_SVG = `<svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="wlogo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="0.55" stop-color="#ff5cad"/><stop offset="1" stop-color="#5ce1ff"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#wlogo)"/><path d="M36 8 12 38.7h16.5L25.3 56 49.3 25.3H32.8z" fill="#0a0a0f"/></svg>`;
 export const LABEL_TOP = 330;
 /** Where a physics run's counter sits: under the label, above the arena. */
 export const PHYS_COUNTER_TOP = 404;
@@ -195,13 +197,18 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #brand{position:absolute;z-index:8;left:0;right:0;top:${BRAND_TOP}px;text-align:center;font-family:Montserrat,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)}
 #brand b{display:inline-block;font-weight:900;font-size:36px;letter-spacing:.08em;text-transform:uppercase}
 #brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
+#endcard{position:absolute;inset:0;z-index:20;opacity:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:260px;background:radial-gradient(circle at 30% 25%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 75% 70%,rgba(255,92,173,.28),transparent 55%),radial-gradient(circle at 50% 50%,rgba(92,225,255,.12),transparent 70%),#07070a;font-family:Montserrat,sans-serif;color:#f4f2ed;text-align:center}
+#endcard .mark{width:300px;height:300px}
+#endcard b{display:block;margin-top:56px;font-weight:900;font-size:86px;line-height:1.02;letter-spacing:-.02em}
+#endcard i{display:inline-block;margin-top:30px;font-style:normal;font-weight:800;font-size:54px;letter-spacing:.01em;background:linear-gradient(90deg,#7c5cff,#ff5cad 55%,#5ce1ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 </style></head><body>
 ${world ? `<div id="world"></div><svg id="links" width="${W}" height="${H}"></svg>` : ""}
 ${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ?? "")}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
 <div id="label"></div><div id="cap"></div>
-<div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
+<div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>
+<div id="endcard">${LOGO_SVG}<b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
 <script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
 ${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
 <script>
@@ -283,6 +290,12 @@ window.render=(t)=>{
   else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
   const pc=document.getElementById('pcount'); if(pc&&window.physRender){ const ct=window.physRender(t); if(pc.dataset.k!==ct){ pc.innerHTML=ct?'<span>'+esc(ct)+'</span>':''; pc.dataset.k=ct; } }
+  const END_AT=SHOTS.length?SHOTS[SHOTS.length-1].at+SHOTS[SHOTS.length-1].dur:0, ec=document.getElementById('endcard');
+  if(t>=END_AT){ const q=Math.min(1,(t-END_AT)/.3), m=Math.min(1,(t-END_AT)/.55), back=1+2.70158*Math.pow(m-1,3)+1.70158*Math.pow(m-1,2);
+    ec.style.opacity=String(q); ec.querySelector('.mark').style.transform='scale('+(0.4+0.6*back)+') rotate('+((1-m)*-25)+'deg)';
+    const w=Math.min(1,Math.max(0,(t-END_AT-.25)/.35)); for(const e of ec.querySelectorAll('b,i')){ e.style.opacity=String(w); e.style.transform='translateY('+((1-w)*30)+'px)'; }
+    const bx=[]; for(const e of ec.querySelectorAll('b,i')) for(const r of e.getClientRects()) bx.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); return bx; }
+  ec.style.opacity='0';
   const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null, pc&&pc.textContent.trim()?pc.firstElementChild:null, document.querySelector('#brand b'), document.querySelector('#brand i')]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
 };
@@ -353,7 +366,8 @@ export async function audioSeconds(file: string): Promise<number> {
  */
 /** `continuous`: one unbroken shot (a physics run), so no whoosh on cuts and no heartbeat under its own music. */
 export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string, sfx: { file: string; at: number }[] = [], opts: { continuous?: boolean } = {}): Promise<string> {
-  const total = totalSeconds(t);
+  // The bed runs on under the end card.
+  const total = totalSeconds(t) + END_CARD;
   const inputs: string[] = [];
   const filters: string[] = [];
   const pad = `0.05*sin(2*PI*55*t)+0.035*sin(2*PI*82.41*t)*(0.6+0.4*sin(2*PI*0.13*t))+0.02*sin(2*PI*110*t)*(0.5+0.5*sin(2*PI*0.21*t))`;

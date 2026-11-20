@@ -67,6 +67,7 @@ The shape:
 3. Why it happened: one reason.
 4. What it means for the viewer.
 5. One last surprising detail. This is the `payoff`.
+6. The last shot's line is a question to the viewer that they can answer in the comments ("Would you give 5% of your shares away?"). It ends with a question mark, follows from the payoff, and its graphic shows the question. Code checks this.
 
 The narrator:
 - Explains it out loud from the first second (the first shot has a line) and speaks in every shot.

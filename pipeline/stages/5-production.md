@@ -26,6 +26,10 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   into each other. Code checks the plan (`src/pipeline/motion.ts`): every
   shot has 1 or 2 valid pieces, every figure on screen is one the script
   says, and no kind of piece is used twice in a Reel (Thomas, 2026-11-20).
+- **End card (Thomas, 2026-11-20):** every Reel, whatever its format, ends
+  on 2.2 s of the company's card after its last shot: the logo (the
+  website's bolt tile), "Wright AI Solutions" and wright-ai-solutions.com
+  (`END_CARD` in `src/pipeline/gates.ts`, drawn in `compose.ts`).
 - **Captions and text:** one caption band, like the benchmark: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).
