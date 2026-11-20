@@ -78,8 +78,23 @@ describe("gateFormat", () => {
       { url: "https://news.example/a", published: "2026-11-16" },
       { url: "https://news.example/b", published: "2026-11-10" },
     ];
-    expect(gateFormat(news, { caption: "The $2 billion bridge, explained", shots: [], sources }, P, now).passed).toBe(true);
+    const ask = [{ start: 0, line: "A $2 billion bridge just opened." }, { start: 3, line: "Would you pay the toll?" }];
+    expect(gateFormat(news, { caption: "The $2 billion bridge, explained", shots: ask, sources }, P, now).passed).toBe(true);
     expect(gateFormat(news, { caption: "x", shots: [], sources: [sources[0]!, { url: "https://old.example", published: "2026-09-01" }] }, P, now).passed).toBe(false);
+  });
+
+  it("ends an explainer on a question to the viewer (Thomas, 2026-11-20)", () => {
+    const news = { format: "explainer" as const, product: null };
+    const now = new Date("2026-11-18T00:00:00Z");
+    const sources = [
+      { url: "https://news.example/a", published: "2026-11-16" },
+      { url: "https://news.example/b", published: "2026-11-10" },
+    ];
+    const q = (shots: { start: number; line: string }[]) => gateFormat(news, { caption: "x", shots, sources }, P, now).checks.find((c) => c.name === "Ends on a question to the viewer")!;
+    expect(q([{ start: 3, line: "Would you?" }, { start: 0, line: "It opened." }]).passed).toBe(true);
+    expect(q([{ start: 0, line: "Is it fair?" }, { start: 3, line: "It opened." }]).passed).toBe(false);
+    expect(q([{ start: 0, line: 'She asked, "Is it fair?"' }]).passed).toBe(true);
+    expect(gateFormat({ format: "story", product: null }, { caption: "x", shots: [{ line: "The end." }] }, P).checks.some((c) => c.name.startsWith("Ends on a question"))).toBe(false);
   });
 
   it("needs satisfying videos labelled as made with AI", () => {

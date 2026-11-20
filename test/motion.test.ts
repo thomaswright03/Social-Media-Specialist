@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { composeHtml, timeline, transitionFor } from "../src/pipeline/compose.ts";
+import { END_CARD } from "../src/pipeline/gates.ts";
 
 const shots = [
   { start: 0, end: 2, line: "Egg prices jumped 3.1% in one month.", visual: "a counter to 3.1%" },
@@ -173,5 +174,16 @@ describe("one world the camera flies through (Thomas, 2026-11-20)", async () => 
     const html = composeHtml(t, ["<svg></svg>"]);
     expect(BRAND).toEqual({ name: "Wright AI Solutions", site: "wright-ai-solutions.com" });
     expect(html).toContain("<b>Wright AI Solutions</b><i>wright-ai-solutions.com</i>");
+  });
+
+  it("ends every Reel on the logo and the website (Thomas, 2026-11-20)", () => {
+    const t = timeline([{ start: 0, end: 2 }], [null]);
+    for (const html of [composeHtml(t, ["<svg></svg>"]), composeHtml(t, [""], [{ shot: 1, pieces: [{ kind: "title", text: "x" }] }]), composeHtml(t, [""], [], "window.physRender=()=>''")]) {
+      expect(html).toContain('<div id="endcard"><svg class="mark"');
+      expect(html).toContain('M36 8 12 38.7h16.5L25.3 56 49.3 25.3H32.8z');
+      expect(html).toContain("<b>Wright AI Solutions</b><i>wright-ai-solutions.com</i></div>");
+      expect(html).toContain("if(t>=END_AT)");
+    }
+    expect(END_CARD).toBeGreaterThanOrEqual(2);
   });
 });

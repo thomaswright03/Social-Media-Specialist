@@ -11,7 +11,7 @@ import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
-import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
+import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
@@ -321,7 +321,8 @@ export async function runProduce(d: {
   try {
     const html = composeHtml(t, svgs, motions, physics);
     await writeFile(join(work, "compose.html"), html);
-    boxes = (await renderFrames(browser, html, seconds, framesDir, log)).boxes;
+    // Every Reel ends on the end card (logo, name, website) after its last shot.
+    boxes = (await renderFrames(browser, html, seconds + END_CARD, framesDir, log)).boxes;
   } finally {
     await browser.close().catch(() => {});
   }

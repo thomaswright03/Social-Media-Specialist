@@ -109,7 +109,7 @@ async function main() {
   }
 
   if (command === "ideas") {
-    const wanted = (process.argv[3] ?? process.env.REEL_FORMAT ?? "").trim().toLowerCase();
+    const wanted = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
     if (wanted && wanted !== "ad" && !(ENTERTAINMENT as readonly string[]).includes(wanted)) {
       console.error(`"${wanted}" isn't a format. Use ad, ${ENTERTAINMENT.join(", ")}, or leave it empty to follow the 80/20 mix.`);
       process.exit(2);
@@ -139,7 +139,8 @@ async function main() {
     const vault = connect();
     try {
       const products = await siteProducts().catch(() => []);
-      const r = await runScript({ vault, products, ask: askClaude, log });
+      // A subject makes that Reel's script again (Thomas's notes on a finished Reel).
+      const r = await runScript({ vault, products, ask: askClaude, log, subject: process.argv[3] || undefined });
       if (r.passed && r.script) {
         console.log(`\n${r.premise}\n`);
         for (const s of r.script.shots ?? []) console.log(`${s.start}-${s.end} s  ${s.visual ?? ""}${s.onScreenText ? `\n         text: ${s.onScreenText}` : ""}${s.line ? `\n         voice: ${s.line}` : ""}`);
