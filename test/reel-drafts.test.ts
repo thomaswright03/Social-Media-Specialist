@@ -3,6 +3,7 @@ import { createClient } from "@libsql/client";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { facebookPageClient, type FacebookPageClient } from "../src/facebook.ts";
 import type { InstagramClient } from "../src/instagram.ts";
 import { addReelDrafts, parseReelDrafts, readReel, reelPath, REEL_DIR } from "../src/reel-drafts.ts";
 import { publishDue } from "../src/social.ts";
@@ -97,6 +98,28 @@ describe("posting an approved Reel", () => {
     return { client, calls };
   };
 
+  const fakePage = (fail = false) => {
+    const calls: { bytes: string; description: string }[] = [];
+    const client: FacebookPageClient = {
+      info: async () => ({ id: "pg", name: "Wright AI Solutions LLC", followers: 3, likes: 3, link: null, instagramId: "IG" }),
+      posts: async () => [],
+      publishPhoto: async () => {
+        throw new Error("a Reel isn't a photo");
+      },
+      publishVideo: async () => {
+        throw new Error("a Reel isn't uploaded from a link");
+      },
+      async publishReelFile(video, description) {
+        calls.push({ bytes: Buffer.from(video).toString(), description });
+        if (fail) throw new Error("Facebook said: no");
+        return { videoId: "v1", permalink: "https://www.facebook.com/reel/v1" };
+      },
+      comments: async () => [],
+      reply: async () => ({ id: "r" }),
+    };
+    return { client, calls };
+  };
+
   async function reelPost(state: string) {
     const vault = await memoryVault();
     const root = await repoWith([ENTRY]);
@@ -115,18 +138,55 @@ describe("posting an approved Reel", () => {
     expect(ig.calls).toHaveLength(0);
   });
 
-  it("uploads an approved Reel's video as a normal Reel, logs it, and never posts it twice", async () => {
+  it("uploads an approved Reel's video to Instagram and the Facebook Page, logs both, and never posts it twice", async () => {
     const { vault, post, read } = await reelPost("approved");
     const ig = fakeIg();
-    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => null, readReel: read, now: NOW });
+    const page = fakePage();
+    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, readReel: read, now: NOW });
     expect(r.published).toHaveLength(1);
     expect(ig.calls).toEqual([{ bytes: "VIDEO-A", caption: "Pick yours.\n\n#satisfying", opts: undefined }]);
+    expect(page.calls).toEqual([{ bytes: "VIDEO-A", description: "Pick yours.\n\n#satisfying" }]);
     expect(await vault.post(post.id)).toMatchObject({ state: "published", igMediaId: "m1", permalink: "https://instagram.com/reel/x" });
     const history = (await vault.actions()).map((a) => a.summary);
     expect(history.some((h) => /Posted the Reel .* to Instagram/.test(h))).toBe(true);
-    expect(history.some((h) => /Facebook Page/.test(h))).toBe(true);
-    await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => null, readReel: read, now: NOW });
+    expect(history.some((h) => /Posted the Reel .* to the Facebook Page/.test(h))).toBe(true);
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, readReel: read, now: NOW });
     expect(ig.calls).toHaveLength(1);
+    expect(page.calls).toHaveLength(1);
+  });
+
+  it("keeps the Instagram Reel when the Page refuses it, logs that, and never retries the Page", async () => {
+    const { vault, post, read } = await reelPost("approved");
+    const page = fakePage(true);
+    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, readReel: read, now: NOW });
+    expect(r.published).toHaveLength(1);
+    expect((await vault.post(post.id))!.state).toBe("published");
+    expect((await vault.actions()).find((a) => a.kind === "post_failed")?.summary).toMatch(/Facebook Page refused/);
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, readReel: read, now: NOW });
+    expect(page.calls).toHaveLength(1);
+  });
+
+  it("uploads a Page Reel in three steps: start, the bytes, then publish with the caption", async () => {
+    const seen: { url: string; body: string }[] = [];
+    const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body instanceof Blob ? await init.body.text() : String(init?.body ?? "");
+      seen.push({ url, body });
+      const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
+      if (url.includes("/me?")) return json({ id: "pg", name: "Page", instagram_business_account: { id: "IG" } });
+      if (url.includes("/video_reels") && body.includes("upload_phase=start")) return json({ video_id: "v9", upload_url: "https://rupload.facebook.com/video-upload/v23.0/v9" });
+      if (url.startsWith("https://rupload.facebook.com/")) return json({ success: true });
+      if (url.includes("/video_reels")) return json({ success: true });
+      return json({ permalink_url: "/reel/v9" });
+    }) as typeof fetch;
+    const page = facebookPageClient("EAAtoken", { fetchImpl })!;
+    const r = await page.publishReelFile!(new TextEncoder().encode("VIDEO"), "Hi #satisfying");
+    expect(r).toEqual({ videoId: "v9", permalink: "https://www.facebook.com/reel/v9" });
+    const upload = seen.find((s) => s.url.startsWith("https://rupload.facebook.com/"))!;
+    expect(upload.body).toBe("VIDEO");
+    const finish = seen.find((s) => s.body.includes("upload_phase=finish"))!;
+    expect(finish.body).toContain("video_state=PUBLISHED");
+    expect(finish.body).toContain("video_id=v9");
   });
 
   it("marks a refused Reel failed, logs it, and doesn't try again on its own", async () => {

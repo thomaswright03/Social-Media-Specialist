@@ -250,7 +250,7 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
     if (!(await vault.claimForPublishing(p.id, now))) continue;
     try {
       if (p.kind === "reel") {
-        await publishApprovedReel(d, ig, p, now, result);
+        await publishApprovedReel(d, ig, page, p, now, result);
         continue;
       }
       const url = mediaUrl(p)!;
@@ -290,11 +290,10 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
 
 /**
  * An approved Reel from posts/reels: uploads the video and posts it as a normal
- * Reel (Thomas approved it, so it isn't a Trial Reel). The Facebook Page only
- * takes a video from a public link, which the repo's file doesn't have, so the
- * Page is skipped and that's logged.
+ * Reel (Thomas approved it, so it isn't a Trial Reel), then the same video as a
+ * Reel on the Facebook Page. A Page refusal is logged and never retried.
  */
-async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: InstagramClient, p: Post, now: Date, result: PublishResult): Promise<void> {
+async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: InstagramClient, page: FacebookPageClient | null, p: Post, now: Date, result: PublishResult): Promise<void> {
   if (!ig.publishReelFile) throw new Error("This Instagram client can't upload a video.");
   const video = await (d.readReel ?? readReel)(p.sourceUrl);
   const r = await ig.publishReelFile(video, fullCaption(p));
@@ -302,9 +301,16 @@ async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: Instag
   result.published.push({ ...p, state: "published", permalink: r.permalink });
   d.log(`Posted the Reel "${p.headline}"${r.permalink ? `: ${r.permalink}` : ""}.`);
   await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to Instagram.`, detail: r.permalink, target: p.id, onInstagram: true }, now);
-  if (crosspostOn()) {
-    d.log(`Didn't put the Reel "${p.headline}" on the Facebook Page: the Page only takes a video from a public link.`);
-    await d.vault.logAction({ kind: "posted", summary: `Didn't put the Reel "${p.headline}" on the Facebook Page (it only takes a video from a public link).`, target: p.id }, now);
+  if (!page) return;
+  try {
+    if (!page.publishReelFile) throw new Error("This Facebook Page client can't upload a video.");
+    const fb = await page.publishReelFile(video, fullCaption(p));
+    d.log(`Posted the Reel "${p.headline}" to the Facebook Page${fb.permalink ? `: ${fb.permalink}` : ""}.`);
+    await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to the Facebook Page.`, detail: fb.permalink ?? fb.videoId, target: p.id, onInstagram: true }, now);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    d.log(`Posted the Reel "${p.headline}" to Instagram, but the Facebook Page refused it: ${error}`);
+    await d.vault.logAction({ kind: "post_failed", summary: `Posted the Reel "${p.headline}" to Instagram, but the Facebook Page refused it.`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
   }
 }
 
