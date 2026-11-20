@@ -161,6 +161,12 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
       if (invented.length) p.push(`Shot ${i + 1}, piece ${k + 1} shows ${[...new Set(invented)].join(", ")}, which the script never says; use the script's figures.`);
     });
   });
+  // Variety: no kind three shots running, no icon twice.
+  const kinds = shots.map((_, i) => byShot.get(i + 1)?.pieces[0]?.kind ?? "");
+  for (let i = 2; i < kinds.length; i++) if (kinds[i] && kinds[i] === kinds[i - 1] && kinds[i] === kinds[i - 2]) p.push(`Shots ${i - 1} to ${i + 1} are all ${kinds[i]}; change one.`);
+  const icons = plan.shots.flatMap((s) => s.pieces.filter((x) => x.kind === "icon").map((x) => ({ shot: s.shot, name: str(x.name) })));
+  const twice = icons.filter((x, k) => icons.findIndex((y) => y.name === x.name) < k);
+  if (twice.length) p.push(`The ${[...new Set(twice.map((x) => x.name))].join(", ")} icon is used more than once (shot ${twice.map((x) => x.shot).join(", ")}); use each icon once.`);
   const extra = plan.shots.filter((s) => !(s.shot >= 1 && s.shot <= shots.length));
   if (extra.length) p.push(`There are only ${shots.length} shots; drop ${extra.map((s) => s.shot).join(", ")}.`);
   return p;

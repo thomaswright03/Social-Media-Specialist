@@ -135,12 +135,12 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 .scene{position:absolute;inset:0;display:none;transform-origin:50% 50%;overflow:hidden}
 .scene>svg{width:${W}px;height:${H}px;display:block}
-#grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
-#vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
-#flash{position:absolute;inset:0;background:#fff;opacity:0}
-#label{position:absolute;left:0;right:0;top:${LABEL_TOP}px;text-align:center;opacity:0}
+#grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen;z-index:5}
+#vignette{position:absolute;inset:0;z-index:5;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
+#flash{position:absolute;inset:0;z-index:6;background:#fff;opacity:0}
+#label{position:absolute;z-index:7;left:0;right:0;top:${LABEL_TOP}px;text-align:center;opacity:0}
 #label span{display:inline-block;max-width:820px;font-family:Montserrat,sans-serif;font-weight:800;font-size:46px;line-height:1.15;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:rgba(10,12,18,.72);padding:10px 26px;border-radius:14px}
-#cap{position:absolute;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
+#cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
 #cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>

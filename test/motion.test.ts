@@ -67,3 +67,13 @@ describe("compositor with motion", () => {
     expect(composeHtml(t, ["<svg></svg>", "<svg></svg>"])).not.toContain("window.MK = {");
   });
 });
+
+describe("variety", () => {
+  it("refuses three of a kind running and an icon used twice", () => {
+    const s3 = [0, 1, 2].map((i) => ({ start: i, end: i + 1, line: "x", visual: "y" }));
+    const icons: MotionPlan = { shots: [1, 2, 3].map((n) => ({ shot: n, pieces: [{ kind: "icon", name: "heart", label: "" }] })) };
+    const p = motionProblems(icons, s3).join(" ");
+    expect(p).toMatch(/Shots 1 to 3 are all icon/);
+    expect(p).toMatch(/The heart icon is used more than once \(shot 2, 3\)/);
+  });
+});
