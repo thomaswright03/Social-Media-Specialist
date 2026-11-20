@@ -433,7 +433,10 @@ export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], di
   const ln = m
     ? `loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
     : "loudnorm=I=-14:TP=-1.5:LRA=11";
-  await run("ffmpeg", ["-y", "-v", "error", "-i", raw, "-af", `${ln},aresample=44100`, "-ar", "44100", out]);
+  // A limiter 2.5 dB under full scale after loudnorm: the AAC encode overshoots
+  // the peaks, and stage 6 needs a true peak at or below -1 dBTP (the first
+  // daily explainer came out at -0.8).
+  await run("ffmpeg", ["-y", "-v", "error", "-i", raw, "-af", `${ln},alimiter=limit=0.75:attack=5:release=50:level=false,aresample=44100`, "-ar", "44100", out]);
   return out;
 }
 

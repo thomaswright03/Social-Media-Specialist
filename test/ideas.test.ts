@@ -12,8 +12,8 @@ async function memoryVault() {
   return v;
 }
 
-const pitches = (sentence: (i: number) => string) =>
-  JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: sentence(i + 1), answer: `It ends ${i + 1}.`, hook: i < 3 ? 5 : 3, shareable: i < 3 ? 5 : 3, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
+const pitches = (sentence: (i: number) => string, answer: (i: number) => string = (i) => `It ends ${i}.`) =>
+  JSON.stringify({ pitches: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, sentence: sentence(i + 1), answer: answer(i + 1), hook: i < 3 ? 5 : 3, shareable: i < 3 ? 5 : 3, standalone: 5, different: 4 })), finalists: [1, 2, 3] });
 
 describe("stage 2: ideas", () => {
   it("reads yes and no", () => {
@@ -48,6 +48,12 @@ describe("stage 2: ideas", () => {
     const ad = await runIdeas({ vault, products: P, format: "ad", ask: async (p) => (p.includes("Answer with only YES") ? "YES" : pitches((i) => `Haulers lose leads at night, idea ${i}.`)), now: () => NOW });
     expect(ad.choice.product?.name).toBe("AI Waste Bot");
     expect(ad.gate.checks.find((c) => c.name.includes("is about AI Waste Bot"))?.passed).toBe(false);
+  });
+
+  it("takes an ad whose hook holds the product back when its ending names it", async () => {
+    const vault = await memoryVault();
+    const ad = await runIdeas({ vault, products: P, format: "ad", ask: async (p) => (p.includes("Answer with only YES") ? "YES" : pitches((i) => `A hauler's phone buzzes at 2 am, idea ${i}.`, () => "AI Waste Bot books the job while he sleeps.")), now: () => NOW });
+    expect(ad.gate.checks.filter((c) => c.name.includes("is about AI Waste Bot")).every((c) => c.passed)).toBe(true);
   });
 
   it("fails entertainment ideas that sell", async () => {

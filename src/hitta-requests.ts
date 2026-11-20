@@ -391,9 +391,14 @@ export function askClaudeReading(dir: string): (prompt: string) => Promise<strin
   return (prompt) => runClaude(prompt, { model: process.env.PIPELINE_CLAUDE_MODEL || "sonnet", cwd: dir, maxTurns: 40, tools: ["Read"], timeoutMs: 15 * 60_000 });
 }
 
+const NO_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task,Agent,NotebookEdit,TodoWrite";
+
 function runClaude(prompt: string, o: { model: string; cwd?: string; maxTurns?: number; tools?: string[]; timeoutMs?: number }): Promise<string> {
   const bin = process.env.HITTA_CLAUDE_BIN || "claude";
-  const args = ["-p", "--model", o.model, "--output-format", "json", "--max-turns", String(o.maxTurns ?? 1), ...(o.tools?.length ? ["--allowedTools", o.tools.join(",")] : []), "--no-session-persistence"];
+  // With no tools wanted, none are offered: a one-turn call that reaches for a
+  // tool ends without an answer (error_max_turns).
+  const tools = o.tools?.length ? ["--allowedTools", o.tools.join(",")] : ["--disallowedTools", NO_TOOLS];
+  const args = ["-p", "--model", o.model, "--output-format", "json", "--max-turns", String(o.maxTurns ?? 1), ...tools, "--no-session-persistence"];
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       cwd: o.cwd ?? tmpdir(),
@@ -412,9 +417,9 @@ function runClaude(prompt: string, o: { model: string; cwd?: string; maxTurns?: 
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(`Claude stopped with an error (${code}): ${err.slice(0, 200)}`));
       try {
-        const json = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, unknown>; total_cost_usd?: number };
+        const json = JSON.parse(out) as { result?: string; is_error?: boolean; subtype?: string; usage?: Record<string, unknown>; total_cost_usd?: number };
         addUsage(json);
-        if (json.is_error) return reject(new Error(`Claude returned an error: ${String(json.result).slice(0, 200)}`));
+        if (json.is_error || (json.subtype && json.subtype !== "success")) return reject(new Error(`Claude returned an error (${json.subtype ?? "error"}): ${String(json.result ?? "").slice(0, 200)}`));
         resolve(json.result ?? "");
       } catch {
         resolve(out);

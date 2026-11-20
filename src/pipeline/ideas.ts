@@ -49,8 +49,10 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
       fmt.push(check(`Finalist ${f.id} is built on 2+ news items from 2+ publishers`, missing === 0 && items.length >= 2 && publishers.size >= 2, missing ? `${missing} of its news numbers aren't on the list` : `${items.length} items, ${publishers.size} publishers`));
     }
     if (choice.format === "ad") {
-      const named = Boolean(choice.product) && f.s.toLowerCase().includes(choice.product!.name.toLowerCase());
-      fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}: its sentence names "${choice.product?.name ?? "the product"}" word for word`, named, named ? undefined : `"${f.s.slice(0, 160)}"`));
+      // The hook may hold the product back for the reveal; then the ending names it.
+      const name = choice.product?.name.toLowerCase() ?? "";
+      const named = Boolean(choice.product) && (f.s.toLowerCase().includes(name) || f.answer.toLowerCase().includes(name));
+      fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}: its sentence or its ending names "${choice.product?.name ?? "the product"}" word for word`, named, named ? undefined : `"${f.s.slice(0, 120)}" / ending: "${f.answer.slice(0, 120)}"`));
     } else {
       const g = gateFormat({ format: choice.format, product: null }, { caption: f.s, shots: [] }, products).checks.find((c) => c.name === "Entertainment doesn't sell");
       if (g) fmt.push({ ...g, name: `Finalist ${f.id}: ${g.name.toLowerCase()}` });

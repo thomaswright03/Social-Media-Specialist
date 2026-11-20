@@ -392,7 +392,11 @@ export async function physicsPlan(shots: Shot[], story: string, seconds: number,
   let best: { plan: PhysicsPlan | null; run: SimResult | null; problems: string[] } = { plan: null, run: null, problems: ["no answer"] };
   for (let t = 1; t <= PHYSICS_TRIES; t++) {
     const prompt = stagePrompt(5, { STORY: story, SHOTS: shots.map((s, i) => `${i + 1}. ${s.visual ?? ""}${s.onScreenText ? ` (on screen: ${s.onScreenText})` : ""}`).join("\n"), SECONDS: seconds.toFixed(0), PROBLEMS: problems.length ? `Your last plan was refused: ${problems.join(" ")} Fix that.` : "" }, "physics");
-    const plan = parseJson<PhysicsPlan>(await ask(prompt).catch(() => ""));
+    const answer = await ask(prompt).catch((e: Error) => {
+      log?.(`Physics plan, try ${t}: the Claude call failed: ${e.message}`);
+      return "";
+    });
+    const plan = parseJson<PhysicsPlan>(answer);
     problems = physicsProblems(plan);
     if (!problems.length) {
       const tuned = tuneRun(plan!, seconds);
