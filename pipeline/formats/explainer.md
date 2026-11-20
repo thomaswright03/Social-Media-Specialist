@@ -78,6 +78,8 @@ The narrator:
 - One story. Every line is about the same event, its people and its place. Never bring in a second fact from somewhere else with "separately", "elsewhere" or "meanwhile" (code checks this). Say where it happened and who it is about in the first two lines.
 - At most three numbers in the whole video, each said with what it measures. Leave out the rest, even when the sources have them.
 - No initials, codes or insider names a stranger wouldn't know (say "a big tech consulting firm", not "FTI"). The voice never leans on the pictures: every "it", "they", "his" or "the staff" points to something the voice already named.
+- Say only what's true from the first line. Never state something a later line takes back ("It was solved twice. Well, claimed twice."): if it's a claim, the opening says claim.
+- Every step is plain. When a machine, a court or an official "accepted", "approved" or "checked" something, the same line says what that means for the story, in everyday words.
 - Before you answer, read only your lines, top to bottom, as someone who has never heard this news. Fix any line where they'd ask "who?", "which one?" or "why does that matter?".
 - Ears-only test: someone listening without looking learns what happened, why, and what it means for them. Code checks this: listeners who hear only the narration must say what it's about, who everyone is, and what happened, with nothing central confusing them.
 
