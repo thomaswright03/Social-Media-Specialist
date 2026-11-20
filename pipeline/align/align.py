@@ -1,6 +1,6 @@
 """Forced alignment with WhisperX: when each word of a known script is heard.
 
-Usage: python3 align.py voice.wav words.json > aligned.json
+Usage: python3 align.py voice.wav words.json aligned.json
 words.json is a list of the script's words, in order. The output is the same
 list as [{"word", "start", "end"}], with start and end null for a word the
 aligner couldn't place (like "$156", whose characters it has no sound for).
@@ -16,7 +16,8 @@ import whisperx
 
 
 def main() -> None:
-    wav, words_file = sys.argv[1], sys.argv[2]
+    wav, words_file, out_file = sys.argv[1], sys.argv[2], sys.argv[3]
+    # Libraries print progress (like "Downloading…") on stdout, so the answer goes to a file.
     words = json.load(open(words_file))
     w = wave.open(wav)
     if w.getframerate() != 16000 or w.getnchannels() != 1 or w.getsampwidth() != 2:
@@ -35,7 +36,8 @@ def main() -> None:
             res.append({"word": word, "start": float(seg["start"]), "end": float(seg["end"])})
         else:
             res.append({"word": word, "start": None, "end": None})
-    json.dump(res, sys.stdout)
+    with open(out_file, "w") as f:
+        json.dump(res, f)
 
 
 if __name__ == "__main__":
