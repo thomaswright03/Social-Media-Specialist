@@ -64,13 +64,16 @@ export async function retellReads(shots: Shot[], intended: string, ask: Ask, rea
     const a = (await ask(retellPrompt(shots)).catch(() => "")).trim();
     // The match call weighs the whole answer, confusion included: a viewer
     // unsure of a detail that doesn't matter still got the story.
-    const ok = Boolean(a) && verdictYes(await ask(retellMatchPrompt(intended, a)).catch(() => ""));
+    const match = a ? await ask(retellMatchPrompt(intended, a)).catch(() => "") : "";
+    const ok = Boolean(a) && verdictYes(match);
+    // Which of who, what happened and the ending the check found wrong.
+    const wrong = [...match.matchAll(/^\W*(Who|What happened|Ending)\W*:?\W*WRONG/gim)].map((m) => m[1]!);
     out.push(ok);
     // What a viewer who didn't get it said (what confused them first), so the next revision knows what to fix.
     if (!ok) {
       const confused = a.match(/CONFUSED:\s*([\s\S]*)$/i)?.[1]?.trim() ?? "";
       const story = a.replace(/CONFUSED:[\s\S]*$/i, "").replace(/\s+/g, " ").trim();
-      out.notes.push(a ? `${confused ? `Confused by: ${confused.replace(/\s+/g, " ").slice(0, 200)}. ` : ""}Retold it as: ${story.slice(0, 220)}` : "no answer");
+      out.notes.push(a ? `${wrong.length ? `Got wrong: ${wrong.join(", ").toLowerCase()}. ` : ""}${confused ? `Confused by: ${confused.replace(/\s+/g, " ").slice(0, 200)}. ` : ""}Retold it as: ${story.slice(0, 220)}` : "no answer");
     }
   }
   return out;
