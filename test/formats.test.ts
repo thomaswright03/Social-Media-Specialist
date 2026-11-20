@@ -83,6 +83,14 @@ describe("gateFormat", () => {
     expect(gateFormat(news, { caption: "x", shots: [], sources: [sources[0]!, { url: "https://old.example", published: "2026-09-01" }] }, P, now).passed).toBe(false);
   });
 
+  it("keeps an explainer to one story: no line jumps to another fact with \"separately\" or \"elsewhere\"", () => {
+    const news = { format: "explainer" as const, product: null };
+    const one = (line: string) => gateFormat(news, { caption: "x", shots: [{ start: 0, line: "Cotton prices doubled on one island." }, { start: 3, line }] }, P).checks.find((c) => c.name.startsWith("Tells one story"))!;
+    expect(one("So farmers there are planting less of it.").passed).toBe(true);
+    expect(one("Separately, 65% of residents in three islands want help.")).toMatchObject({ passed: false, detail: 'says "Separately"' });
+    expect(one("Meanwhile a bank cut its rates.").passed).toBe(false);
+  });
+
   it("ends an explainer on a question to the viewer (Thomas, 2026-11-20)", () => {
     const news = { format: "explainer" as const, product: null };
     const now = new Date("2026-11-18T00:00:00Z");

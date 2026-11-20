@@ -104,6 +104,9 @@ const CUSTOM_BUILD = /\bcustom\b[^.!?]{0,60}\b(ai )?(agents?|software|apps?|tool
 const CALL_TO_ACTION = /\b(link in (my |our )?bio|visit|sign ?up|try it|book|dm us|message us|tap)\b/i;
 export const MADE_WITH_AI = /\b(made|created|generated|animated) (with|by|using) ai\b|\bai[- ](generated|made|animation|video)\b|#aiart|#ai\b/i;
 
+/** Words that jump an explainer to a second, unrelated fact. */
+export const STORY_JUMP = /\b(separately|elsewhere|meanwhile|in other news|on top of that|in another)\b/i;
+
 const named = (text: string, p: Product) => text.toLowerCase().includes(p.name.toLowerCase());
 
 /** The format's own checks, run with stage 4's gate (and again at stage 6 on the caption). */
@@ -129,6 +132,9 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
       return /^https?:\/\//.test(s.url ?? "") && Number.isFinite(t) && t <= now.getTime() + 86_400_000 && now.getTime() - t <= NEWS_MAX_DAYS * 86_400_000;
     });
     checks.push(check(`At least 2 dated sources from the last ${NEWS_MAX_DAYS} days`, fresh.length >= 2, `${fresh.length} of ${(d.sources ?? []).length} sources are linked, dated and recent`));
+    // One story: test run 3's listeners lost the thread at "Separately, 65% in three islands..." (2026-11-20).
+    const jump = d.shots.map((s) => s.line ?? "").join(" ").match(STORY_JUMP)?.[0];
+    checks.push(check("Tells one story (no \"separately\", \"elsewhere\", \"meanwhile\" jumping to another fact)", !jump, jump ? `says "${jump}"` : undefined));
     // Thomas (2026-11-20): an explainer ends with a question to the viewer.
     const last = [...d.shots].sort((a, b) => (a.start ?? 0) - (b.start ?? 0)).at(-1)?.line?.trim() ?? "";
     checks.push(check("Ends on a question to the viewer", /\?["'”’)]*$/.test(last), last ? `the last line is "${last.slice(-80)}"` : "the last shot has no line"));
