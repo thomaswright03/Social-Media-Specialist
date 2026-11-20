@@ -262,7 +262,8 @@
         const card = h("div", `position:absolute;top:40px;${side}:0;width:420px;height:560px;border-radius:32px;background:${win ? "rgba(163,230,53,.12)" : "rgba(255,255,255,.07)"};border:6px solid ${win ? LIME : "rgba(255,255,255,.25)"};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center`);
         const dec = decs([it.value], p.prefix ?? it.prefix, p.unit ?? it.unit);
         const raw = it.value != null && it.value !== "" && Number.isFinite(Number(it.value));
-        const val = h("div", `font:900 ${String(it.value ?? "").length > 6 ? 88 : 116}px/1 Montserrat,sans-serif;color:${win ? LIME : "#fff"};font-variant-numeric:tabular-nums`);
+        const vlen = Math.max(1, String(it.value ?? "").length);
+        const val = h("div", `font:900 ${Math.min(116, Math.floor(350 / (0.68 * vlen)))}px/1 Montserrat,sans-serif;white-space:nowrap;color:${win ? LIME : "#fff"};font-variant-numeric:tabular-nums`);
         const name = h("div", "margin-top:30px;font:800 44px/1.12 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.88)", esc(it.name));
         card.append(val, name);
         el.appendChild(card);
@@ -393,9 +394,10 @@
         const hi = k === hiK;
         const dot = h("div", `position:absolute;left:${X(k) - 28}px;top:${y - 28}px;width:56px;height:56px;border-radius:50%;background:${hi ? LIME : "#fff"};border:8px solid #0f172a`);
         const above = k % 2 === 0;
-        const box = h("div", `position:absolute;left:${X(k) - bw / 2}px;width:${bw}px;${above ? `bottom:${760 - y + 60}px` : `top:${y + 60}px`};text-align:center`);
-        box.appendChild(h("div", `font:900 ${hi ? 72 : 58}px/1 Montserrat,sans-serif;color:${hi ? LIME : "#fff"}`, esc(it.date)));
-        box.appendChild(h("div", `margin-top:14px;font:800 ${hi ? 44 : 38}px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.88)`, esc(it.label)));
+        const box = h("div", `position:absolute;left:${clamp(X(k) - bw / 2, 0, 900 - bw)}px;width:${bw}px;${above ? `bottom:${760 - y + 60}px` : `top:${y + 60}px`};text-align:center`);
+        const dlen = Math.max(1, String(it.date ?? "").length);
+        box.appendChild(h("div", `font:900 ${Math.min(hi ? 72 : 58, Math.floor(bw / (0.7 * dlen)))}px/1 Montserrat,sans-serif;white-space:nowrap;color:${hi ? LIME : "#fff"}`, esc(it.date)));
+        box.appendChild(h("div", `margin-top:14px;font:800 ${hi ? 44 : 38}px/1.1 Montserrat,sans-serif;text-transform:uppercase;overflow-wrap:anywhere;color:rgba(255,255,255,.88)`, esc(it.label)));
         el.append(dot, box);
         return { dot, box, k, hi, above };
       });
@@ -715,6 +717,8 @@
           const y = 30 + 640 - hpx;
           num.textContent = fmt(v * c, dec, p.prefix, p.unit);
           num.style.top = `${Math.min(560, y - 40)}px`;
+          // Near the top the number takes the goal's place, so the goal fades out.
+          goal.style.opacity = String(clamp((y - 40 - 70) / 60));
           label.style.top = `${Math.min(560, y - 40) + 140}px`;
           label.style.opacity = String(prog(l, 0.3, 0.3));
           bulb.style.transform = `scale(${outBack(prog(l, 0, 0.35))})`;
