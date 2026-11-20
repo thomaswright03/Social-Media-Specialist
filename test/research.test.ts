@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
-import { discoverAccount, type DiscoveredAccount, type Media } from "../src/instagram.ts";
+import { DISCOVERY_USAGE_STOP, discoverAccount, usageFrom, type DiscoveredAccount, type DiscoveryState, type Media } from "../src/instagram.ts";
 import { CAMERAS, LABELS, MAX_SHOTS, MIN_SHOTS, UNCLEAR, type ReelLabels } from "../src/pipeline/gates.ts";
-import { LEGACY_SOURCE, PER_GROUP, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, studyAccounts, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
+import { LEGACY_SOURCE, PER_GROUP, soundSigns, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, studyAccounts, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
 import { RESEARCH_FORMATS, accountsFor, cleanHandle, fileAccounts, parseAccounts } from "../src/pipeline/research-accounts.ts";
 import { captionFacts, cutTimes, lufsFrom, sampleShots, shotBounds, shotStats, soundShareFrom, speechFacts, type MeasureFile, type VideoFacts } from "../src/pipeline/research-measure.ts";
 import { NOT_MEASURED, RULES, fisher, rowText, rulesTable, tableText, verdictOf, type StudiedReel } from "../src/pipeline/research-rules.ts";
-import { MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, studyAccount } from "../src/pipeline/research-sample.ts";
+import { ENOUGH_SCORED, MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, readEnough, studyAccount } from "../src/pipeline/research-sample.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 import { heardFrom, transcribe, type Heard } from "../src/transcribe.ts";
 import { Vault } from "../src/vault.ts";
@@ -119,6 +119,61 @@ describe("discoverAccount", () => {
     expect(second.gave).toEqual({ views: true, audioType: false });
   });
 
+  it("reads how much of the hourly allowance Meta says is used", () => {
+    expect(usageFrom(new Headers({ "x-app-usage": JSON.stringify({ call_count: 12, total_time: 61, total_cputime: 40 }) }))).toBe(61);
+    expect(usageFrom(new Headers({ "x-business-use-case-usage": JSON.stringify({ "178": [{ type: "instagram", call_count: 3, total_cputime: 9, total_time: 2, estimated_time_to_regain_access: 0 }] }) }))).toBe(9);
+    expect(usageFrom(new Headers({ "x-app-usage": "not json" }))).toBeNull();
+    expect(usageFrom(new Headers())).toBeNull();
+  });
+
+  it("stops reading before the hourly allowance is gone, and keeps what it has", async () => {
+    // Each answer says more of the allowance is used: 40%, then 80%.
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      const res = page(Array.from({ length: 50 }, (_, i) => row(urls.length * 100 + i)), `CURSOR${urls.length}`);
+      res.headers.set("x-app-usage", JSON.stringify({ call_count: 5, total_time: urls.length * 40, total_cputime: 10 }));
+      return res;
+    }) as typeof fetch;
+    const state: DiscoveryState = { set: 0 };
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200, state);
+    // media_count is 70 in these answers, so the first account is done after two pages anyway; the allowance is then 80% used.
+    expect(first.media).toHaveLength(100);
+    expect(state.usage).toBe(80);
+    expect(DISCOVERY_USAGE_STOP).toBeLessThanOrEqual(80);
+    await expect(discoverAccount(fetchImpl, "EAAx", "ig1", "thestorystix", 200, state)).rejects.toThrow("Instagram's hourly allowance for reading other accounts is 80% used");
+    expect(urls).toHaveLength(2);
+  });
+
+  it("asks no more once Instagram says the allowance is used up", async () => {
+    const urls: string[] = [];
+    const limit = () => new Response(JSON.stringify({ error: { message: "(#4) Application request limit reached", code: 4 } }), { status: 400 });
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return urls.length === 1 ? new Response(JSON.stringify({ business_discovery: { username: "a", followers_count: 1, media_count: 500, media: { data: Array.from({ length: 50 }, (_, i) => row(i)), paging: { cursors: { after: "C1" } } } } }), { status: 200 }) : limit();
+    }) as typeof fetch;
+    const state: DiscoveryState = { set: 0 };
+    // The refusal came on the second page: the first 50 posts are kept.
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "a", 200, state);
+    expect(first.media).toHaveLength(50);
+    expect(state.limited).toBe(true);
+    await expect(discoverAccount(fetchImpl, "EAAx", "ig1", "b", 200, state)).rejects.toThrow("Instagram's hourly allowance for reading other accounts is used up. It frees up again within the hour.");
+    expect(urls).toHaveLength(2);
+    // On an account's first page, the refusal is the account's problem, in plain words.
+    await expect(discoverAccount((async () => limit()) as unknown as typeof fetch, "EAAx", "ig1", "c", 200, { set: 0 })).rejects.toThrow("used up. It frees up again within the hour ((#4) Application request limit reached).");
+  });
+
+  it("stops paging when the run says it has enough", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return new Response(JSON.stringify({ business_discovery: { username: "a", followers_count: 1, media_count: 900, media: { data: Array.from({ length: 50 }, (_, i) => row(urls.length * 100 + i)), paging: { cursors: { after: `C${urls.length}` } } } } }), { status: 200 });
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "a", 200, { set: 0, enough: (media) => media.length >= 100 });
+    expect(a.media).toHaveLength(100);
+    expect(a.requests).toBe(2);
+  });
+
   it("refuses something that isn't a username", async () => {
     await expect(discoverAccount(fetch, "EAAx", "ig1", "not a name!")).rejects.toThrow("isn't an Instagram username");
   });
@@ -219,6 +274,18 @@ describe("scoring an account's Reels against the account itself", () => {
   it("says in one line what an account gave, or why it can't be used", () => {
     expect(accountLine(studyAccount(account("a", SIXTEEN), NOW))).toBe("@a: 1,000 followers, 16 of its 16 posts read, 16 Reels scored by views, median 100, 4.5 posts a week. 4 winners (4 with a video file), 8 average (8 with a video file).");
     expect(accountLine(studyAccount(account("small", [300, 200, 100, 100, 50]), NOW))).toBe("@small: not used. only 5 Reels old enough to score (needs 8) (5 of its 5 posts read).");
+  });
+
+  it("knows when reading further back in an account adds nothing", () => {
+    const recent = (count: number) => Array.from({ length: count }, (_, i) => reel("a", i, 100, {}, 10 + i));
+    expect(readEnough(recent(ENOUGH_SCORED - 1), NOW)).toBe(false);
+    expect(readEnough(recent(ENOUGH_SCORED), NOW)).toBe(true);
+    // Posts still collecting views don't count, nor do pictures.
+    expect(readEnough([...Array.from({ length: 30 }, (_, i) => reel("a", 500 + i, 100, {}, 1)), ...recent(ENOUGH_SCORED - 1)], NOW)).toBe(false);
+    expect(readEnough(recent(ENOUGH_SCORED).map((m) => ({ ...m, productType: "FEED", mediaType: "IMAGE" })), NOW)).toBe(false);
+    // The posts have reached the ones over a year old: older ones can't be scored either.
+    expect(readEnough([...recent(5), reel("a", 99, 100, {}, 400)], NOW)).toBe(true);
+    expect(readEnough([], NOW)).toBe(false);
   });
 
   it("takes winners and average Reels from the accounts in turns", () => {
@@ -776,8 +843,12 @@ describe("reading the accounts", () => {
       token: "EAAx",
       igUserId: "ig1",
       accounts: ["a", "private"],
-      discover: async (_f, _t, _ig, name) => {
+      discover: async (_f, _t, _ig, name, max, state) => {
         if (name === "private") throw new Error("@private can't be read: Instagram only shows business and creator accounts to other apps.");
+        // The run tells the reader when to stop paging, and what it learned about the allowance is passed on.
+        expect(max).toBe(200);
+        expect(state!.enough!(Array.from({ length: ENOUGH_SCORED }, (_, i) => reel(name, i, 100)))).toBe(true);
+        state!.usage = 31.4;
         return { ...account(name, SIXTEEN), gave: { views: true, audioType: false } };
       },
       now: () => NOW,
@@ -785,7 +856,25 @@ describe("reading the accounts", () => {
     });
     expect(studies.map((x) => [x.username, x.problem])).toEqual([["a", null], ["private", "@private can't be read: Instagram only shows business and creator accounts to other apps"]]);
     expect(noSoundKind).toEqual(["a"]);
-    expect(logs).toEqual([accountLine(studies[0]!), "@private: not used. @private can't be read: Instagram only shows business and creator accounts to other apps."]);
+    expect(logs).toEqual([accountLine(studies[0]!), "@private: not used. @private can't be read: Instagram only shows business and creator accounts to other apps.", "Instagram's hourly allowance for reading other accounts is 31% used."]);
+  });
+});
+
+describe("what the video files say about the sound", () => {
+  const study = (username: string, winners: number, winnersWithVideo: number, average: number, averageWithVideo: number) => ({ ...studyAccount(account(username, SIXTEEN), NOW), winners, winnersWithVideo, average, averageWithVideo });
+
+  it("says when an account's winners come without a video file far more often than its average Reels", () => {
+    // The accounts test of 2026-11-20: @stickmanstorys22 gave 2 of 8 winners and 28 of 31 average Reels.
+    expect(soundSigns([study("stickmanstorys22", 8, 2, 31, 28)])).toEqual([
+      "Instagram gives the video file for 2 of @stickmanstorys22's 8 winners and 28 of its 31 average Reels. It withholds the file when a Reel carries copyrighted sound, most often music from its library, so this account's winners probably use library music more often than its average Reels. That is a guess from which files came, not a measurement.",
+    ]);
+    expect(soundSigns([study("own", 10, 9, 20, 4)])[0]).toContain("winners probably use their own sound more often");
+  });
+
+  it("says nothing without a clear gap, enough Reels, or a readable account", () => {
+    expect(soundSigns([study("none", 43, 0, 87, 0), study("all", 12, 12, 25, 25), study("close", 47, 2, 96, 5)])).toEqual([]);
+    expect(soundSigns([study("few", 4, 0, 8, 8)])).toEqual([]);
+    expect(soundSigns([{ ...study("broken", 8, 2, 31, 28), problem: "unreadable" }])).toEqual([]);
   });
 });
 

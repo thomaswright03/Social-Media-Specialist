@@ -140,6 +140,9 @@ Then, from the Actions tab → Social Media Specialist → Run workflow:
    stage 1 could use (how many winners and average Reels each has, and how
    many come with a video file). It takes a minute, asks Claude nothing and
    saves nothing: try an account with it before adding it to the file.
+   Instagram allows only a few dozen such reads an hour for the whole app,
+   so test a handful of accounts at a time; both commands say how much of
+   the hour's allowance is used and stop reading at 75%.
    With `ELEVENLABS_API_KEY` set it also transcribes each Reel (ElevenLabs
    speech to text, about $0.20 an hour of sound, so a few cents a run); a
    key limited to some features needs Speech to Text turned on. Set the

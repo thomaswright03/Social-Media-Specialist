@@ -30,7 +30,7 @@ import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
-import { currentToken, instagramClient } from "./instagram.ts";
+import { DISCOVERY_USAGE_STOP, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
@@ -317,7 +317,7 @@ async function main() {
       }
       const me = await instagramClient(token.token).account();
       const short: string[] = [];
-      const discovery = { set: 0 };
+      const discovery: DiscoveryState = { set: 0 };
       let requests = 0;
       for (const format of formats) {
         const accounts = accountsFor(format, typed);
@@ -332,7 +332,7 @@ async function main() {
         console.log(`  ${enough ? "Stage 1 can study this format" : "Stage 1 can't study this format yet"}: ${usable.length} of ${studies.length} accounts can be used (it needs ${MIN_ACCOUNTS}), with ${winners} winners and ${average} average Reels between them (it needs ${MIN_LOOKED_PER_GROUP} of each). Instagram gives the video file for ${sum((x) => x.winnersWithVideo)} of those winners and ${sum((x) => x.averageWithVideo)} of those average Reels.`);
         if (!enough) short.push(format);
       }
-      console.log(`\nReading them took ${requests} requests to Instagram, which allows an app about 200 an hour for other accounts.`);
+      console.log(`\nReading them took ${requests} requests to Instagram.${typeof discovery.usage === "number" ? ` Its hourly allowance for reading other accounts is now ${Math.round(discovery.usage)}% used; stage 1 stops reading at ${DISCOVERY_USAGE_STOP}%.` : ""}`);
       if (short.length) {
         console.error(`\nNot enough to study: ${short.join(", ")}.`);
         process.exitCode = 1;
@@ -354,7 +354,7 @@ async function main() {
       }
       const me = await instagramClient(token.token).account();
       const results: ResearchResult[] = [];
-      const discovery = { set: 0 };
+      const discovery: DiscoveryState = { set: 0 };
       for (const format of formats) {
         const accounts = accountsFor(format, typed);
         log(`Research, ${format}: studying ${accounts.map((a) => `@${a}`).join(", ") || "no accounts (none are listed for it)"}.`);

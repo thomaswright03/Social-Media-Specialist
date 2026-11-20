@@ -23,7 +23,7 @@ import type { Format } from "./formats.ts";
 import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP, UNCLEAR, gateResearch, labelProblems, patternProblem, type GateResult, type Looked, type PatternTally, type ReelLabels } from "./gates.ts";
 import { captionFacts, download as downloadFile, hasFfmpeg, measureFile, speechFacts, type MeasureFile, type SpeechFacts, type VideoFacts } from "./research-measure.ts";
 import { FOR_THOMAS, NOT_MEASURED, rowText, rulesTable, tableText, type RuleRow, type StudiedReel } from "./research-rules.ts";
-import { MAX_AGE_DAYS, MIN_AGE_DAYS, WINDOW, WINNER_LIFT, accountLine, pickSample, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
+import { MAX_AGE_DAYS, MIN_AGE_DAYS, WINDOW, WINNER_LIFT, accountLine, pickSample, readEnough, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
 import { parseJson, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (prompt: string) => Promise<string>;
@@ -35,7 +35,7 @@ type Ask = (prompt: string) => Promise<string>;
  */
 export const PER_GROUP = 20;
 export const PER_GROUP_MAX = 30;
-/** Posts read from each account. */
+/** Posts read from each account, at most: reading stops sooner once there are enough Reels to score (readEnough). */
 export const POSTS_PER_ACCOUNT = 200;
 /** Reels in one Claude turn: each has up to two pictures to open. */
 export const CHUNK = 8;
@@ -125,6 +125,8 @@ export type Findings = {
   patterns: FoundPattern[];
   /** What limited this run, in plain words. */
   notes: string[];
+  /** Accounts whose winners and average Reels differ in how often Instagram gives the video, and what that suggests about their sound. */
+  soundSigns?: string[];
 };
 
 export type ResearchResult = { format: Format; passed: boolean; gate: GateResult; findings: Findings; report: string; reportFile: string | null };
@@ -201,6 +203,28 @@ export function tallyPatterns(patterns: { pattern: string; question: string }[],
 
 // --- The report ------------------------------------------------------------------
 
+/** An account needs this many winners and average Reels before their shares with a video file are compared. */
+export const SOUND_SIGN_MIN = 5;
+/** And the shares must differ by this much (0 to 1). */
+export const SOUND_SIGN_GAP = 0.3;
+
+/**
+ * Instagram withholds a Reel's video file when the Reel carries copyrighted
+ * sound, most often music from its own library (Meta's docs for `media_url`).
+ * It refuses to say which kind of sound a Reel has (`media_audio_type`), so
+ * whether the file comes is the only sign of it there is. This counts all of
+ * an account's winners and average Reels, not just the ones a run looked at.
+ */
+export function soundSigns(accounts: Omit<AccountStudy, "candidates">[]): string[] {
+  return accounts.flatMap((a) => {
+    if (a.problem || a.winnersWithVideo === undefined || a.averageWithVideo === undefined || a.winners < SOUND_SIGN_MIN || a.average < SOUND_SIGN_MIN) return [];
+    const gap = a.winnersWithVideo / a.winners - a.averageWithVideo / a.average;
+    if (Math.abs(gap) < SOUND_SIGN_GAP) return [];
+    const counts = `Instagram gives the video file for ${a.winnersWithVideo} of @${a.username}'s ${a.winners} winners and ${a.averageWithVideo} of its ${a.average} average Reels`;
+    return [`${counts}. It withholds the file when a Reel carries copyrighted sound, most often music from its library, so this account's winners probably use ${gap < 0 ? "library music more often" : "their own sound more often"} than its average Reels. That is a guess from which files came, not a measurement.`];
+  });
+}
+
 const tallyText = (p: PatternTally) => `${p.winnersYes} of ${p.winnersAsked} winners${p.winnerAccounts > 1 ? ` (in ${p.winnerAccounts} accounts)` : ""} and ${p.averageYes} of ${p.averageAsked} average Reels it wasn't drawn from`;
 const verdictRows = (f: Findings, v: RuleRow["verdict"]) => f.table.filter((r) => r.verdict === v);
 const winnersOf = (f: Findings) => f.reels.filter((r) => r.group === "winner");
@@ -242,7 +266,7 @@ export function reportText(f: Findings, gate: GateResult): string {
     `# Stage 1 research: ${f.format}`,
     `Studied ${f.studiedAt.slice(0, 10)}. ${gate.passed ? "Passed its gate." : "Did not pass its gate, so nothing was saved for later stages."}`,
     failed.length ? `## Checks that failed\n${failed.map((c) => `- ${c.name}${c.detail ? `: ${c.detail}` : ""}`).join("\n")}` : "",
-    `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels (the middle half). Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}\n\nLooked at: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first. Instagram gave the video for ${f.videosGiven} of them; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
+    `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels (the middle half). Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}${f.soundSigns?.length ? `\n\n${f.soundSigns.join("\n\n")} Our Reels carry their own sound (stages 5 and 6): for Thomas to weigh.` : ""}\n\nLooked at: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first. Instagram gave the video for ${f.videosGiven} of them; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
     f.notes.length ? `## What limited this run\n${f.notes.map((n) => `- ${n}`).join("\n")}` : "",
     f.table.length ? `## Our rules, measured on these Reels\nThis table never changes a rule. A rule the winners speak against, or one most of them break, is for Thomas to weigh. About ${f.table.length} rules are tested at once, so one or two can look clear by chance.\n\n${tableText(f.table)}` : "",
     `## Patterns\nProposed from half of the Reels, then checked by a reader who didn't know the results on the other half.\n\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}: ${patternProblem(p)}.)`).join("\n")}` : ""}`,
@@ -293,7 +317,7 @@ export type ResearchDeps = {
   accounts: string[];
   ask?: Ask;
   discover?: typeof discoverAccount;
-  /** What earlier formats of the same run learned about Instagram's fields (left out: starts fresh). */
+  /** What earlier formats of the same run learned about Instagram's fields and its hourly allowance (left out: starts fresh). */
   discovery?: DiscoveryState;
   fetchImpl?: typeof fetch;
   download?: typeof downloadFile;
@@ -323,12 +347,15 @@ export async function studyAccounts(d: Pick<ResearchDeps, "token" | "igUserId" |
   const log = d.log ?? (() => {});
   const studies: AccountStudy[] = [];
   const noSoundKind: string[] = [];
-  // A field Instagram refuses for one account is refused for all of them.
+  // A field Instagram refuses for one account is refused for all of them, and
+  // the hourly allowance for reading other accounts is one for the whole run.
   const state: DiscoveryState = d.discovery ?? { set: 0 };
+  const clock = d.now ?? (() => new Date());
+  state.enough = (media) => readEnough(media, clock());
   for (const a of d.accounts) {
     try {
       const acc = await (d.discover ?? discoverAccount)(d.fetchImpl ?? fetch, d.token, d.igUserId, a, POSTS_PER_ACCOUNT, state);
-      const s = studyAccount(acc, (d.now ?? (() => new Date()))());
+      const s = studyAccount(acc, clock());
       if (acc.gave && !acc.gave.audioType) noSoundKind.push(s.username);
       log(accountLine(s));
       studies.push(s);
@@ -339,6 +366,7 @@ export async function studyAccounts(d: Pick<ResearchDeps, "token" | "igUserId" |
       studies.push(s);
     }
   }
+  if (typeof state.usage === "number") log(`Instagram's hourly allowance for reading other accounts is ${Math.round(state.usage)}% used.`);
   return { studies, noSoundKind };
 }
 
@@ -501,7 +529,8 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
 
     // 7. The gate, the record, and what later stages get.
     const reels: FoundReel[] = working.map(({ files: _files, ...r }) => r);
-    const findings: Findings = { format, studiedAt: now().toISOString(), accounts: studies.map(({ candidates: _c, ...a }) => a), reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes };
+    const accounts = studies.map(({ candidates: _c, ...a }) => a);
+    const findings: Findings = { format, studiedAt: now().toISOString(), accounts, reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes, soundSigns: soundSigns(accounts) };
     const kept = patterns.filter((p) => p.kept);
     const r = await runStage<Findings>({
       vault: d.vault,
@@ -537,7 +566,7 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
         {
           kind: "lesson",
           summary: `Research, ${format}: ${count(winnersOf(findings).length, "winner")} compared with ${count(averageOf(findings).length, "average Reel")} from ${handles(usableOf(findings))}. Of our rules, ${verdictRows(findings, "backed").length} backed, ${against.length} the winners follow less often than average Reels, ${breaks.length} most winners break. ${count(kept.length, "pattern")} kept${retired ? `, ${count(retired, "earlier pattern")} retired` : ""}.`,
-          detail: [tableText(table, [...FOR_THOMAS, "backed"]), kept.length ? `Patterns kept:\n${kept.map((p) => `- ${p.pattern} (${tallyText(p)})`).join("\n")}` : "", notes.join("\n")].filter(Boolean).join("\n\n"),
+          detail: [tableText(table, [...FOR_THOMAS, "backed"]), kept.length ? `Patterns kept:\n${kept.map((p) => `- ${p.pattern} (${tallyText(p)})`).join("\n")}` : "", (findings.soundSigns ?? []).join("\n"), notes.join("\n")].filter(Boolean).join("\n\n"),
           target: r.recordId,
         },
         now(),

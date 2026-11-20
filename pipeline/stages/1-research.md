@@ -20,7 +20,7 @@ old.
 
 | Step | Who | What |
 |------|-----|------|
-| Read the accounts | code (`src/instagram.ts`, Business Discovery) | up to 200 posts an account: views, likes, comments, caption, date, the video file when Instagram gives it |
+| Read the accounts | code (`src/instagram.ts`, Business Discovery) | up to 200 posts an account, fewer once it has 60 Reels to score: views, likes, comments, caption, date, the video file when Instagram gives it |
 | Score and pick | code (`research-sample.ts`) | lift, winners and average Reels, up to 20 of each, taken from the accounts in turns, those with a video file first |
 | Measure | code (`research-measure.ts`, `src/transcribe.ts`) | the caption; from the video: length, every cut, loudness; from the transcript (ElevenLabs speech to text): when the voice starts, words a second, shots with speech, the longest stretch where nothing changes |
 | Label | Claude, blind (the `prompt` block) | what only eyes and ears can tell, chosen from fixed lists; it is never told how a Reel performed |
@@ -35,6 +35,21 @@ run got a video for 3 of 24 Reels, so Reels that come with one are now taken
 first. The rest are studied from their cover and caption, and the rules that
 need the video don't count them. Comment text, saves and shares of other
 accounts aren't readable.
+
+Reading other accounts has an hourly allowance, shared by everything the app
+does on Instagram, and it is small: the first test of 21 accounts was refused
+after about 48 requests of 50 posts each. So a run reads no further back
+than it needs, and reads no new account once Meta says 75% of the allowance
+is used: that account is reported as not read, and the format fails its gate
+rather than using the hour up. In a run of all four formats, the labelling
+between two formats gives the allowance time to recover. Running the stage,
+or `accounts-test`, several times within the hour may not.
+
+Whether Instagram gives a Reel's video is itself a sign of its sound: it
+withholds the file when a Reel carries copyrighted sound, most often music
+from its library. When an account's winners and average Reels differ by 30
+points or more in that, the report says so (`soundSigns`), for Thomas to
+weigh against our rule that a Reel carries its own sound.
 
 The numbers are small (20 Reels a group, 10 of each held back for the
 check), so the report gives every count, says when a gap could still be

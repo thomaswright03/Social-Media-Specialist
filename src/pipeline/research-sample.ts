@@ -72,6 +72,22 @@ export type AccountStudy = {
 
 export const isReel = (m: Media) => m.productType === "REELS" || m.mediaType === "VIDEO";
 
+/** With this many Reels old enough to score, an account has more winners and average Reels than a run looks at. */
+export const ENOUGH_SCORED = 60;
+
+/**
+ * True when reading further back in an account would add nothing a run
+ * uses: it already has ENOUGH_SCORED Reels to score, or the posts have
+ * reached the ones too old to count. Each further page costs a request of
+ * Instagram's hourly allowance for reading other accounts.
+ */
+export function readEnough(media: Media[], now = new Date()): boolean {
+  const age = (m: Media) => (now.getTime() - Date.parse(m.timestamp)) / 86_400_000;
+  const last = media.at(-1);
+  if (last && age(last) > MAX_AGE_DAYS) return true;
+  return media.filter((m) => isReel(m) && m.permalink && age(m) >= MIN_AGE_DAYS && age(m) <= MAX_AGE_DAYS).length >= ENOUGH_SCORED;
+}
+
 /** Posts a week over the span of what was fetched (at most the last 90 days). */
 export function postsPerWeek(media: Media[], now = new Date()): number | null {
   const times = media.map((m) => Date.parse(m.timestamp)).filter((t) => Number.isFinite(t) && now.getTime() - t <= 90 * 86_400_000);

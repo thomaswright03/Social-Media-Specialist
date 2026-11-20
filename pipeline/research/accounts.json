@@ -1,18 +1,17 @@
 {
   "story": [
-    { "account": "stickmanstorys22", "why": "Thomas's pick: stick-figure survival stories with a narrator" },
-    { "account": "thestorystix", "why": "Story Stix: stick-figure stories with voice acting" },
-    { "account": "stickman_animation_007", "why": "2D stick-figure animation, funny clips" }
+    { "account": "stickmanstorys22", "why": "Thomas's pick: stick-figure survival stories with a narrator", "tested": "2026-11-20: 441,250 followers, 61 Reels to score, 8 winners (2 with a video file), 31 average (28 with a video file)" },
+    { "account": "thestorystix", "why": "Story Stix: stick-figure stories with voice acting", "tested": "2026-11-20: 531,891 followers, 173 Reels to score, 43 winners, 87 average, no video files" },
+    { "account": "alanbecker", "why": "Alan Becker (Animator vs. Animation): stick-figure animation with no narrator. Replaces stickman_animation_007, which has posted no Reel in the last year", "tested": "2026-11-20: 1,251,967 followers, 190 Reels to score, 47 winners (2 with a video file), 96 average (5 with a video file)" }
   ],
   "satisfying": [
-    { "account": "satisfy_ai_reels", "why": "Satisfying Reels made with AI (its bio says Veo 3 clips)" },
-    { "account": "wannerstedt", "why": "Andreas Wannerstedt, a 3D artist: solid shapes that fit and loop, made by hand, the look our format copies" },
-    { "account": "glasmr_", "why": "Glass ASMR: daily glass-cutting clips" }
+    { "account": "satisfy_ai_reels", "why": "Satisfying Reels made with AI (its bio says Veo 3 clips)", "tested": "2026-11-20: 162,110 followers, 59 Reels to score, 14 winners, 31 average, no video files; nothing posted in the last 90 days" },
+    { "account": "oddlysatisfying", "why": "A page of oddly satisfying clips of every kind, posting about 6 a week. Replaces wannerstedt (9 Reels in a year, no winners) and glasmr_ (Instagram doesn't show it to other apps)", "tested": "2026-11-20: 229,076 followers, 71 Reels to score, 17 winners, 37 average, no video files" }
   ],
   "explainer": [
-    { "account": "cleoabram", "why": "Cleo Abram, video journalist: explainers about technology" },
-    { "account": "morningbrew", "why": "Morning Brew: business news made short" },
-    { "account": "voxdotcom", "why": "Vox: explainers on the news" }
+    { "account": "cleoabram", "why": "Cleo Abram, video journalist: explainers about technology", "tested": "2026-11-20: 3,279,941 followers, 195 Reels to score, 48 winners, 99 average, no video files" },
+    { "account": "morningbrew", "why": "Morning Brew: business news made short", "tested": "2026-11-20: 2,293,774 followers, 49 Reels to score, 12 winners, 25 average, a video file for every one" },
+    { "account": "voxdotcom", "why": "Vox: explainers on the news", "tested": "2026-11-20: 1,026,179 followers, 98 Reels to score, 24 winners (2 with a video file), 50 average (none with one)" }
   ],
   "ad": [
     { "account": "clickup", "why": "ClickUp: office comedy skits that sell work software" },
