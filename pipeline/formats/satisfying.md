@@ -37,6 +37,12 @@ Format: a satisfying physics video. It is entertainment: no selling, no product 
 
 How this video is made, which is the reason for the rules below: there is no voice. Code runs one continuous physics simulation (escape-rings, growing-ball, multiply or race), and every collision plays a note. The shots are the beats of that one run, in order; stage 5 picks the scene and its settings from your story and shots, and the run's finish lands where your payoff is.
 
+What each scene does, and nothing more. Code draws only this, so a story, hook or on-screen word that needs anything else (a rule, a meaning for the colours, a winner the scene doesn't have) can't be shown and fails at stage 5:
+- escape-rings: one ball bounces inside spinning rings, each with a gap; it slips out ring by ring until it's free. The counter is the rings left.
+- growing-ball: one ball bounces inside a circle and grows on every bounce until it fills it. The counter is the bounces.
+- multiply: every ball that hits the wall makes a new one, in a random colour, until they fill the circle. The counter is how full it is, in percent. Colours mean nothing and nothing "wins" or "survives": the bet is whether, or how fast, it fills.
+- race: 2 to 4 coloured balls drop through a field of pegs, three laps; the first to finish wins. This is the only scene with a winner.
+
 The run:
 - One scene, with a goal the viewer can see from the first frame.
 - Each shot is one stage of progress, with the count at its start and end ("4 of 10 rings broken; the ball slips through the fifth gap").

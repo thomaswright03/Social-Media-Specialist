@@ -361,6 +361,7 @@ export function physicsProblems(plan: PhysicsPlan | null): string[] {
   if (plan.kind === "multiply") range(plan.balls, 60, 250, "balls");
   else range(plan.balls, 1, 4, "balls");
   if (plan.counter != null && (typeof plan.counter !== "string" || !plan.counter.includes("{n}") || plan.counter.length > 24)) p.push('counter is short text with {n} in it, like "{n} RINGS LEFT" (at most 24 characters).');
+  else if (typeof plan.counter === "string" && plan.kind !== "race" && !counterFits(plan.kind, plan.counter)) p.push(`counter names what {n} counts in ${plan.kind}: ${{ "escape-rings": '"{n} RINGS LEFT"', "growing-ball": '"{n} BOUNCES"', multiply: '"{n}% FULL"' }[plan.kind]}; {n} is never anything else.`);
   if (plan.kind === "race" && plan.names != null && (!Array.isArray(plan.names) || plan.names.some((n) => typeof n !== "string" || n.length > 10))) p.push("names are short colour names, at most 10 characters each.");
   return p;
 }
@@ -484,6 +485,10 @@ export function collisionAudio(run: SimResult, rate = 44100): Buffer {
   return pcm;
 }
 
+/** What a scene's counter counts; a custom counter must name it, so it never reads "GEN 42 OF 10" for a fill percentage. */
+const COUNTS: Record<PhysicsPlan["kind"], RegExp> = { "escape-rings": /\{n\}\s*RINGS?\b/i, "growing-ball": /\{n\}\s*BOUNCES?\b/i, multiply: /\{n\}\s*%/, race: /$^/ };
+export const counterFits = (kind: PhysicsPlan["kind"], counter: string) => COUNTS[kind].test(counter);
+
 /** The counter's words for a frame. */
 export function counterText(plan: PhysicsPlan, n: number, winner: number | null, done: boolean): string {
   if (plan.kind === "race") {
@@ -493,7 +498,7 @@ export function counterText(plan: PhysicsPlan, n: number, winner: number | null,
   }
   if (done) return plan.kind === "escape-rings" ? "FREE!" : plan.kind === "growing-ball" ? `FULL IN ${n} BOUNCES!` : "FULL!";
   const fallback = { "escape-rings": "{n} RINGS LEFT", "growing-ball": "{n} BOUNCES", multiply: "{n}% FULL", race: "" }[plan.kind];
-  return (plan.counter?.includes("{n}") ? plan.counter : fallback).replace("{n}", String(n)).toUpperCase();
+  return (plan.counter && counterFits(plan.kind, plan.counter) ? plan.counter : fallback).replace("{n}", String(n)).toUpperCase();
 }
 
 /** The browser code that draws a recorded run (data in window.PHYS); it draws into canvas#phys. */

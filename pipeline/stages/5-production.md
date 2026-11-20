@@ -396,7 +396,7 @@ Every scene also takes palette (optional): neon (default), sunset, ocean or cand
 
 How to choose:
 1. The scene whose finish is the story's payoff, something the viewer roots for. Getting free is escape-rings; filling it up is growing-ball or multiply; a contest the viewer picks a side in is race.
-2. The counter (optional) is short words with {n}, at most 24 characters, in capitals, counting toward the finish. It sits near the top for the whole video.
+2. The counter (optional) is short words with {n}, at most 24 characters, in capitals, counting toward the finish. {n} is what the scene counts and nothing else: rings left, bounces, or percent full ("{n}% FULL"). It sits near the top for the whole video.
 3. Code runs the scene and moves its timing so the finish lands between 55% and 90% of the video. If it can't, it tells you, and you change the settings.
 
 <last_refusal>
