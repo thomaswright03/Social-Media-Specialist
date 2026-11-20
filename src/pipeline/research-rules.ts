@@ -188,7 +188,21 @@ export type Side = { n: number; follow: number; median: number | null };
  * - no difference: most winners follow it, and so do average Reels.
  */
 export type Verdict = "backed" | "no difference" | "winners break it" | "against" | "not enough data";
-export type RuleRow = { id: string; stage: number; rule: string; needs: string; unit: string | null; winners: Side; average: Side; verdict: Verdict; /** Fisher's exact test on the two shares; under 0.05 the gap is unlikely to be chance. */ p: number | null; clear: boolean };
+export type RuleRow = {
+  id: string;
+  stage: number;
+  rule: string;
+  needs: string;
+  unit: string | null;
+  winners: Side;
+  average: Side;
+  verdict: Verdict;
+  /** Fisher's exact test on the two shares; under 0.05 the gap is unlikely to be chance. */
+  p: number | null;
+  clear: boolean;
+  /** How many accounts the Reels it could be told for come from. One account's Reels show that creator's habits. */
+  accounts?: number;
+};
 
 /** Each side needs this many Reels the rule could be told for. */
 export const MIN_N = 5;
@@ -225,16 +239,16 @@ export function verdictOf(winners: Side, average: Side): Verdict {
 /** The rules of a format, each measured on the winners and on the average Reels. Reels Claude marked as not this format are left out. */
 export function rulesTable(format: Format, reels: StudiedReel[]): RuleRow[] {
   const onFormat = reels.filter((r) => r.labels?.onFormat !== "no");
-  const side = (rule: Rule, group: "winner" | "average"): Side => {
-    const told = onFormat.filter((r) => r.group === group).map((r) => ({ r, f: rule.follows(r) })).filter((x) => x.f !== null);
-    return { n: told.length, follow: told.filter((x) => x.f).length, median: rule.value ? median(told.map((x) => rule.value!(x.r))) : null };
-  };
+  const toldFor = (rule: Rule, group: "winner" | "average") => onFormat.filter((r) => r.group === group).map((r) => ({ r, f: rule.follows(r) })).filter((x) => x.f !== null);
   return RULES.filter((rule) => !rule.formats || rule.formats.includes(format)).map((rule) => {
-    const winners = side(rule, "winner");
-    const average = side(rule, "average");
+    const told = { winner: toldFor(rule, "winner"), average: toldFor(rule, "average") };
+    const side = (group: "winner" | "average"): Side => ({ n: told[group].length, follow: told[group].filter((x) => x.f).length, median: rule.value ? median(told[group].map((x) => rule.value!(x.r))) : null });
+    const winners = side("winner");
+    const average = side("average");
     const verdict = verdictOf(winners, average);
     const p = verdict === "not enough data" ? null : Math.round(fisher(winners.follow, winners.n - winners.follow, average.follow, average.n - average.follow) * 1000) / 1000;
-    return { id: rule.id, stage: rule.stage, rule: rule.rule, needs: rule.needs, unit: rule.unit ?? null, winners, average, verdict, p, clear: p !== null && p < 0.05 };
+    const accounts = new Set([...told.winner, ...told.average].map((x) => x.r.account)).size;
+    return { id: rule.id, stage: rule.stage, rule: rule.rule, needs: rule.needs, unit: rule.unit ?? null, winners, average, verdict, p, clear: p !== null && p < 0.05, accounts };
   });
 }
 
@@ -257,7 +271,9 @@ export function rowText(r: RuleRow): string {
   const medians = r.winners.median !== null && r.average.median !== null ? ` Winners' median ${r.winners.median}${r.unit ? ` ${r.unit}` : ""}, average ${r.average.median}.` : "";
   const gap = r.verdict === "backed" || r.verdict === "against";
   const chance = r.clear ? " A gap this size is unlikely to be chance." : gap ? " With this few Reels, a gap this size can still be chance." : "";
-  return `${r.rule} (stage ${r.stage}): ${r.winners.follow} of ${r.winners.n} winners, ${r.average.follow} of ${r.average.n} average Reels.${medians}${chance}`;
+  // Most videos come from few accounts, so a rule about the video can rest on one creator's Reels.
+  const one = r.accounts === 1 ? " All of these Reels are one account's, so this may be that creator's habit." : "";
+  return `${r.rule} (stage ${r.stage}): ${r.winners.follow} of ${r.winners.n} winners, ${r.average.follow} of ${r.average.n} average Reels.${medians}${chance}${one}`;
 }
 
 /** The whole table, grouped by verdict. */

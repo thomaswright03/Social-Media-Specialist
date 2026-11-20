@@ -462,7 +462,12 @@ describe("our rules, counted on winners and on average Reels", () => {
     const table = rulesTable("story", reels);
     const length = table.find((r) => r.id === "length")!;
     expect(length).toMatchObject({ verdict: "backed", winners: { n: 8, follow: 8, median: 40 }, average: { n: 8, follow: 0, median: 20 }, clear: true });
-    expect(rowText(length)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance.");
+    // Every Reel here is the same account's, and the row says so.
+    expect(length.accounts).toBe(1);
+    expect(rowText(length)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance. All of these Reels are one account's, so this may be that creator's habit.");
+    const two = rulesTable("story", reels.map((r, i) => ({ ...r, account: i % 2 ? "a" : "b" }))).find((r) => r.id === "length")!;
+    expect(two.accounts).toBe(2);
+    expect(rowText(two)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance.");
     // 40 s in 2.5 s shots is 16 shots: over our 14.
     const shots = table.find((r) => r.id === "shots")!;
     expect(shots).toMatchObject({ verdict: "against", winners: { follow: 0, median: 16 }, average: { follow: 8 } });
