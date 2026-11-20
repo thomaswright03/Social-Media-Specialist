@@ -69,12 +69,47 @@ describe("compositor with motion", () => {
 });
 
 describe("variety", () => {
-  it("refuses three of a kind running and an icon used twice", () => {
+  it("refuses any kind of piece used twice in a Reel (Thomas, 2026-11-20)", () => {
     const s3 = [0, 1, 2].map((i) => ({ start: i, end: i + 1, line: "x", visual: "y" }));
-    const icons: MotionPlan = { shots: [1, 2, 3].map((n) => ({ shot: n, pieces: [{ kind: "icon", name: "heart", label: "" }] })) };
-    const p = motionProblems(icons, s3).join(" ");
-    expect(p).toMatch(/Shots 1 to 3 are all icon/);
-    expect(p).toMatch(/The heart icon is used more than once \(shot 2, 3\)/);
+    const icons: MotionPlan = { shots: [1, 2, 3].map((n) => ({ shot: n, pieces: [{ kind: "icon", name: ["heart", "fire", "globe"][n - 1], label: "" }] })) };
+    expect(motionProblems(icons, s3).join(" ")).toMatch(/The icon piece is used 3 times \(shots 1, 2, 3\)/);
+    const mixed: MotionPlan = { shots: [
+      { shot: 1, pieces: [{ kind: "title", text: "WAIT" }] },
+      { shot: 2, pieces: [{ kind: "icon", name: "heart", label: "" }, { kind: "title", text: "WHAT" }] },
+      { shot: 3, pieces: [{ kind: "stamp", text: "DENIED" }] },
+    ] };
+    expect(motionProblems(mixed, s3).join(" ")).toMatch(/The title piece is used 2 times \(shots 1, 2\)/);
+    const fine: MotionPlan = { shots: [
+      { shot: 1, pieces: [{ kind: "title", text: "WAIT" }] },
+      { shot: 2, pieces: [{ kind: "chat", messages: ["How much?"] }] },
+      { shot: 3, pieces: [{ kind: "stamp", text: "DENIED" }] },
+    ] };
+    expect(motionProblems(fine, s3)).toEqual([]);
+  });
+
+  it("checks the new pieces and their figures", () => {
+    const one = [{ start: 0, end: 2, line: "A fund gets 5% of shares, the rest 95%, about $80 billion, 1 in 10 of $156 billion, on Nov 20, up 12%.", visual: "" }];
+    const plan = (piece: Record<string, unknown>): MotionPlan => ({ shots: [{ shot: 1, pieces: [piece as never] }] });
+    const ok = [
+      { kind: "waffle", percent: 5, label: "of shares" },
+      { kind: "people", count: 1, of: 10, label: "" },
+      { kind: "stack", to: 80, prefix: "$", suffix: "B" },
+      { kind: "flow", from: "Staff", to: "Charity", value: "$80B" },
+      { kind: "split", parts: [{ name: "Fund", value: 5 }, { name: "Rest", value: 95 }], unit: "%" },
+      { kind: "calendar", month: "Nov", day: "20" },
+      { kind: "ticker", name: "ANTHROPIC", value: "$156B", change: "+12%" },
+      { kind: "meter", value: 80, of: 156, prefix: "$", unit: "B" },
+      { kind: "chat", messages: ["How much?"] },
+      { kind: "stamp", text: "IPO", color: "green" },
+    ];
+    for (const piece of ok) expect(motionProblems(plan(piece), one), piece.kind).toEqual([]);
+    expect(motionProblems(plan({ kind: "waffle", percent: 140 }), one).join(" ")).toMatch(/at most 100/);
+    expect(motionProblems(plan({ kind: "people", count: 30, of: 10 }), one).join(" ")).toMatch(/no bigger than of/);
+    expect(motionProblems(plan({ kind: "stack", to: 99, prefix: "$" }), one).join(" ")).toMatch(/shows 99, which the script never says/);
+    expect(motionProblems(plan({ kind: "calendar", month: "Nov" }), one).join(" ")).toMatch(/a day or a weekday/);
+    expect(motionProblems(plan({ kind: "stamp", text: "ABSOLUTELY DENIED" }), one).join(" ")).toMatch(/at most 12/);
+    expect(pieceFigures({ kind: "split", parts: [{ name: "a", value: 5 }, { name: "b", value: 95 }] })).toEqual(["5", "95"]);
+    expect(pieceFigures({ kind: "meter", value: 81.3, of: 156 })).toEqual(["81.3", "156"]);
   });
 });
 

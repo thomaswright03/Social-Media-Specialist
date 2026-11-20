@@ -345,13 +345,14 @@
     icon(p) {
       const path = ICONS[p.name] || ICONS.question;
       const el = h("div", "width:900px;height:860px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center");
-      const disc = h("div", `position:relative;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.14),rgba(255,255,255,.03));border:8px solid ${LIME};display:flex;align-items:center;justify-content:center`);
+      // A tilted lime tile, not a ring (Thomas, 2026-11-20: too many green circles).
+      const disc = h("div", `position:relative;width:480px;height:480px;border-radius:110px;background:linear-gradient(145deg,#d9f99d,${LIME} 55%,#65a30d);box-shadow:0 30px 70px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center`);
       const svg = s("svg", { width: 300, height: 300, viewBox: "0 0 100 100" });
-      const ph = s("path", { d: path, fill: "none", stroke: "#fff", "stroke-width": 6, "stroke-linecap": "round", "stroke-linejoin": "round", pathLength: 1, "stroke-dasharray": 1, "stroke-dashoffset": 1 });
+      const ph = s("path", { d: path, fill: "none", stroke: "#0f172a", "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round", pathLength: 1, "stroke-dasharray": 1, "stroke-dashoffset": 1 });
       svg.appendChild(ph);
       disc.appendChild(svg);
       const rings = [0, 1].map(() => {
-        const r = h("div", `position:absolute;left:50%;top:50%;width:520px;height:520px;margin:-260px 0 0 -260px;border-radius:50%;border:6px solid ${LIME};opacity:0`);
+        const r = h("div", `position:absolute;left:50%;top:50%;width:480px;height:480px;margin:-240px 0 0 -240px;border-radius:110px;border:6px solid ${LIME};opacity:0`);
         disc.appendChild(r);
         return r;
       });
@@ -361,7 +362,7 @@
         el,
         update(l) {
           const q = prog(l, 0, 0.5);
-          disc.style.transform = `scale(${outBack(q)}) translateY(${Math.sin(l * 1.8) * 8}px)`;
+          disc.style.transform = `scale(${outBack(q)}) translateY(${Math.sin(l * 1.8) * 8}px) rotate(${-8 + (1 - q) * 30}deg)`;
           disc.style.opacity = String(clamp(q * 3));
           ph.setAttribute("stroke-dashoffset", String(1 - inOutCubic(prog(l, 0.15, 0.6))));
           rings.forEach((r, k) => {
@@ -415,6 +416,373 @@
         },
       };
     },
+    // ---- Added 2026-11-20 (Thomas: "why is there green circles for nearly every slide").
+    // Each piece below has its own shape and colour, so a Reel that uses every
+    // kind once never shows the same picture twice.
+
+    waffle(p) {
+      const pct = clamp(Number(p.percent), 0, 100);
+      const lit = Math.round(pct);
+      const dec = decs([p.percent]);
+      const el = h("div", "width:900px;height:860px;position:relative;display:flex;flex-direction:column;align-items:center");
+      const num = h("div", `font:900 140px/1 Montserrat,sans-serif;color:#fff;letter-spacing:-.03em;font-variant-numeric:tabular-nums`);
+      const grid = h("div", "margin-top:26px;display:grid;grid-template-columns:repeat(10,52px);gap:9px");
+      const cells = Array.from({ length: 100 }, (_, k) => {
+        const c = h("div", "width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.14)");
+        grid.appendChild(c);
+        return { c, row: Math.floor(k / 10), col: k % 10, k };
+      });
+      const label = h("div", "margin-top:28px;max-width:880px;text-align:center;font:800 48px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.85)", esc(p.label || ""));
+      el.append(num, grid, label);
+      return {
+        el,
+        update(l, d) {
+          for (const x of cells) {
+            const q = prog(l, (x.row + x.col) * 0.02, 0.25);
+            x.c.style.transform = `scale(${outBack(q)})`;
+          }
+          const len = Math.min(1.4, Math.max(0.5, d * 0.45));
+          const c = outCubic(prog(l, 0.35, len));
+          const on = Math.round(lit * c);
+          for (const x of cells) {
+            const isOn = x.k < on;
+            x.c.style.background = isOn ? LIME : "rgba(255,255,255,.14)";
+            x.c.style.boxShadow = isOn ? "0 0 18px rgba(163,230,53,.55)" : "none";
+          }
+          num.textContent = fmt(pct * c, dec, "", "%");
+          num.style.opacity = String(prog(l, 0, 0.25));
+          label.style.opacity = String(prog(l, 0.3, 0.3));
+        },
+      };
+    },
+
+    people(p) {
+      const of = clamp(Math.round(Number(p.of)), 2, 20);
+      const count = clamp(Math.round(Number(p.count)), 0, of);
+      const per = of <= 5 ? of : of <= 10 ? 5 : of <= 15 ? 5 : 5;
+      const rows = Math.ceil(of / per);
+      const sz = rows > 2 ? 120 : 150;
+      const el = h("div", "width:900px;position:relative;display:flex;flex-direction:column;align-items:center");
+      const big = h("div", "font:900 120px/1 Montserrat,sans-serif;color:#fff;letter-spacing:-.02em;margin-bottom:30px", `<span style="color:${LIME}">${count}</span> IN ${of}`);
+      const grid = h("div", `display:grid;grid-template-columns:repeat(${per},${sz}px);gap:22px 26px`);
+      const figs = Array.from({ length: of }, (_, k) => {
+        const f = h("div", `width:${sz}px;height:${sz}px`, `<svg width="${sz}" height="${sz}" viewBox="0 0 100 100"><circle cx="50" cy="26" r="17" fill="currentColor"/><path d="M18 96 C18 58 82 58 82 96 Z" fill="currentColor"/></svg>`);
+        f.style.color = "rgba(255,255,255,.28)";
+        grid.appendChild(f);
+        return { f, k, hi: k < count };
+      });
+      const label = h("div", "margin-top:34px;max-width:880px;text-align:center;font:800 50px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.88)", esc(p.label || ""));
+      el.append(big, grid, label);
+      return {
+        el,
+        update(l, d) {
+          big.style.opacity = String(prog(l, 0, 0.3));
+          big.style.transform = `scale(${0.7 + 0.3 * outBack(prog(l, 0, 0.4))})`;
+          const step = Math.min(0.06, (d * 0.3) / of);
+          for (const x of figs) {
+            const q = prog(l, 0.1 + x.k * step, 0.3);
+            const turn = x.hi ? prog(l, 0.2 + of * step + x.k * 0.08, 0.2) : 0;
+            x.f.style.transform = `translateY(${(1 - outBack(q)) * 60}px) scale(${1 + 0.18 * Math.sin(Math.PI * turn)})`;
+            x.f.style.opacity = String(clamp(q * 3));
+            x.f.style.color = turn > 0.5 ? LIME : "rgba(255,255,255,.28)";
+            x.f.style.filter = turn > 0.5 ? "drop-shadow(0 0 16px rgba(163,230,53,.6))" : "none";
+          }
+          label.style.opacity = String(prog(l, 0.35, 0.3));
+        },
+      };
+    },
+
+    stack(p) {
+      const to = Number(p.to);
+      const dec = decs([p.to], p.prefix, p.suffix);
+      const GOLD = "#facc15";
+      const el = h("div", "width:900px;height:860px;position:relative");
+      const num = h("div", `position:absolute;left:0;right:0;top:0;text-align:center;font:900 150px/1 Montserrat,sans-serif;color:${GOLD};letter-spacing:-.03em;text-shadow:0 0 40px rgba(250,204,21,.35);font-variant-numeric:tabular-nums`);
+      const label = h("div", "position:absolute;left:0;right:0;top:170px;text-align:center;font:800 46px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.85)", esc(p.label || ""));
+      el.append(num, label);
+      const heights = [7, 11, 9, 5];
+      const coins = [];
+      heights.forEach((n, col) => {
+        for (let k = 0; k < n; k++) {
+          const c = h("div", `position:absolute;left:${120 + col * 170}px;top:${790 - k * 40}px;width:150px;height:52px;border-radius:50%;background:linear-gradient(180deg,#fde68a,${GOLD} 45%,#a16207);border:4px solid #854d0e;box-shadow:0 6px 0 #713f12`);
+          el.appendChild(c);
+          coins.push({ c, order: k * heights.length + col, top: 790 - k * 40 });
+        }
+      });
+      coins.sort((a, b) => a.order - b.order);
+      return {
+        el,
+        update(l, d) {
+          const len = Math.min(1.5, Math.max(0.6, d * 0.5));
+          coins.forEach((x, i) => {
+            const at = 0.05 + (i / coins.length) * len;
+            const q = prog(l, at, 0.22);
+            const fall = (1 - q) * (1 - q);
+            x.c.style.transform = `translateY(${-700 * fall}px)`;
+            x.c.style.opacity = q > 0 ? "1" : "0";
+          });
+          const c = outCubic(prog(l, 0.05, len + 0.2));
+          num.textContent = fmt(to * c, dec, p.prefix, p.suffix);
+          const done = l - (0.25 + len);
+          num.style.transform = `scale(${1 + (done > 0 ? 0.08 * Math.exp(-7 * done) * Math.cos(done * 14) : 0)})`;
+          label.style.opacity = String(prog(l, 0.2, 0.3));
+        },
+      };
+    },
+
+    flow(p) {
+      const el = h("div", "width:900px;height:860px;position:relative");
+      const card = (txt, top, hi) => h("div", `position:absolute;left:90px;width:720px;top:${top}px;height:170px;border-radius:85px;background:${hi ? LIME : "rgba(255,255,255,.1)"};border:6px solid ${hi ? LIME : "rgba(255,255,255,.4)"};display:flex;align-items:center;justify-content:center;text-align:center;font:900 56px/1.05 Montserrat,sans-serif;text-transform:uppercase;color:${hi ? "#0f172a" : "#fff"};padding:0 40px`, esc(txt));
+      const a = card(p.from, 0, false), b = card(p.to, 690, true);
+      const pipe = h("div", "position:absolute;left:410px;top:170px;width:80px;height:520px;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.12),rgba(255,255,255,.04));overflow:hidden");
+      const dots = Array.from({ length: 9 }, () => {
+        const d = h("div", `position:absolute;left:16px;width:48px;height:48px;border-radius:50%;background:${LIME};box-shadow:0 0 20px rgba(163,230,53,.7)`);
+        pipe.appendChild(d);
+        return d;
+      });
+      const head = h("div", `position:absolute;left:392px;top:618px;width:0;height:0;border-left:58px solid transparent;border-right:58px solid transparent;border-top:70px solid ${LIME}`);
+      const tag = p.value ? h("div", `position:absolute;left:520px;top:340px;padding:14px 30px;border-radius:22px;background:#0f172a;border:5px solid ${LIME};font:900 74px/1 Montserrat,sans-serif;color:${LIME};white-space:nowrap`, esc(p.value)) : null;
+      el.append(pipe, head, a, b);
+      if (tag) el.appendChild(tag);
+      return {
+        el,
+        update(l) {
+          const qa = prog(l, 0, 0.4), qb = prog(l, 0.35, 0.4);
+          a.style.opacity = String(clamp(qa * 3));
+          a.style.transform = `translateY(${(1 - outBack(qa)) * -120}px)`;
+          b.style.opacity = String(clamp(qb * 3));
+          b.style.transform = `scale(${0.6 + 0.4 * outBack(qb)})`;
+          const qp = inOutCubic(prog(l, 0.15, 0.4));
+          pipe.style.clipPath = `inset(0 0 ${(1 - qp) * 100}% 0)`;
+          head.style.opacity = String(prog(l, 0.45, 0.15));
+          dots.forEach((d, k) => {
+            const y = ((l * 420 + k * 64) % 576) - 56;
+            d.style.transform = `translateY(${y}px)`;
+            d.style.opacity = l > 0.3 ? "1" : "0";
+          });
+          if (tag) {
+            const qt = prog(l, 0.5, 0.35);
+            tag.style.opacity = String(clamp(qt * 3));
+            tag.style.transform = `rotate(${-6 + (1 - outBack(qt)) * 20}deg) scale(${outBack(qt)})`;
+          }
+        },
+      };
+    },
+
+    split(p) {
+      const parts = (p.parts || []).slice(0, 4);
+      const total = parts.reduce((a, x) => a + Math.max(0, Number(x.value)), 0) || 1;
+      const hiK = typeof p.highlight === "number" ? p.highlight : 0;
+      const OTHER = ["#60a5fa", "#f472b6", "rgba(255,255,255,.45)"];
+      const dec = decs(parts.map((x) => x.value), p.prefix, p.unit);
+      const el = h("div", "width:900px;position:relative");
+      if (p.title) el.appendChild(h("div", "text-align:center;font:800 54px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:#fff;margin-bottom:40px", esc(p.title)));
+      const bar = h("div", "position:relative;width:900px;height:170px;border-radius:30px;overflow:hidden;background:rgba(255,255,255,.08);display:flex");
+      el.appendChild(bar);
+      const legend = h("div", "margin-top:46px;display:flex;flex-direction:column;gap:22px");
+      el.appendChild(legend);
+      const segs = parts.map((x, k) => {
+        const col = k === hiK ? LIME : OTHER[(k > hiK ? k - 1 : k) % OTHER.length];
+        const seg = h("div", `height:100%;width:0;background:${col};${k ? "border-left:6px solid #0b1020" : ""}`);
+        bar.appendChild(seg);
+        const row = h("div", "display:flex;align-items:center;gap:26px");
+        row.appendChild(h("div", `flex:none;width:56px;height:56px;border-radius:14px;background:${col}`));
+        const val = h("div", `flex:none;min-width:250px;font:900 ${k === hiK ? 76 : 60}px/1 Montserrat,sans-serif;color:${k === hiK ? LIME : "#fff"};font-variant-numeric:tabular-nums`);
+        row.append(val, h("div", "font:800 44px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.85)", esc(x.name)));
+        legend.appendChild(row);
+        return { seg, row, val, v: Math.max(0, Number(x.value)), k };
+      });
+      return {
+        el,
+        update(l, d) {
+          const len = Math.min(1.3, Math.max(0.5, d * 0.45));
+          for (const x of segs) {
+            const q = outCubic(prog(l, 0.1 + (x.k * len) / Math.max(1, segs.length), len / Math.max(1, segs.length) + 0.2));
+            x.seg.style.width = `${(x.v / total) * 100 * q}%`;
+            x.val.textContent = fmt(x.v * q, dec, p.prefix, p.unit);
+            x.row.style.opacity = String(clamp(q * 3));
+            x.row.style.transform = `translateX(${(1 - outCubic(q)) * 80}px)`;
+          }
+        },
+      };
+    },
+
+    calendar(p) {
+      const RED = "#ef4444";
+      const el = h("div", "width:900px;height:860px;position:relative;perspective:1600px");
+      const page = (front) => {
+        const pg = h("div", `position:absolute;left:190px;top:40px;width:520px;height:600px;border-radius:34px;background:#f8fafc;box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden;transform-origin:50% 0;backface-visibility:hidden`);
+        pg.appendChild(h("div", `height:150px;background:${RED};display:flex;align-items:center;justify-content:center;font:900 76px Montserrat,sans-serif;letter-spacing:.08em;color:#fff;text-transform:uppercase`, esc(p.month || "")));
+        pg.appendChild(h("div", `height:450px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#0f172a`, front ? `<div style="font:900 ${String(p.day || "").length > 2 ? 170 : 260}px/1 Montserrat,sans-serif;letter-spacing:-.04em">${esc(p.day || "")}</div>${p.weekday ? `<div style="margin-top:10px;font:800 50px Montserrat,sans-serif;color:${RED};text-transform:uppercase">${esc(p.weekday)}</div>` : ""}` : `<div style="width:260px;height:30px;border-radius:15px;background:#e2e8f0"></div>`));
+        return pg;
+      };
+      const final = page(true);
+      const flips = [0, 1, 2].map(() => page(false));
+      el.appendChild(final);
+      flips.slice().reverse().forEach((f) => el.appendChild(f));
+      const rings = h("div", "position:absolute;left:250px;top:20px;width:400px;display:flex;justify-content:space-between");
+      for (let k = 0; k < 4; k++) rings.appendChild(h("div", "width:26px;height:60px;border-radius:13px;background:#334155;border:5px solid #94a3b8"));
+      el.appendChild(rings);
+      const label = h("div", "position:absolute;left:0;right:0;top:690px;text-align:center;font:900 60px/1.08 Montserrat,sans-serif;text-transform:uppercase;color:#fff", esc(p.label || ""));
+      el.appendChild(label);
+      return {
+        el,
+        update(l) {
+          const q = prog(l, 0, 0.35);
+          el.style.opacity = String(clamp(q * 3));
+          final.style.transform = `translateY(${(1 - outBack(q)) * 80}px)`;
+          flips.forEach((f, k) => {
+            const fq = inOutCubic(prog(l, 0.2 + k * 0.16, 0.22));
+            f.style.transform = `translateY(${(1 - outBack(q)) * 80}px) rotateX(${fq * 110}deg)`;
+            f.style.opacity = fq > 0.95 ? "0" : "1";
+          });
+          const land = l - 0.7;
+          final.style.transform += ` scale(${1 + (land > 0 ? 0.05 * Math.exp(-6 * land) * Math.cos(land * 14) : 0)})`;
+          label.style.opacity = String(prog(l, 0.6, 0.3));
+          label.style.transform = `translateY(${(1 - outCubic(prog(l, 0.6, 0.4))) * 30}px)`;
+        },
+      };
+    },
+
+    ticker(p) {
+      const change = String(p.change || "");
+      const down = /^\s*[-−–]/.test(change);
+      const COL = down ? "#f87171" : "#4ade80";
+      const el = h("div", "width:920px;height:700px;position:relative;border-radius:36px;background:linear-gradient(160deg,rgba(15,23,42,.92),rgba(2,6,23,.92));border:3px solid rgba(255,255,255,.18);box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden");
+      const top = h("div", "position:absolute;left:50px;right:50px;top:44px;display:flex;justify-content:space-between;align-items:center");
+      top.appendChild(h("div", "font:900 54px Montserrat,sans-serif;letter-spacing:.06em;color:#fff;text-transform:uppercase", esc(p.name || "")));
+      const badge = h("div", `padding:10px 24px;border-radius:16px;background:${COL};font:900 46px Montserrat,sans-serif;color:#052e16`, `${down ? "▼" : "▲"} ${esc(change.replace(/^\s*[+\-−–]/, ""))}`);
+      if (change) top.appendChild(badge);
+      const val = h("div", "position:absolute;left:50px;top:140px;font:900 150px/1 Montserrat,sans-serif;color:#fff;letter-spacing:-.03em", esc(p.value || ""));
+      const svg = s("svg", { width: 920, height: 300, viewBox: "0 0 920 300", style: "position:absolute;left:0;top:320px" });
+      const N = 40;
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const ys = Array.from({ length: N }, (_, k) => {
+        const trend = down ? k / (N - 1) : 1 - k / (N - 1);
+        return 40 + trend * 200 + (rnd() - 0.5) * 70;
+      });
+      const d = ys.map((y, k) => `${k ? "L" : "M"}${(30 + (k * 860) / (N - 1)).toFixed(1)} ${y.toFixed(1)}`).join(" ");
+      const path = s("path", { d, fill: "none", stroke: COL, "stroke-width": 9, "stroke-linejoin": "round", "stroke-linecap": "round" });
+      svg.appendChild(path);
+      const tape = h("div", `position:absolute;left:0;bottom:0;height:70px;width:3000px;display:flex;align-items:center;gap:60px;background:rgba(255,255,255,.06);font:800 36px Montserrat,sans-serif;color:${COL};white-space:nowrap`);
+      for (let k = 0; k < 10; k++) tape.appendChild(h("span", "", `${esc(p.name || "")} ${down ? "▼" : "▲"} ${esc(change.replace(/^\s*[+\-−–]/, ""))}`));
+      el.append(top, val, svg, tape);
+      if (p.label) el.appendChild(h("div", "position:absolute;right:50px;top:200px;max-width:330px;text-align:right;font:800 40px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.7)", esc(p.label)));
+      let total = 0;
+      return {
+        el,
+        update(l, dur) {
+          if (!total) total = path.getTotalLength() || 1;
+          const q = prog(l, 0, 0.4);
+          el.style.opacity = String(clamp(q * 3));
+          el.style.transform = `translateY(${(1 - outBack(q)) * 140}px) rotate(${1.5 * (1 - q)}deg)`;
+          const len = Math.min(1.4, Math.max(0.6, dur * 0.5));
+          path.setAttribute("stroke-dasharray", String(total));
+          path.setAttribute("stroke-dashoffset", String(total * (1 - inOutCubic(prog(l, 0.15, len)))));
+          badge.style.transform = `scale(${outBack(prog(l, 0.3, 0.3))})`;
+          val.style.opacity = String(prog(l, 0.1, 0.25));
+          tape.style.transform = `translateX(${-((l * 160) % 600)}px)`;
+        },
+      };
+    },
+
+    meter(p) {
+      const v = Number(p.value), of = Number(p.of);
+      const frac = clamp(of > 0 ? v / of : 0);
+      const dec = decs([p.value, p.of], p.prefix, p.unit);
+      const el = h("div", "width:900px;height:860px;position:relative");
+      const tube = h("div", "position:absolute;left:150px;top:30px;width:150px;height:640px;border-radius:75px;background:rgba(255,255,255,.08);border:6px solid rgba(255,255,255,.5);overflow:hidden");
+      const fill = h("div", `position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(0deg,#16a34a,${LIME})`);
+      const wave = h("div", "position:absolute;left:-20px;right:-20px;height:30px;border-radius:50%;background:rgba(255,255,255,.35)");
+      tube.append(fill, wave);
+      const bulb = h("div", `position:absolute;left:115px;top:640px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 40% 35%,${LIME},#16a34a);border:6px solid rgba(255,255,255,.5)`);
+      const goal = h("div", `position:absolute;left:330px;top:0;font:800 46px/1.1 Montserrat,sans-serif;color:rgba(255,255,255,.7);text-transform:uppercase`, `GOAL ${esc(fmt(of, decs([p.of], p.prefix, p.unit), p.prefix, p.unit))}`);
+      const ticks = h("div", "position:absolute;left:310px;top:36px;width:40px;height:628px;background:repeating-linear-gradient(180deg,rgba(255,255,255,.5) 0 4px,transparent 4px 62px)");
+      const num = h("div", `position:absolute;left:380px;font:900 130px/1 Montserrat,sans-serif;color:${LIME};letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap`);
+      const label = h("div", "position:absolute;left:380px;width:520px;font:800 44px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.88)", esc(p.label || ""));
+      el.append(ticks, tube, bulb, goal, num, label);
+      return {
+        el,
+        update(l, d) {
+          el.style.opacity = String(clamp(prog(l, 0, 0.2) * 3));
+          const len = Math.min(1.5, Math.max(0.6, d * 0.5));
+          const c = outCubic(prog(l, 0.15, len));
+          const hpx = 628 * frac * c;
+          fill.style.height = `${hpx}px`;
+          wave.style.bottom = `${hpx - 15}px`;
+          wave.style.transform = `translateX(${Math.sin(l * 6) * 14}px)`;
+          const y = 30 + 640 - hpx;
+          num.textContent = fmt(v * c, dec, p.prefix, p.unit);
+          num.style.top = `${Math.min(560, y - 40)}px`;
+          label.style.top = `${Math.min(560, y - 40) + 140}px`;
+          label.style.opacity = String(prog(l, 0.3, 0.3));
+          bulb.style.transform = `scale(${outBack(prog(l, 0, 0.35))})`;
+        },
+      };
+    },
+
+    chat(p) {
+      const msgs = (p.messages || []).slice(0, 3);
+      const el = h("div", "width:640px;height:880px;position:relative;border-radius:70px;background:#0b0f19;border:14px solid #1f2937;box-shadow:0 40px 90px rgba(0,0,0,.6);overflow:hidden");
+      el.appendChild(h("div", "position:absolute;left:220px;top:18px;width:200px;height:40px;border-radius:20px;background:#1f2937"));
+      el.appendChild(h("div", "position:absolute;left:0;right:0;top:80px;text-align:center;font:800 34px Montserrat,sans-serif;color:rgba(255,255,255,.75)", esc(p.title || "Messages")));
+      const rows = msgs.map((m, k) => {
+        const mine = k % 2 === 1;
+        const b = h("div", `position:absolute;${mine ? "right" : "left"}:34px;top:${170 + k * 220}px;max-width:470px;padding:26px 32px;border-radius:40px;${mine ? `border-bottom-right-radius:10px;background:${LIME};color:#0f172a` : "border-bottom-left-radius:10px;background:#334155;color:#fff"};font:800 42px/1.15 Montserrat,sans-serif`, esc(m));
+        el.appendChild(b);
+        return { b, k, mine };
+      });
+      const dots = h("div", `position:absolute;left:34px;top:${170 + rows.length * 220}px;padding:22px 30px;border-radius:40px;background:#334155;display:flex;gap:12px`);
+      const ds = [0, 1, 2].map(() => {
+        const d = h("div", "width:20px;height:20px;border-radius:50%;background:#cbd5e1");
+        dots.appendChild(d);
+        return d;
+      });
+      if (rows.length < 3) el.appendChild(dots);
+      return {
+        el,
+        update(l, d) {
+          const q = prog(l, 0, 0.35);
+          el.style.opacity = String(clamp(q * 3));
+          el.style.transform = `translateY(${(1 - outBack(q)) * 200}px) rotate(${-2 + Math.sin(l * 1.3) * 0.6}deg)`;
+          const step = Math.min(0.6, Math.max(0.3, (d * 0.6) / Math.max(1, rows.length)));
+          for (const r of rows) {
+            const qb = prog(l, 0.25 + r.k * step, 0.3);
+            r.b.style.opacity = String(clamp(qb * 3));
+            r.b.style.transform = `scale(${outBack(qb)})`;
+            r.b.style.transformOrigin = r.mine ? "100% 100%" : "0 100%";
+          }
+          ds.forEach((x, k) => (x.style.transform = `translateY(${Math.sin(l * 9 - k) * 6}px)`));
+          dots.style.opacity = String(prog(l, 0.25 + rows.length * step, 0.2));
+        },
+      };
+    },
+
+    stamp(p) {
+      const RED = String(p.color || "") === "green" ? "#22c55e" : "#ef4444";
+      const el = h("div", "width:900px;height:760px;position:relative");
+      const paper = h("div", "position:absolute;left:110px;top:20px;width:680px;height:700px;border-radius:20px;background:#f1f5f9;box-shadow:0 30px 80px rgba(0,0,0,.5);transform:rotate(-3deg);overflow:hidden");
+      for (let k = 0; k < 9; k++) paper.appendChild(h("div", `position:absolute;left:60px;top:${80 + k * 66}px;width:${k % 3 === 2 ? 340 : 540}px;height:20px;border-radius:10px;background:#cbd5e1`));
+      if (p.title) paper.appendChild(h("div", "position:absolute;left:60px;top:18px;font:900 40px Montserrat,sans-serif;color:#334155;text-transform:uppercase", esc(p.title)));
+      const st = h("div", `position:absolute;left:50%;top:50%;padding:24px 46px;border:14px solid ${RED};border-radius:26px;font:900 ${String(p.text || "").length > 8 ? 96 : 130}px/1 Montserrat,sans-serif;letter-spacing:.04em;color:${RED};text-transform:uppercase;white-space:nowrap;mix-blend-mode:multiply`, esc(p.text || ""));
+      el.append(paper, st);
+      return {
+        el,
+        update(l) {
+          const qp = prog(l, 0, 0.3);
+          paper.style.opacity = String(clamp(qp * 3));
+          paper.style.transform = `rotate(-3deg) translateY(${(1 - outCubic(qp)) * 80}px)`;
+          const qs = prog(l, 0.3, 0.16);
+          const after = l - 0.46;
+          const shake = after > 0 ? Math.exp(-10 * after) * Math.sin(after * 60) * 10 : 0;
+          st.style.opacity = qs > 0 ? "1" : "0";
+          st.style.transform = `translate(-50%,-50%) rotate(-12deg) scale(${3 - 2 * outCubic(qs)})`;
+          el.style.transform = `translate(${shake}px,${shake * 0.6}px)`;
+        },
+      };
+    },
+
   };
 
   /** The moving background: a deep gradient, two slow light blobs, a drifting grid and rising specks. */
