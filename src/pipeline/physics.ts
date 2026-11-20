@@ -62,7 +62,8 @@ export type SimResult = {
 
 const W = 1080;
 const CX = 540;
-const CY = 900;
+// Low enough to leave room for the brand header, the hook and the counter above it.
+const CY = 940;
 const R = 440;
 const STEPS = 8;
 /** Seconds a ball may sit still before it's kicked loose. */
