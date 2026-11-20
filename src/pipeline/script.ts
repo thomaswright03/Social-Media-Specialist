@@ -10,7 +10,7 @@
 // (formats.ts) run with it. Lessons of kind "check" for a stage are put to a
 // separate call each and become checks too.
 import type { Product, Vault } from "../vault.ts";
-import { formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
+import { EARS_ONLY, formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
@@ -39,6 +39,64 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
     out.push(Boolean(a) && !/^\W*nothing\b/i.test(a) && isYes(await ask(matchPrompt(o.intendedHook ?? "", a)).catch(() => "")));
   }
   return out;
+}
+
+// --- Ears only (Thomas, 2026-11-20: a Reel whose voice he couldn't follow) ---
+// A listener who never sees the screen: the opening must say what the video is
+// about, and the whole narration must make sense on its own.
+
+const spokenLines = (shots: Shot[]) =>
+  shots
+    .map((s) => (s.line?.trim() ? spokenText(s.line) : ""))
+    .filter(Boolean)
+    .map((l) => `"${l}"`)
+    .join("\n");
+
+export const TOPIC_READS = 3;
+export const LISTEN_READS = 3;
+
+/** Stage 3, narrated formats that inform: do the opening's words alone say what it's about? */
+export async function topicReads(o: Opening | null, intended: string, ask: Ask): Promise<boolean[] & { notes?: string[] }> {
+  const out: boolean[] & { notes?: string[] } = [];
+  out.notes = [];
+  const lines = spokenLines(o?.shots ?? []);
+  if (!lines) return out;
+  for (let i = 0; i < TOPIC_READS; i++) {
+    const a = (await ask(testerPrompt("topic", { LINES: lines })).catch(() => "")).trim();
+    const topic = a.match(/TOPIC:\s*(.+)/i)?.[1]?.trim() ?? "";
+    const ok = Boolean(topic) && !/^unclear\b/i.test(topic) && isYes(await ask(testerPrompt("topic-match", { INTENDED: intended, TOPIC: topic })).catch(() => ""));
+    out.push(ok);
+    if (!ok) out.notes.push(topic ? `heard it as about: ${topic.slice(0, 120)}` : "no answer");
+  }
+  return out;
+}
+
+/** Stage 4, narrated formats that inform: do listeners who only hear the voice get it? */
+export async function listenReads(shots: Shot[], intended: string, ask: Ask): Promise<boolean[] & { notes?: string[] }> {
+  const out: boolean[] & { notes?: string[] } = [];
+  out.notes = [];
+  const lines = spokenLines(shots);
+  if (!lines) return out;
+  for (let i = 0; i < LISTEN_READS; i++) {
+    const a = (await ask(testerPrompt("listen", { LINES: lines })).catch(() => "")).trim();
+    const match = a ? await ask(testerPrompt("listen-match", { INTENDED: intended, LISTENING: a })).catch(() => "") : "";
+    const ok = Boolean(a) && verdictYes(match);
+    out.push(ok);
+    if (!ok) {
+      const wrong = [...match.matchAll(/^\W*(About|What happened|People|Followed)\W*:?\W*WRONG/gim)].map((m) => m[1]!.toLowerCase());
+      const confused = a.match(/CONFUSED:\s*([\s\S]*)$/i)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+      const people = a.match(/PEOPLE:\s*(.*)/i)?.[1]?.trim() ?? "";
+      out.notes.push(a ? `${wrong.length ? `Got wrong: ${wrong.join(", ")}. ` : ""}${confused ? `Confused by: ${confused.slice(0, 180)}. ` : ""}${/not said/i.test(people) ? `People: ${people.slice(0, 120)}` : ""}`.trim() : "no answer");
+    }
+  }
+  return out;
+}
+
+/** The check for either test: 2 of 3 listeners. */
+export function earsCheck(name: string, reads: (boolean[] & { notes?: string[] }) | null): Check {
+  const right = (reads ?? []).filter(Boolean).length;
+  const notes = reads?.notes ?? [];
+  return check(name, reads !== null && reads.length > 0 && right >= 2, reads === null || !reads.length ? "not read" : `${right} of ${reads.length}${notes.length ? `. What they said: ${notes.map((n) => `"${n}"`).join(" ")}` : ""}`);
 }
 
 /** What a viewer gets from each shot: what they see, read and hear. */
@@ -156,7 +214,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
         const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
-        return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
+        const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];
+        return gate([...base.checks, ...clarity, ...ears, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
       },
       input: { premise, format: reel.format, product: product?.name ?? null },
       // Each revision fixes what the review found, so the script gets more rounds.
@@ -193,7 +252,11 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       subject: reel.subject,
       ask: d.ask,
       prompt: (failures) => stagePrompt(3, { PREMISE: `${p}\n\n${thisBrief}`, PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
-      gate: async (o) => gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold), NARRATED[choice.format]),
+      gate: async (o) => {
+        const g = gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold), NARRATED[choice.format]);
+        if (!EARS_ONLY[choice.format]) return g;
+        return gate([...g.checks, earsCheck("The opening's words alone say what the video is about (2 of 3 listeners)", await topicReads(o, pick.sentence, cold))]);
+      },
       input: { premise: p, format: reel.format },
       log: d.log,
       now: d.now,

@@ -55,6 +55,8 @@ The narrator:
 - Speaks from the first second (the first shot has a line) and in at least three of every four shots.
 - Says the product's name when it first appears, and Wright AI Solutions once, near the end.
 - Short plain words, as if telling a friend about someone they know.
+- The first line says who this is and what their problem is, in plain words ("Dana runs a hauling yard, and her phone rings all night"). Every line follows from the one before.
+- Ears-only test, checked by code: listeners who hear only the narration must say what it's about, who everyone is, and what happened.
 
 The drawings (`visual`):
 - One action per shot, caught mid-move, that one drawing can show.

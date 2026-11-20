@@ -35,6 +35,14 @@ export type Choice = { format: Format; product: Product | null };
 export const HAS_CAST: Record<Format, boolean> = { story: true, ad: true, explainer: false, satisfying: false };
 /** Formats told by a narrator (stage 4 checks the voice runs through it). */
 export const NARRATED: Record<Format, boolean> = { story: true, ad: true, explainer: true, satisfying: false };
+/**
+ * Formats that inform, so their voice must make sense with no picture: the
+ * opening's words say what the video is about (stage 3), and listeners who
+ * only hear the narration follow it (stage 4). Thomas, 2026-11-20, on an
+ * explainer that opened "Two people solved it": "i dont honestly dont even
+ * understand what the videos is about".
+ */
+export const EARS_ONLY: Record<Format, boolean> = { story: false, ad: true, explainer: true, satisfying: false };
 
 /**
  * A format's own prompt (pipeline/formats/<format>.md, between <!-- block -->

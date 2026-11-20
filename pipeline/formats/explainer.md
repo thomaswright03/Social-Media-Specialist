@@ -62,7 +62,7 @@ The facts. Everything you state comes from these sources and nowhere else:
 - `sources` lists every source you used, at least 2, from different publishers, each with its link, title and date (YYYY-MM-DD) copied exactly from above, all dated within the last 14 days.
 
 The shape:
-1. The surprising fact. This is the opening.
+1. The surprising fact, and what it's about. This is the opening. Its first line names the subject in words a stranger knows ("Two mathematicians say they've cracked a math puzzle that's 165 years old"), never "it" or "they" before the thing has been named. Code checks this with listeners who hear only the opening's words: they must be able to say what the video is about.
 2. What happened: who, what, when.
 3. Why it happened: one reason.
 4. What it means for the viewer.
@@ -72,7 +72,10 @@ The shape:
 The narrator:
 - Explains it out loud from the first second (the first shot has a line) and speaks in every shot.
 - Confident, plain words, short sentences, no jargon. If a term has to be used, the same line says what it means.
-- Ears-only test: someone listening without looking learns what happened, why, and what it means for them.
+- Introduce every person or company by who they are, with or before the name ("a Stanford mathematician, Leo Masullo"). Two names at most in the whole video; anyone else is "a researcher" or "the company".
+- Every line follows from the one before. A listener never has to guess how two lines connect: join them with because, but, so, which means. Never jump to a new person or fact without saying how it connects.
+- A famous term gets its plain meaning the first time it's said ("the Riemann hypothesis, a famous puzzle about prime numbers").
+- Ears-only test: someone listening without looking learns what happened, why, and what it means for them. Code checks this: listeners who hear only the narration must say what it's about, who everyone is, and what happened, with nothing central confusing them.
 
 The graphics (`visual`):
 - Each shot shows ONE graphic that proves its line: a big number counting up, a before-and-after bar, a timeline with one date lit, an icon of the thing (a phone, a factory, a courthouse), a simple map with one place marked, a stick-figure presenter pointing at it.
