@@ -155,3 +155,39 @@ describe("the title-card check", () => {
     expect(passes("Fades in from black to a desk")).toBe(false);
   });
 });
+
+import { earsCheck, listenReads, topicReads } from "../src/pipeline/script.ts";
+
+describe("ears only (listeners who never see the screen)", () => {
+  const vague = { shots: [{ start: 0, end: 1.5, line: "[curious] Two people solved it." }, { start: 1.5, end: 3, line: "Who gets the credit?" }] };
+
+  it("fails an opening whose words don't say what it's about", async () => {
+    const prompts: string[] = [];
+    const reads = await topicReads(vague, "two mathematicians claim to prove the Riemann hypothesis", async (p) => (prompts.push(p), "TOPIC: unclear"));
+    expect([...reads]).toEqual([false, false, false]);
+    expect(earsCheck("x", reads).passed).toBe(false);
+    // The listener hears the words without the voice's audio tags, and no picture.
+    expect(prompts[0]).toContain('"Two people solved it."');
+    expect(prompts[0]).not.toContain("[curious]");
+  });
+
+  it("passes an opening that names its subject, when the match agrees", async () => {
+    const ask = async (p: string) => (p.includes("TOPIC: and the subject") ? "TOPIC: two mathematicians and a famous prime-number puzzle" : "YES");
+    const reads = await topicReads(vague, "two mathematicians claim to prove the Riemann hypothesis", ask);
+    expect(earsCheck("x", reads).passed).toBe(true);
+  });
+
+  it("listens to the whole narration and says what the listener couldn't place", async () => {
+    const ask = async (p: string) =>
+      p.includes("Did the voice alone make it clear?") ? "About: RIGHT\nWhat happened: WRONG\nPeople: WRONG\nFollowed: WRONG\nVERDICT: NO" : "ABOUT: math\nSTORY: someone solved something.\nPEOPLE: Alpöge: not said\nCONFUSED: who Alpöge is and why Anthropic matters";
+    const reads = await listenReads(vague.shots, "intended", ask);
+    const c = earsCheck("Listeners who only hear the voice follow it (2 of 3)", reads);
+    expect(c.passed).toBe(false);
+    expect(c.detail).toContain("Got wrong: what happened, people, followed");
+    expect(c.detail).toContain("Alpöge: not said");
+  });
+
+  it("isn't read when there are no words", async () => {
+    expect(earsCheck("x", await listenReads([{ start: 0, end: 3, visual: "a ball" }], "x", async () => "YES")).passed).toBe(false);
+  });
+});
