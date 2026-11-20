@@ -83,7 +83,16 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
     expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 0, null, false)).toBe("WHICH COLOUR WINS?");
     expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 1, null, false)).toBe("LAP 2 OF 3");
     expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 3, 1, true)).toBe("ROSE WINS!");
-    expect(counterText({ kind: "multiply", counter: "{n} balls" }, 12, null, false)).toBe("12 BALLS");
+    expect(counterText({ kind: "multiply", counter: "{n}% filled" }, 12, null, false)).toBe("12% FILLED");
+  });
+
+  it("never lets a counter call {n} something the scene doesn't count (test run 3 showed \"GEN 42 OF 10\")", () => {
+    // multiply counts percent full, not balls or generations.
+    expect(counterText({ kind: "multiply", counter: "GEN {n} OF 10" }, 42, null, false)).toBe("42% FULL");
+    expect(counterText({ kind: "multiply", counter: "{n} balls" }, 12, null, false)).toBe("12% FULL");
+    expect(counterText({ kind: "growing-ball", counter: "{n} BOUNCES SO FAR" }, 7, null, false)).toBe("7 BOUNCES SO FAR");
+    expect(physicsProblems({ kind: "multiply", counter: "GEN {n} OF 10" })[0]).toMatch(/percent|% FULL/);
+    expect(physicsProblems({ kind: "escape-rings", counter: "{n} RINGS LEFT" })).toEqual([]);
   });
 
   it("draws the run behind the words, with the hook and the counter", () => {
