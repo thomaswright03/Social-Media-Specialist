@@ -17,6 +17,9 @@ export const FPS = 30;
 export const LEAD = 0.15;
 export const TAIL = 0.3;
 export const MIN_SHOT = 1.5;
+/** A voiced shot in a one-take read: at least this long, and this much after its last word. */
+export const ONE_TAKE_MIN = 1.2;
+export const ONE_TAKE_TAIL = 0.18;
 export const LIME = "#a3e635";
 /** The one caption band: below the action, above Instagram's bottom UI (the art keeps faces and the action out of it). */
 export const CAPTION_TOP = 1290;
@@ -33,13 +36,16 @@ export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null
  * Where each shot starts and how long it lasts. A shot keeps its scripted
  * length unless its line needs longer; its words move to where they're heard.
  */
-export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[]): TimedShot[] {
+export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[], opts: { oneTake?: boolean } = {}): TimedShot[] {
   let at = 0;
   return shots.map((s, i) => {
     const v = voices[i] ?? null;
     const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
-    const dur = Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
-    const voiceAt = v ? at + LEAD : null;
+    // One take cut into lines already carries the narrator's own pauses, so a
+    // voiced shot lasts as long as its words (and a breath), not the script's guess.
+    const lead = opts.oneTake ? 0 : LEAD;
+    const dur = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const voiceAt = v ? at + lead : null;
     const t: TimedShot = { ...s, at, dur, voiceAt, words: v ? v.words.map((w) => ({ word: w.word, start: w.start + voiceAt!, end: w.end + voiceAt! })) : [] };
     at += dur;
     return t;
@@ -125,7 +131,8 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
     const cam = cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`);
     const m = motions[i] ?? null;
     const move = m ? { from: 1, to: 1.035 } : {};
-    return { at: s.at, dur: s.dur, label: labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
+    // A motion shot's pieces carry their own words, so no label on top repeats them.
+    return { at: s.at, dur: s.dur, label: m ? "" : labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
   });
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">

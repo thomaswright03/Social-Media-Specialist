@@ -147,6 +147,7 @@ export async function runProduce(d: {
   const voices: ({ seconds: number; words: { word: string; start: number; end: number }[] } | null)[] = [];
   const voiceFiles: (string | null)[] = [];
   let voiceProblem: string | null = null;
+  let oneTake = false;
   const spokenLines = lines.filter((l): l is string => Boolean(l));
   if (spokenLines.length) {
     try {
@@ -168,6 +169,7 @@ export async function runProduce(d: {
         voices.push({ seconds: p.words.at(-1)!.end, words: p.words });
         voiceFiles.push(file);
       }
+      oneTake = true;
       log(`Voiced the script in one take (${take.words.length} words) and cut it into ${spokenLines.length} lines.`);
     } catch (err) {
       log(`One take didn't work (${(err as Error).message}); voicing line by line.`);
@@ -197,7 +199,7 @@ export async function runProduce(d: {
     }
   }
   if (voiceProblem) return stop(voiceProblem, reel.subject);
-  const t = timeline(shots, voices);
+  const t = timeline(shots, voices, { oneTake: oneTake });
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
