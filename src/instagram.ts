@@ -1,7 +1,9 @@
 // Instagram's own API (the "Instagram API with Instagram Login", or with
 // Facebook Login when INSTAGRAM_GRAPH_HOST is graph.facebook.com). It only
 // posts what Thomas approved on the Vault page: social.ts calls publishImage
-// for an approved post whose time has come, and nothing else here writes.
+// for an approved post whose time has come. The one exception is the content
+// pipeline's Trial Reels (CLAUDE.md): src/pipeline/reel.ts calls
+// publishReelFile only when mayAutoPost says yes.
 //
 // Publishing is two steps: make a media container from the image's public
 // URL and the caption, wait until Instagram has fetched the image, then
@@ -89,7 +91,16 @@ export type InstagramClient = {
   recentLinkTaps?(days?: number): Promise<number | null>;
   /** Posts a Reel from a public video URL; a trial Reel when `trial` is set. */
   publishReel?(videoUrl: string, caption: string, opts?: { trial?: TrialStrategy; coverUrl?: string; thumbOffsetMs?: number; shareToFeed?: boolean }): Promise<{ containerId: string; mediaId: string; permalink: string | null }>;
+  /**
+   * Posts a Reel from the video's bytes with Instagram's resumable upload, so
+   * the file needs no public URL; a trial Reel when `trial` is set. One try:
+   * a failed upload or publish is never repeated.
+   */
+  publishReelFile?(video: Uint8Array, caption: string, opts?: { trial?: TrialStrategy; thumbOffsetMs?: number }): Promise<{ containerId: string; mediaId: string; permalink: string | null }>;
 };
+
+/** Where resumable uploads send the video's bytes. */
+export const RUPLOAD_HOST = "rupload.facebook.com";
 
 export const REEL_METRICS = ["views", "reach", "likes", "comments", "saved", "shares", "total_interactions", "ig_reels_avg_watch_time", "ig_reels_video_view_total_time", "reels_skip_rate"] as const;
 
@@ -211,6 +222,23 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
     return userId;
   }
 
+  // Waits for Instagram to process a Reel's video, publishes it, and reads its link back.
+  async function finishReel(ig: string, containerId: string): Promise<{ containerId: string; mediaId: string; permalink: string | null }> {
+    // Video processing takes longer than an image: up to five minutes.
+    for (let i = 0; i < 100; i++) {
+      const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
+      if (s.status_code === "FINISHED") break;
+      if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the video: ${String(s.status ?? s.status_code)}`, null, null);
+      if (i === 99) throw new InstagramError("Instagram was still processing the video after five minutes.", null, null);
+      await sleep(pollMs);
+    }
+    const published = await call(fetchImpl, "POST", `${ig}/media_publish`, token, { creation_id: containerId });
+    const mediaId = String(published.id ?? "");
+    if (!mediaId) throw new InstagramError("Instagram didn't say the Reel went out.", null, null);
+    const back = await call(fetchImpl, "GET", mediaId, token, { fields: "permalink" }).catch(() => ({}) as Record<string, unknown>);
+    return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
+  }
+
   return {
     async account() {
       const me = await call(fetchImpl, "GET", await id(), token, { fields: "username,followers_count,media_count" });
@@ -307,19 +335,29 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
       const containerId = String(container.id ?? "");
       if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
-      // Video processing takes longer than an image: up to five minutes.
-      for (let i = 0; i < 100; i++) {
-        const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
-        if (s.status_code === "FINISHED") break;
-        if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the video: ${String(s.status ?? s.status_code)}`, null, null);
-        if (i === 99) throw new InstagramError("Instagram was still processing the video after five minutes.", null, null);
-        await sleep(pollMs);
+      return finishReel(ig, containerId);
+    },
+
+    async publishReelFile(video, caption, opts = {}) {
+      const ig = await id();
+      const params: Record<string, string> = { media_type: "REELS", upload_type: "resumable", caption };
+      if (opts.trial) params.trial_params = JSON.stringify({ graduation_strategy: opts.trial });
+      if (opts.thumbOffsetMs !== undefined) params.thumb_offset = String(Math.round(opts.thumbOffsetMs));
+      const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
+      const containerId = String(container.id ?? "");
+      if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
+      const uri = typeof container.uri === "string" && container.uri.startsWith(`https://${RUPLOAD_HOST}/`) ? container.uri : `https://${RUPLOAD_HOST}/ig-api-upload/${GRAPH_VERSION}/${containerId}`;
+      let res: Response;
+      try {
+        res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
+      } catch (err) {
+        throw new InstagramError(`The video upload didn't reach Instagram: ${err instanceof Error ? err.message : String(err)}`, null, null);
       }
-      const published = await call(fetchImpl, "POST", `${ig}/media_publish`, token, { creation_id: containerId });
-      const mediaId = String(published.id ?? "");
-      if (!mediaId) throw new InstagramError("Instagram didn't say the Reel went out.", null, null);
-      const back = await call(fetchImpl, "GET", mediaId, token, { fields: "permalink" }).catch(() => ({}) as Record<string, unknown>);
-      return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string; code?: number }; debug_info?: { message?: string } };
+      if (!res.ok || json.error || json.success === false) {
+        throw new InstagramError(`Instagram didn't take the video upload: ${json.error?.message || json.debug_info?.message || `HTTP ${res.status}`}`, res.status, typeof json.error?.code === "number" ? json.error.code : null);
+      }
+      return finishReel(ig, containerId);
     },
 
     async stats(mediaId) {

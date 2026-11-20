@@ -18,8 +18,8 @@ series. Those videos are the examples of what to avoid (`avoid.md`).
 | 2 | Ideas: pitch 20 in the format code picked (80/20 mix), score, keep 3 | 20 scored pitches, the top 3 kept, each finalist fits the format and passes the cold one-sentence test (3 separate cold reads, 2 must say yes) | yes (`social ideas`) |
 | 3 | The first 3 seconds | no title card, starts mid-action, on-screen hook by 0.5 s and readable by 1.5 s, cold sound-off viewers know why to keep watching | yes (`social script`) |
 | 4 | Script, 30 to 60 s, standalone | no 3-second slice without something new; every spoken claim on screen; clean grammar, plausible physics and timing, no contradictions; own payoff; a reason to watch the next; the format's checks | yes (`social script`) |
-| 5 | Production: art, voice, music, captions | our frames judged side by side with the benchmark's, not worse on any axis | yes (`social produce`: ElevenLabs voice, drawn SVG shots, captions, our own sound; the mp4 is a run artifact) |
-| 6 | Pre-publish checks | duration, loudness, size, text outside Instagram's button zones, cover, caption first line, keywords, call to action, music and art licensed, every learned check | gate only |
+| 5 | Production: art, voice, music, captions | every shot drawn and voiced, a cold viewer gets the story, every picture shows what the voice says, and the judge scores ours and the benchmark's frames side by side (the comparison is logged, not a block, since 2026-11-20) | yes (`social produce`: ElevenLabs voice, drawn SVG shots, captions, our own sound; the mp4 is a run artifact) |
+| 6 | Pre-publish checks | duration, loudness, size, text outside Instagram's button zones, cover, caption first line, keywords, call to action, music and art licensed, every learned check | yes (`social reel`: packaged by code from the script and the render, `src/pipeline/reel.ts`) |
 | 7 | Test small: 2 to 3 hooks as Trial Reels | after 48 h, the winner by 3-second hold, average watch % and shares per reach; too small after 7 days | gate only, posting code ready |
 | 8 | Learn | every lesson becomes a check for stages 3 to 6, the patterns list is updated, and double down or drop as the numbers say | gate only |
 
@@ -92,6 +92,17 @@ Reel (shown to non-followers only) without waiting for him, but only after
 every stage-6 check passes. Graduation (showing it to followers) stays his
 call in the Instagram app (`graduation_strategy: MANUAL`). Feed posts still
 need his approval on the Vault page.
+
+Every day (Thomas, 2026-11-20: "1 explainer and 1 satisfying and 1 ad per
+day"), `.github/workflows/reels.yml` runs `social reel <format>` for each of
+the three: stages 2 to 6 in a row (`src/pipeline/reel.ts`), then the video is
+uploaded straight from the run with Instagram's resumable upload
+(`publishReelFile`, no public URL needed) as a Trial Reel. A stage that
+doesn't pass stops that Reel for the day, a refused post is logged and never
+retried, and the History gets one line per Reel with the Claude tokens it
+used (`src/claude-usage.ts`). An explainer needs news from the last 14 days;
+with none, that slot makes a story. An ad takes the next product from the
+website in turn.
 
 ## What Instagram's API can and can't do (checked 2026-11-10, API v27)
 
