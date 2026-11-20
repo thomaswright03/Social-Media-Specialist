@@ -12,7 +12,7 @@ import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
-import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
+import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
@@ -37,6 +37,15 @@ export function picturesLine(answer: string): { ok: boolean; detail?: string } {
   if (!m) return { ok: true, detail: "the viewer gave no PICTURES line" };
   const v = m[1]!.trim();
   return /^\W*(fine|none|nothing)\b/i.test(v) || !v ? { ok: true } : { ok: false, detail: `doesn't match the voice: ${v.slice(0, 200)}` };
+}
+
+/** Rounds of redrawing the shots a viewer said don't show what the voice says, before stage 5 gives up. */
+export const REDRAW_ROUNDS = 1;
+
+/** The shot numbers in a PICTURES detail ("doesn't match the voice: 02, 05" or "shot-02.jpg"), within 1..total. */
+export function mismatchedShots(detail: string | undefined, total: number): number[] {
+  const nums = [...(detail ?? "").matchAll(/\d+/g)].map((m) => Number(m[0])).filter((n) => n >= 1 && n <= total);
+  return [...new Set(nums)].sort((a, b) => a - b);
 }
 
 /** A closing line as the end card shows it: without the voice's audio tags like "[curious]". */
@@ -278,6 +287,7 @@ export async function runProduce(d: {
   let svgs: string[] = t.map(() => "");
   let motions: (ShotMotion | null)[] = [];
   let physics = "";
+  let cast: Cast = NO_CAST;
   const effects: { file: string; at: number; cue: string }[] = [];
   if (USES_PHYSICS[format]) {
     // Satisfying videos are one continuous physics run with its own notes.
@@ -309,7 +319,7 @@ export async function runProduce(d: {
   } else {
     look = await lookSheet(timed, d.ask, style, log);
     await writeFile(join(d.outDir, "look.txt"), look);
-    const cast = HAS_CAST[format] ? await castSheet(timed, look, d.ask) : NO_CAST;
+    cast = HAS_CAST[format] ? await castSheet(timed, look, d.ask) : NO_CAST;
     await writeFile(join(d.outDir, "cast.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920"><defs>${cast.defs}</defs>${cast.parts.map((x, i) => `<use href="#${x.id}" transform="translate(${200 + (i % 3) * 340} ${300 + Math.floor(i / 3) * 420})"/>`).join("")}</svg>`);
     log(cast.parts.length ? `Cast drawn once: ${cast.parts.map((x) => x.id).join(", ")}.` : "No cast sheet; each shot draws its own characters.");
     const scenes = await drawScenes(timed, look, d.ask, log, cast, style);
@@ -341,94 +351,115 @@ export async function runProduce(d: {
     log(`Made ${effects.length} sound effects from the script's cues.`);
   }
 
-  // Render, mix, mux.
-  const browser = await d.browser();
-  let boxes: TextBox[] = [];
-  const framesDir = join(work, "frames");
-  try {
-    // Explainers ask their closing question over the end card (Thomas, 2026-11-20).
-    // Without the voice's audio tags ("[curious]"), which are for the voice, not the screen.
-    const lastLine = endQuestionText(t.at(-1)?.line);
-    const html = composeHtml(t, svgs, motions, physics, { endQuestion: format === "explainer" && /\?["'”’)]*$/.test(lastLine) ? lastLine : undefined });
-    await writeFile(join(work, "compose.html"), html);
-    // Every Reel ends on the end card (logo, name, website) after its last shot.
-    boxes = (await renderFrames(browser, html, seconds + END_CARD, framesDir, log)).boxes;
-  } finally {
-    await browser.close().catch(() => {});
-  }
-  const audio = await mixAudio(t, voiceFiles, work, effects, { continuous: Boolean(physics) });
+  // Render, judge, and if a viewer says some drawn pictures don't show what the
+  // voice says (and nothing else failed), redraw just those shots and judge the
+  // new video again with fresh viewers, REDRAW_ROUNDS times at most.
   const video = join(d.outDir, "reel.mp4");
-  await mux(framesDir, audio, video);
-  const facts = await mediaFacts(video);
-  log(`Made ${video}: ${facts.width}x${facts.height}, ${facts.seconds.toFixed(1)} s, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB.`);
-  await writeFile(join(d.outDir, "timeline.json"), JSON.stringify({ subject: reel.subject, shots: t.map(({ at, dur, visual, onScreenText, line }) => ({ at, dur, visual, onScreenText, line })), boxes }, null, 1));
+  let boxes: TextBox[] = [];
+  let facts!: MediaFacts;
+  let r!: Awaited<ReturnType<typeof runStage<ProductionJudgement>>>;
+  const redrawable = !physics && !motions.some(Boolean) && svgs.some(Boolean);
+  for (let round = 0; ; round++) {
+    // Render, mix, mux.
+    const browser = await d.browser();
+    const framesDir = join(work, "frames");
+    try {
+      // Explainers ask their closing question over the end card (Thomas, 2026-11-20).
+      // Without the voice's audio tags ("[curious]"), which are for the voice, not the screen.
+      const lastLine = endQuestionText(t.at(-1)?.line);
+      const html = composeHtml(t, svgs, motions, physics, { endQuestion: format === "explainer" && /\?["'”’)]*$/.test(lastLine) ? lastLine : undefined });
+      await writeFile(join(work, "compose.html"), html);
+      // Every Reel ends on the end card (logo, name, website) after its last shot.
+      boxes = (await renderFrames(browser, html, seconds + END_CARD, framesDir, log)).boxes;
+    } finally {
+      await browser.close().catch(() => {});
+    }
+    const audio = await mixAudio(t, voiceFiles, work, effects, { continuous: Boolean(physics) });
+    await mux(framesDir, audio, video);
+    facts = await mediaFacts(video);
+    log(`Made ${video}: ${facts.width}x${facts.height}, ${facts.seconds.toFixed(1)} s, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB.`);
+    await writeFile(join(d.outDir, "timeline.json"), JSON.stringify({ subject: reel.subject, shots: t.map(({ at, dur, visual, onScreenText, line }) => ({ at, dur, visual, onScreenText, line })), boxes }, null, 1));
 
-  // The gate: our key frames next to the benchmark covers, in front of a separate judge.
-  const judgeDir = join(d.outDir, "judge");
-  await mkdir(judgeDir, { recursive: true });
-  const ours: string[] = [];
-  for (const [k, f] of keyFrameNumbers(t).entries()) {
-    const name = `ours-${k + 1}.jpg`;
-    await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(judgeDir, name)).then(() => ours.push(name)).catch(() => {});
-  }
-  const bench = await d.benchmarks(judgeDir, format).catch(() => [] as string[]);
+    // The gate: our key frames next to the benchmark covers, in front of a separate judge.
+    const judgeDir = join(d.outDir, "judge");
+    await mkdir(judgeDir, { recursive: true });
+    const ours: string[] = [];
+    for (const [k, f] of keyFrameNumbers(t).entries()) {
+      const name = `ours-${k + 1}.jpg`;
+      await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(judgeDir, name)).then(() => ours.push(name)).catch(() => {});
+    }
+    const bench = await d.benchmarks(judgeDir, format).catch(() => [] as string[]);
 
-  // Can a stranger follow the finished video? A separate viewer sees one
-  // frame of every shot with what's said over it, and retells it.
-  const followDir = join(d.outDir, "follow");
-  await mkdir(followDir, { recursive: true });
-  const watched: string[] = [];
-  for (const [i, s] of t.entries()) {
-    const f = Math.max(1, Math.round((s.at + Math.min(s.dur * 0.6, s.dur - 0.1)) * FPS));
-    const name = `shot-${String(i + 1).padStart(2, "0")}.jpg`;
-    await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
-    watched.push(`${name}${s.line ? ` (you hear: "${spokenText(s.line)}")` : " (no voice)"}`);
+    // Can a stranger follow the finished video? A separate viewer sees one
+    // frame of every shot with what's said over it, and retells it.
+    const followDir = join(d.outDir, "follow");
+    await mkdir(followDir, { recursive: true });
+    const watched: string[] = [];
+    for (const [i, s] of t.entries()) {
+      const f = Math.max(1, Math.round((s.at + Math.min(s.dur * 0.6, s.dur - 0.1)) * FPS));
+      const name = `shot-${String(i + 1).padStart(2, "0")}.jpg`;
+      await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
+      watched.push(`${name}${s.line ? ` (you hear: "${spokenText(s.line)}")` : " (no voice)"}`);
+    }
+    const retold = (
+      await d
+        .judge(followDir)(
+          stagePrompt(5, { WATCHED: watched.join("\n") }, "follow"),
+        )
+        .catch(() => "")
+    ).trim();
+    const intended = reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
+    // Like stage 4: the match call weighs the whole answer, confusion included.
+    const verdict = retold ? await d.ask(retellMatchPrompt(intended, retold)).catch(() => "") : "";
+    const followed = Boolean(retold) && verdictYes(verdict);
+    if (!followed) log(`The match said: ${verdict.replace(/\s+/g, " ").slice(0, 300)}`);
+    log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
+    const pictures = picturesLine(retold);
+    const cuts = t.length - 1;
+    const notes = [
+      `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
+      physics
+        ? `Our sound: ${effects[0]?.cue ?? "our own notes"}, an original chord loop that climbs as it goes, a chord and a burst on each big moment, over our own low pad and room tone, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns. Our picture: ${look}, one continuous simulated shot like the leading satisfying physics accounts.`
+        : `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
+      `Benchmark: the most liked Reels of the leading ${format} accounts from stage 1's list (${format === "explainer" ? "motion-graphics news explainers" : format === "story" ? "stick-figure stories" : format === "satisfying" ? "satisfying loops" : "brand ads"}; cover images only, Instagram gives no audio for other accounts). Judge their voice and sound as what top accounts of that kind use: a clear narrator over trending music with sound effects.`,
+    ].join(" ");
+    const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
+    r = await runStage<ProductionJudgement>({
+      vault: d.vault,
+      stage: 5,
+      subject: reel.subject,
+      ask: d.judge(judgeDir),
+      prompt: () => stagePrompt(5, { FRAMES: `ours: ${ours.join(", ")}; benchmark: ${bench.join(", ") || "none"} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
+      gate: (j) => {
+        if (j?.seen) log(`The judge saw: ours: ${j.seen.ours ?? "?"} Benchmark: ${j.seen.benchmark ?? "?"}`);
+        const g = gateProduction(j, { ours: ours.length, benchmarks: bench.length }, learned);
+        return gate([
+          check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
+          check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),
+          check("Every picture shows what the voice says", pictures.ok, pictures.detail),
+          ...g.checks,
+        ]);
+      },
+      input: { look, seconds, shots: t.length, facts },
+      // The video doesn't change between tries, so one judgement is the answer.
+      tries: 1,
+      log,
+      now: d.now,
+    });
+
+    const failing = r.gate.checks.filter((c) => !c.passed).map((c) => c.name);
+    const bad = mismatchedShots(r.gate.checks.find((c) => c.name === "Every picture shows what the voice says" && !c.passed)?.detail, t.length);
+    const onlyPictures = failing.every((n) => n === "Every picture shows what the voice says" || n === "A cold viewer of the frames and voice gets the story");
+    if (r.gate.passed || !redrawable || round >= REDRAW_ROUNDS || !bad.length || !onlyPictures) break;
+    log(`Redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}: a viewer said ${bad.length > 1 ? "their pictures don't" : "its picture doesn't"} show what the voice says.`);
+    await d.vault.logAction({ kind: "stage", summary: `Stage 5, Production: redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}, whose pictures didn't show what the voice says.`, target: reel.subject }, now());
+    for (const n of bad) {
+      const said = timed[n - 1]!.line?.trim() || timed[n - 1]!.onScreenText?.trim() || "";
+      const scene = await drawScene(timed, n - 1, look, d.ask, cast, style, `A viewer watching the finished video said this shot's picture doesn't show what is said over it${said ? ` ("${said}")` : ""}. Draw it so the picture shows exactly that, plainly, at a glance.`);
+      if (scene.svg) svgs[n - 1] = scene.svg;
+    }
+    await writeSvgs(join(d.outDir, "scenes"), svgs.filter(Boolean));
   }
-  const retold = (
-    await d
-      .judge(followDir)(
-        stagePrompt(5, { WATCHED: watched.join("\n") }, "follow"),
-      )
-      .catch(() => "")
-  ).trim();
-  const intended = reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
-  // Like stage 4: the match call weighs the whole answer, confusion included.
-  const verdict = retold ? await d.ask(retellMatchPrompt(intended, retold)).catch(() => "") : "";
-  const followed = Boolean(retold) && verdictYes(verdict);
-  if (!followed) log(`The match said: ${verdict.replace(/\s+/g, " ").slice(0, 300)}`);
-  log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
-  const pictures = picturesLine(retold);
-  const cuts = t.length - 1;
-  const notes = [
-    `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
-    physics
-      ? `Our sound: ${effects[0]?.cue ?? "our own notes"}, an original chord loop that climbs as it goes, a chord and a burst on each big moment, over our own low pad and room tone, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns. Our picture: ${look}, one continuous simulated shot like the leading satisfying physics accounts.`
-      : `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
-    `Benchmark: the most liked Reels of the leading ${format} accounts from stage 1's list (${format === "explainer" ? "motion-graphics news explainers" : format === "story" ? "stick-figure stories" : format === "satisfying" ? "satisfying loops" : "brand ads"}; cover images only, Instagram gives no audio for other accounts). Judge their voice and sound as what top accounts of that kind use: a clear narrator over trending music with sound effects.`,
-  ].join(" ");
-  const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
-  const r = await runStage<ProductionJudgement>({
-    vault: d.vault,
-    stage: 5,
-    subject: reel.subject,
-    ask: d.judge(judgeDir),
-    prompt: () => stagePrompt(5, { FRAMES: `ours: ${ours.join(", ")}; benchmark: ${bench.join(", ") || "none"} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
-    gate: (j) => {
-      if (j?.seen) log(`The judge saw: ours: ${j.seen.ours ?? "?"} Benchmark: ${j.seen.benchmark ?? "?"}`);
-      const g = gateProduction(j, { ours: ours.length, benchmarks: bench.length }, learned);
-      return gate([
-        check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
-        check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),
-        check("Every picture shows what the voice says", pictures.ok, pictures.detail),
-        ...g.checks,
-      ]);
-    },
-    input: { look, seconds, shots: t.length, facts },
-    // The video doesn't change between tries, so one judgement is the answer.
-    tries: 1,
-    log,
-    now: d.now,
-  });
   return {
     subject: reel.subject,
     video,

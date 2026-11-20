@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cameraFor, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
-import { endQuestionText, keyFrameNumbers } from "../src/pipeline/produce.ts";
+import { endQuestionText, keyFrameNumbers, mismatchedShots, picturesLine } from "../src/pipeline/produce.ts";
 import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 
@@ -180,5 +180,15 @@ describe("the end card's question", () => {
     expect(endQuestionText("[curious] Who should decide where it goes?")).toBe("Who should decide where it goes?");
     expect(endQuestionText("So [whispers] would you?")).toBe("So would you?");
     expect(endQuestionText(undefined)).toBe("");
+  });
+});
+
+describe("redrawing the shots a viewer says don't match the voice", () => {
+  it("reads the shot numbers from the PICTURES line, within the video", () => {
+    const p = picturesLine("Story...\nPICTURES: 02, 05");
+    expect(p.ok).toBe(false);
+    expect(mismatchedShots(p.detail, 13)).toEqual([2, 5]);
+    expect(mismatchedShots("doesn't match the voice: shot-03.jpg and shot-3.jpg, 40", 13)).toEqual([3]);
+    expect(mismatchedShots(picturesLine("PICTURES: fine").detail, 13)).toEqual([]);
   });
 });
