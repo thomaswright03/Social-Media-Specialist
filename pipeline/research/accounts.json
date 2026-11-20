@@ -1,0 +1,22 @@
+{
+  "story": [
+    { "account": "stickmanstorys22", "why": "Thomas's pick: stick-figure survival stories with a narrator" },
+    { "account": "thestorystix", "why": "Story Stix: stick-figure stories with voice acting" },
+    { "account": "stickman_animation_007", "why": "2D stick-figure animation, funny clips" }
+  ],
+  "satisfying": [
+    { "account": "satisfy_ai_reels", "why": "Satisfying Reels made with AI (its bio says Veo 3 clips)" },
+    { "account": "wannerstedt", "why": "Andreas Wannerstedt, a 3D artist: solid shapes that fit and loop, made by hand, the look our format copies" },
+    { "account": "glasmr_", "why": "Glass ASMR: daily glass-cutting clips" }
+  ],
+  "explainer": [
+    { "account": "cleoabram", "why": "Cleo Abram, video journalist: explainers about technology" },
+    { "account": "morningbrew", "why": "Morning Brew: business news made short" },
+    { "account": "voxdotcom", "why": "Vox: explainers on the news" }
+  ],
+  "ad": [
+    { "account": "clickup", "why": "ClickUp: office comedy skits that sell work software" },
+    { "account": "duolingo", "why": "Duolingo: a brand account that entertains first" },
+    { "account": "shopify", "why": "Shopify: stories about small business owners" }
+  ]
+}

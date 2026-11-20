@@ -14,6 +14,7 @@ import { formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
+import { researchBrief } from "./research.ts";
 import { parseJson, runStage, stagePrompt, testerPrompt } from "./stages.ts";
 import { spokenText } from "../voice.ts";
 
@@ -120,7 +121,8 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   const product = reel.format === "ad" ? (d.products.find((p) => p.id === reel.productId) ?? null) : null;
   if (reel.format === "ad" && !product) return { ...empty(`The ad's product (${reel.productId}) isn't on the website anymore`), subject: reel.subject };
   const choice = { format: reel.format, product } as Choice;
-  const patterns = (await d.vault.lessons("pattern")).map((l) => `- ${l.text}`).join("\n") || "(none yet)";
+  // What stage 1 found for this format (not one list for every format).
+  const patterns = await researchBrief(d.vault, choice.format);
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
   const lessonText = lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "";
 

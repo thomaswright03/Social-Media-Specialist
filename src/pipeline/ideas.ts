@@ -10,7 +10,7 @@ import type { Product, Vault } from "../vault.ts";
 import { formatBrief, gateFormat, nextFormat, nextProduct, type Choice, type Format, type Made } from "./formats.ts";
 import { check, gate, gateIdeas, type ColdReads, type GateResult, type Ideas } from "./gates.ts";
 import { newsList, newsText, type NewsItem } from "./news.ts";
-import { NICHE } from "./research.ts";
+import { nicheFor, researchBrief } from "./research.ts";
 import { runStage, stagePrompt, testerPrompt } from "./stages.ts";
 
 export const COLD_READS = 3;
@@ -76,7 +76,8 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
   }
   const subject = `reel:${randomUUID()}`;
   d.log?.(`Next Reel: ${choice.format}${choice.product ? ` for ${choice.product.name}` : ""}.`);
-  const patterns = (await d.vault.lessons("pattern")).map((l) => `- ${l.text}`).join("\n") || "(none yet)";
+  // What stage 1 found for this format (not one list for every format).
+  const patterns = await researchBrief(d.vault, choice.format);
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
   const history = started.flatMap((r) => r.finalists.map((s) => `- (${r.format}) ${s}`)).slice(0, 30).join("\n") || "(nothing yet)";
   const r = await runStage<Ideas>({
@@ -86,7 +87,7 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
     ask: d.ask,
     prompt: (failures) =>
       stagePrompt(2, {
-        NICHE,
+        NICHE: nicheFor(choice.format),
         FORMAT: formatBrief(choice, "ideas", { NEWS: newsText(news) }),
         PATTERNS: patterns,
         HISTORY: history,

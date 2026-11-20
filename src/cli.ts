@@ -17,8 +17,10 @@
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
-//   research        stage 1: studies the Reels of the accounts Thomas admires
-//                   (RESEARCH_ACCOUNTS, or usernames after the command) and saves what works
+//   research        stage 1: for each format (or the one named after the command, or REEL_FORMAT),
+//                   compares the winning Reels of the accounts in pipeline/research/accounts.json
+//                   with the same accounts' average Reels; "story: name1, name2" after the command
+//                   (or RESEARCH_RUN_ACCOUNTS) studies other accounts for one run; posts nothing
 import "dotenv/config";
 import { mkdir, writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
@@ -31,12 +33,12 @@ import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
-import { runResearch } from "./pipeline/research.ts";
+import { askClaudeWithFiles, runResearch, summaryText, type ResearchResult } from "./pipeline/research.ts";
+import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
 import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
-import { askClaudeWithFiles } from "./pipeline/research.ts";
-import { ENTERTAINMENT, type Format } from "./pipeline/formats.ts";
+import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
 import { soundEffect, speak } from "./voice.ts";
 
@@ -281,14 +283,19 @@ async function main() {
   }
 
   if (command === "research") {
-    const fromArgs = process.argv.slice(3);
-    const accounts = (fromArgs.length ? fromArgs : (process.env.RESEARCH_ACCOUNTS ?? "").split(/[\s,]+/))
-      .map((a) => a.trim().replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/.*$/, ""))
-      .filter(Boolean);
-    if (!accounts.length) {
-      console.error("No accounts to study. Set RESEARCH_ACCOUNTS (comma separated) or name them after the command.");
+    // `research [format … | all] [accounts]`: a format's name picks it, anything else is accounts.
+    const args = process.argv.slice(3);
+    const isName = (a: string) => a.toLowerCase() === "all" || isFormat(a.toLowerCase());
+    const named = [...args.filter(isName), ...(args.some(isName) ? [] : [process.env.REEL_FORMAT?.trim() ?? ""].filter(isName))].map((a) => a.toLowerCase());
+    const typed = [args.filter((a) => !isName(a)).join(" "), process.env.RESEARCH_RUN_ACCOUNTS ?? ""].filter((t) => t.trim()).join("; ");
+    const typedFor = Object.keys(parseAccounts(typed)) as Format[];
+    const plain = Boolean(typed.trim()) && Object.keys(parseAccounts(typed, "story")).length > typedFor.length;
+    const formats: Format[] = named.includes("all") ? [...RESEARCH_FORMATS] : named.length ? [...new Set(named as Format[])] : typedFor.length ? typedFor : plain ? ["story"] : [...RESEARCH_FORMATS];
+    if (plain && formats.length > 1) {
+      console.error(`Say which format those accounts are for, like "story: name1, name2; ad: name3".`);
       process.exit(2);
     }
+    if (plain && !named.length) log("No format was named, so these accounts are studied as story Reels.");
     const vault = connect();
     try {
       const token = await currentToken(vault, { log });
@@ -297,23 +304,31 @@ async function main() {
         process.exit(2);
       }
       const me = await instagramClient(token.token).account();
-      const r = await runResearch({ vault, token: token.token, igUserId: me.id, accounts, log });
-      if (r.passed) {
-        const patterns = r.research?.patterns ?? [];
-        console.log(`\nStudied ${r.measured.length} Reels from ${accounts.map((a) => `@${a}`).join(", ")}.\n`);
-        for (const [i, p] of patterns.entries()) console.log(`${i + 1}. ${p.pattern}`);
+      const results: ResearchResult[] = [];
+      for (const format of formats) {
+        const accounts = accountsFor(format, typed);
+        log(`Research, ${format}: studying ${accounts.map((a) => `@${a}`).join(", ") || "no accounts (none are listed for it)"}.`);
+        const r = await runResearch({ vault, token: token.token, igUserId: me.id, format, accounts, log });
+        results.push(r);
+        console.log(`\n${r.report}\n`);
+        if (r.reportFile) log(`The ${format} report is saved as ${r.reportFile}.`);
+      }
+      const passed = results.filter((r) => r.passed);
+      const failed = results.filter((r) => !r.passed);
+      if (passed.length) {
         const result = await sendHittaReport({
           project: HITTA_PROJECT,
           title: "Your Instagram research is ready",
-          summary: `The Social Media Specialist studied ${r.measured.length} Reels from ${accounts.join(", ")}. ${patterns.slice(0, 3).map((p, i) => `${i + 1}: ${p.pattern}`).join(" ")} The details are on its Vault page.`.slice(0, 900),
+          summary: `The Social Media Specialist compared other accounts' winning Reels with their average ones. ${results.map((r) => summaryText(r.findings, r.passed)).join(" ")} The full report is on its Vault page's History and in the run's files.`.slice(0, 900),
           urgency: "low",
         });
         log(result.message);
-      } else {
-        console.error(`\nThe research didn't pass its gate${r.tries ? ` after ${r.tries} tries` : ""}:`);
-        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
-        process.exitCode = 1;
       }
+      for (const r of failed) {
+        console.error(`\nThe ${r.format} research didn't pass its gate:`);
+        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+      }
+      if (failed.length) process.exitCode = 1;
     } finally {
       vault.close();
     }

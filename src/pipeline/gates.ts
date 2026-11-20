@@ -24,7 +24,7 @@ export function failuresText(g: GateResult | null): string {
   return ["Your last answer failed these checks. Fix every one:", ...failed.map((c) => `- ${c.name}${c.detail ? `: ${c.detail}` : ""}`)].join("\n");
 }
 
-const REFERS_TO_OTHER_EPISODES = /\b(part\s*(\d+|one|two|three|four|five|six|i{1,3}|iv|v)\b|episode|last time|previously|as we saw|in the last (video|one|reel)|continued from|to be continued|see part|chapter\s*\d+|(?<![\w#])#\d+\b|(follow|stay tuned|come back) for (part |number |#)?\d+\b)/i;
+export const REFERS_TO_OTHER_EPISODES = /\b(part\s*(\d+|one|two|three|four|five|six|i{1,3}|iv|v)\b|episode|last time|previously|as we saw|in the last (video|one|reel)|continued from|to be continued|see part|chapter\s*\d+|(?<![\w#])#\d+\b|(follow|stay tuned|come back) for (part |number |#)?\d+\b)/i;
 
 // --- Stage 0: Diagnose --------------------------------------------------------
 
@@ -69,35 +69,144 @@ export function gateDiagnose(d: Diagnosis | null, data: DiagnosisData): GateResu
 
 // --- Stage 1: Research --------------------------------------------------------
 
-export type Research = {
-  reels?: { url?: string; views?: number | null; likes?: number | null; comments?: number | null; lengthSeconds?: number; first2s?: string; cutsPerTenSeconds?: number; voice?: string; art?: string; onScreenText?: string; postsPerWeek?: number; commentThemes?: string }[];
-  patterns?: { pattern?: string; examples?: string[] }[];
+// Claude labels each Reel from fixed lists, so code can count the labels. It
+// may always answer "unclear"; it may never answer anything else.
+export const UNCLEAR = "unclear";
+export const LABELS = {
+  onFormat: ["yes", "no"],
+  art: ["stick-figures", "other-drawn", "3d-render", "live-action", "screen-recording", "graphics"],
+  lighting: ["dark", "bright"],
+  opening: ["action", "face", "title-card", "blank", "graphic"],
+  captions: ["word-by-word", "full-lines", "none"],
+  captionPosition: ["top", "middle", "lower", "none"],
+  people: ["0", "1", "2", "3+"],
+  narrator: ["first-person", "second-person", "named-character", "third-person", "several-voices", "none"],
+  firstLineSaysWhoAndWhere: ["yes", "no"],
+  answered: ["at-the-end", "earlier", "never", "no-question"],
+} as const;
+
+export type ShotLabels = { camera?: string; people?: string; place?: string };
+export type ReelLabels = {
+  id?: string;
+  onFormat?: string;
+  premise?: string;
+  art?: string;
+  lighting?: string;
+  coverText?: string;
+  opening?: string;
+  hookText?: string;
+  captions?: string;
+  captionPosition?: string;
+  shots?: ShotLabels[];
+  narrator?: string;
+  firstLineSaysWhoAndWhere?: string;
+  question?: string;
+  answered?: string;
 };
 
-const RESEARCH_FIELDS = ["lengthSeconds", "first2s", "cutsPerTenSeconds", "voice", "art", "onScreenText", "postsPerWeek", "commentThemes"] as const;
+/** What code put in front of Claude for one Reel: frames from its video or only its cover, how many shot frames, and whether there was a transcript. */
+export type Looked = { id: string; group: "winner" | "average"; sight: "frames" | "cover" | "none"; shotFrames: number; heard: boolean };
+
+const oneOf = (v: unknown, choices: readonly string[]) => typeof v === "string" && (v === UNCLEAR || choices.includes(v));
+const isText = (v: unknown) => typeof v === "string";
+
+/** What is wrong with one Reel's labels, given what Claude could see and hear of it. */
+export function labelProblems(l: ReelLabels, looked: Looked): string[] {
+  const bad: string[] = [];
+  const need = (field: keyof typeof LABELS, v: unknown) => {
+    if (!oneOf(v, LABELS[field])) bad.push(`${field} must be one of ${[...LABELS[field], UNCLEAR].join(", ")}`);
+  };
+  need("onFormat", l.onFormat);
+  if (!l.premise?.trim()) bad.push("premise is empty");
+  if (looked.sight !== "none") {
+    need("art", l.art);
+    need("lighting", l.lighting);
+  }
+  if (looked.sight === "cover" && !isText(l.coverText)) bad.push(`coverText must be the cover's words or ""`);
+  if (looked.sight === "frames") {
+    need("opening", l.opening);
+    need("captions", l.captions);
+    need("captionPosition", l.captionPosition);
+    if (!isText(l.hookText)) bad.push(`hookText must be the words on screen at 0.5 s or ""`);
+    const shots = Array.isArray(l.shots) ? l.shots : [];
+    if (shots.length !== looked.shotFrames) bad.push(`shots has ${shots.length} entries, the picture has ${looked.shotFrames} frames`);
+    const wrong = shots.filter((x) => !oneOf(x?.camera, CAMERAS) || !oneOf(x?.people, LABELS.people) || !x?.place?.trim()).length;
+    if (wrong) bad.push(`${wrong} shots need camera (${CAMERAS.join(", ")} or ${UNCLEAR}), people (${LABELS.people.join(", ")} or ${UNCLEAR}) and a place`);
+  }
+  if (looked.heard) {
+    need("narrator", l.narrator);
+    need("firstLineSaysWhoAndWhere", l.firstLineSaysWhoAndWhere);
+    need("answered", l.answered);
+    if (!isText(l.question)) bad.push(`question must be the Reel's question or ""`);
+  }
+  return bad;
+}
 
 /**
- * `notReadable` names, per Reel link, the fields code tried and couldn't
- * measure (Instagram gives no video file for some Reels); those may stay
- * empty, and nothing else may.
+ * A pattern Claude proposed from half of the Reels, with how a separate
+ * reader answered its yes/no question for the other half, Reel by Reel,
+ * without being told which were winners.
  */
-export function gateResearch(r: Research | null, notReadable: (url: string) => readonly string[] = () => []): GateResult {
-  const reels = r?.reels ?? [];
-  const byUrl = new Map(reels.filter((x) => x.url).map((x) => [x.url!, x]));
-  const hasNumbers = (x: (typeof reels)[number]) => [x.views, x.likes, x.comments].some((v) => typeof v === "number");
-  const checks: Check[] = [check("15 to 20 Reels studied", reels.length >= 15 && reels.length <= 20, `got ${reels.length}`), check("Every Reel has a link", reels.every((x) => /^https?:\/\//.test(x.url ?? "")))];
-  reels.forEach((x, i) => {
-    const excused = notReadable(x.url ?? "");
-    const missing = RESEARCH_FIELDS.filter((f) => !excused.includes(f) && (x[f] === undefined || x[f] === null || x[f] === ""));
-    checks.push(check(`Reel ${i + 1} has its numbers and every field`, hasNumbers(x) && missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : hasNumbers(x) ? undefined : "no views, likes or comments"));
-  });
-  const patterns = r?.patterns ?? [];
-  checks.push(check("At least one winning pattern", patterns.length > 0));
-  patterns.forEach((p, i) => {
-    const good = [...new Set(p.examples ?? [])].filter((u) => byUrl.has(u) && hasNumbers(byUrl.get(u)!));
-    checks.push(check(`Pattern ${i + 1} ("${(p.pattern ?? "").slice(0, 60)}") has 3+ studied examples with numbers`, good.length >= 3, `has ${good.length}`));
-  });
-  return gate(checks);
+export type PatternTally = { pattern: string; question: string; winnersYes: number; winnersAsked: number; averageYes: number; averageAsked: number };
+
+export const PATTERN_MIN_WINNERS = 3;
+/** Winners must show a pattern this much more often than average Reels (as a share, 0 to 1). */
+export const PATTERN_MIN_GAP = 0.25;
+
+/** A pattern is kept only when 3+ of the winners it wasn't drawn from show it, and winners show it clearly more often than average Reels. */
+export function patternHolds(p: PatternTally): boolean {
+  if (p.winnersYes < PATTERN_MIN_WINNERS || !p.winnersAsked || !p.averageAsked) return false;
+  return p.winnersYes / p.winnersAsked - p.averageYes / p.averageAsked >= PATTERN_MIN_GAP;
+}
+
+export type ResearchGateInput = {
+  format: string;
+  /** Every account asked for, with why it couldn't be used (null when it could). */
+  accounts: { username: string; problem: string | null }[];
+  /** The Reels Claude was given to label. */
+  looked: Looked[];
+  /** Claude's labels; null when it wasn't asked because an earlier check had already failed. */
+  labels: ReelLabels[] | null;
+  /** Reels Instagram gave a video file for, and how many of those code could measure. */
+  videosGiven: number;
+  videosMeasured: number;
+  /** Rules with enough Reels on both sides for a verdict. */
+  verdicts: number;
+  /** The patterns being kept. */
+  patterns: PatternTally[];
+};
+
+/** One creator's habits aren't "what wins": winners must come from at least this many accounts. */
+export const MIN_ACCOUNTS = 2;
+export const MIN_LOOKED_PER_GROUP = 6;
+export const MIN_VERDICTS = 5;
+
+export function gateResearch(x: ResearchGateInput): GateResult {
+  const name = `${x.format.charAt(0).toUpperCase()}${x.format.slice(1)}`;
+  const usable = x.accounts.filter((a) => !a.problem);
+  const unusable = x.accounts.filter((a) => a.problem);
+  const winners = x.looked.filter((r) => r.group === "winner").length;
+  const average = x.looked.filter((r) => r.group === "average").length;
+  const byId = new Map((x.labels ?? []).filter((l) => l.id).map((l) => [l.id!, l]));
+  const known = new Set(x.looked.map((r) => r.id));
+  const missing = x.looked.filter((r) => !byId.has(r.id)).map((r) => r.id);
+  const added = (x.labels ?? []).filter((l) => !l.id || !known.has(l.id)).map((l) => l.id ?? "(no id)");
+  const problems = x.looked.flatMap((r) => (byId.has(r.id) ? labelProblems(byId.get(r.id)!, r).map((p) => `${r.id}: ${p}`) : []));
+  const weak = x.patterns.filter((p) => !patternHolds(p));
+  const notAsked = x.labels === null ? "Claude wasn't asked: the checks above come first" : undefined;
+  return gate([
+    check(`${name}: at least ${MIN_ACCOUNTS} accounts could be studied`, usable.length >= MIN_ACCOUNTS, `${usable.length} of ${x.accounts.length}${unusable.length ? `. ${unusable.map((a) => `@${a.username}: ${a.problem}`).join("; ")}` : ""}`),
+    check(`${name}: at least ${MIN_LOOKED_PER_GROUP} winners and ${MIN_LOOKED_PER_GROUP} average Reels to compare`, winners >= MIN_LOOKED_PER_GROUP && average >= MIN_LOOKED_PER_GROUP, `${winners} winners, ${average} average`),
+    check(`${name}: the videos Instagram gave were measured`, x.videosGiven === 0 || x.videosMeasured * 2 >= x.videosGiven, x.videosGiven === 0 ? "Instagram gave no video files, so only covers and captions were studied" : `${x.videosMeasured} of ${x.videosGiven}`),
+    check(`${name}: every Reel was labelled, and none was added`, x.labels !== null && x.looked.length > 0 && missing.length === 0 && added.length === 0, notAsked ?? (missing.length ? `not labelled: ${missing.slice(0, 8).join(", ")}` : added.length ? `not among the Reels given: ${added.slice(0, 5).join(", ")}` : undefined)),
+    check(`${name}: every label is one of its choices`, x.labels !== null && x.looked.length > 0 && problems.length === 0, notAsked ?? (problems.length ? problems.slice(0, 8).join("; ") : undefined)),
+    check(`${name}: at least ${MIN_VERDICTS} of our rules have enough Reels behind them for a verdict`, x.verdicts >= MIN_VERDICTS, `${x.verdicts} rules`),
+    check(
+      `${name}: every pattern kept is shown by ${PATTERN_MIN_WINNERS}+ winners it wasn't drawn from, and more often than by average Reels`,
+      weak.length === 0,
+      weak.length ? weak.map((p) => `"${p.pattern.slice(0, 50)}": ${p.winnersYes} of ${p.winnersAsked} winners, ${p.averageYes} of ${p.averageAsked} average`).join("; ") : `${x.patterns.length} kept`,
+    ),
+  ]);
 }
 
 // --- Stage 2: Ideas -----------------------------------------------------------
@@ -321,7 +430,7 @@ export type Packaging = {
 
 /** Where Instagram's buttons, caption and header cover a 1080x1920 Reel. */
 export const SAFE = { top: 220, bottom: 420, right: 140, left: 60 } as const;
-const CTA = /\b(follow|link in (the )?bio|comment|save this|share this|send this|tap|visit|try it|watch (the )?next)\b/i;
+export const CTA = /\b(follow|link in (the )?bio|comment|save this|share this|send this|tap|visit|try it|watch (the )?next)\b/i;
 
 export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, learned: Check[] = []): GateResult {
   const outside = boxes.filter((b) => b.y < SAFE.top || b.y + b.h > m.height - SAFE.bottom || b.x < SAFE.left || b.x + b.w > m.width - SAFE.right);

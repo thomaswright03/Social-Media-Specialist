@@ -91,10 +91,10 @@ export type FormatDraft = {
 };
 
 // Sales talk, not words a story or the news might use ("price", "$2 billion").
-const SELLING = /\b(link in (my |our )?bio|sign ?up|buy (it |one )?now|order now|free trial|discount code|promo code|dm (us|me)|book a (call|demo)|wright ai solutions)\b/i;
+export const SELLING = /\b(link in (my |our )?bio|sign ?up|buy (it |one )?now|order now|free trial|discount code|promo code|dm (us|me)|book a (call|demo)|wright ai solutions)\b/i;
 const CUSTOM_BUILD = /\bcustom\b[^.!?]{0,60}\b(ai )?(agents?|software|apps?|tools?)\b|\bbuild[^.!?]{0,40}\b(ai )?(agents?|software)\b[^.!?]{0,40}\b(business|you)/i;
 const CALL_TO_ACTION = /\b(link in (my |our )?bio|visit|sign ?up|try it|book|dm us|message us|tap)\b/i;
-const MADE_WITH_AI = /\b(made|created|generated|animated) (with|by|using) ai\b|\bai[- ](generated|made|animation|video)\b|#aiart|#ai\b/i;
+export const MADE_WITH_AI = /\b(made|created|generated|animated) (with|by|using) ai\b|\bai[- ](generated|made|animation|video)\b|#aiart|#ai\b/i;
 
 const named = (text: string, p: Product) => text.toLowerCase().includes(p.name.toLowerCase());
 

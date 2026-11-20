@@ -10,7 +10,7 @@ import type { Vault } from "../vault.ts";
 
 export const STAGES = [
   { n: 0, file: "0-diagnose.md", name: "Diagnose", gate: "Three reasons it underperformed, each backed by a number from Insights" },
-  { n: 1, file: "1-research.md", name: "Research what wins", gate: "Every winning pattern has 3+ real examples with their numbers" },
+  { n: 1, file: "1-research.md", name: "Research what wins", gate: "Winners are compared with the same accounts' average Reels, and a pattern is kept only when a blind check backs it" },
   { n: 2, file: "2-ideas.md", name: "Ideas", gate: "Each of the 3 finalists passes the cold one-sentence test" },
   { n: 3, file: "3-first-3-seconds.md", name: "The first 3 seconds", gate: "A sound-off viewer knows why to keep watching by 1.5 s" },
   { n: 4, file: "4-script.md", name: "Script", gate: "No 3-second slice without something new; Low Tide checks clean" },
