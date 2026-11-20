@@ -9,8 +9,8 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
-import { splitRead, spokenText, type SoundEffect, type Speak } from "../voice.ts";
-import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
+import { loudness, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
+import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
@@ -150,7 +150,7 @@ export async function runProduce(d: {
   // Voice: the whole script in one take, so it sounds like one person telling
   // it, then cut back into each shot's line. Line by line if that fails.
   const lines = shots.map((s) => s.line?.trim() || null);
-  const voices: ({ seconds: number; words: { word: string; start: number; end: number }[] } | null)[] = [];
+  const voices: ({ seconds: number; words: { word: string; start: number; end: number }[]; length?: number } | null)[] = [];
   const voiceFiles: (string | null)[] = [];
   let voiceProblem: string | null = null;
   let oneTake = false;
@@ -165,7 +165,9 @@ export async function runProduce(d: {
       const whole = join(work, "voice-take.wav");
       await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", `atempo=${speed}`, whole]);
       const words = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
-      const parts = splitRead(words, spokenLines);
+      // Cut where the narrator really pauses, found in the audio; the stamps alone clip words.
+      const pcm = await runOut("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", whole, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"]).catch(() => null);
+      const parts = (pcm && splitReadAt(words, spokenLines, loudness(pcm, 16000))) || splitRead(words, spokenLines);
       if (!parts) throw new Error(`the take's ${take.words.length} timed words don't match the script's lines`);
       let k = 0;
       for (let i = 0; i < shots.length; i++) {
@@ -176,8 +178,8 @@ export async function runProduce(d: {
         }
         const p = parts[k++]!;
         const file = join(work, `voice-${String(i + 1).padStart(2, "0")}.wav`);
-        await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", whole, "-af", `atrim=start=${p.from.toFixed(3)}:end=${p.to.toFixed(3)},asetpts=PTS-STARTPTS,afade=t=out:st=${Math.max(0, p.to - p.from - 0.03).toFixed(3)}:d=0.03`, file]);
-        voices.push({ seconds: p.words.at(-1)!.end, words: p.words });
+        await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", whole, "-af", `atrim=start=${p.from.toFixed(3)}:end=${p.to.toFixed(3)},asetpts=PTS-STARTPTS,afade=t=in:d=0.01,afade=t=out:st=${Math.max(0, p.to - p.from - 0.03).toFixed(3)}:d=0.03`, file]);
+        voices.push({ seconds: p.words.at(-1)!.end, words: p.words, length: p.to - p.from });
         voiceFiles.push(file);
       }
       oneTake = true;

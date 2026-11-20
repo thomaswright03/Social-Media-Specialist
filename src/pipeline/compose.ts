@@ -36,7 +36,7 @@ export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null
  * Where each shot starts and how long it lasts. A shot keeps its scripted
  * length unless its line needs longer; its words move to where they're heard.
  */
-export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[], opts: { oneTake?: boolean } = {}): TimedShot[] {
+export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[]; length?: number } | null)[], opts: { oneTake?: boolean } = {}): TimedShot[] {
   let at = 0;
   return shots.map((s, i) => {
     const v = voices[i] ?? null;
@@ -44,7 +44,7 @@ export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[
     // One take cut into lines already carries the narrator's own pauses, so a
     // voiced shot lasts as long as its words (and a breath), not the script's guess.
     const lead = opts.oneTake ? 0 : LEAD;
-    const dur = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const dur = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.length ?? v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
     const voiceAt = v ? at + lead : null;
     const t: TimedShot = { ...s, at, dur, voiceAt, words: v ? v.words.map((w) => ({ word: w.word, start: w.start + voiceAt!, end: w.end + voiceAt! })) : [] };
     at += dur;
@@ -234,6 +234,19 @@ export function run(cmd: string, args: string[], cwd?: string): Promise<string> 
     child.stderr.on("data", (d) => (err += d));
     child.on("error", (e) => reject(new Error(`${cmd} couldn't start: ${e.message}`)));
     child.on("close", (code) => (code === 0 ? resolve(out + err) : reject(new Error(`${cmd} failed (${code}): ${err.slice(-800)}`))));
+  });
+}
+
+/** A command's raw output, for audio piped out of ffmpeg. */
+export function runOut(cmd: string, args: string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const out: Buffer[] = [];
+    let err = "";
+    child.stdout.on("data", (d: Buffer) => out.push(d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => reject(new Error(`${cmd} couldn't start: ${e.message}`)));
+    child.on("close", (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`${cmd} failed (${code}): ${err.slice(-800)}`))));
   });
 }
 

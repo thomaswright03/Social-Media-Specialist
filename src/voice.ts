@@ -137,6 +137,99 @@ export function splitRead(words: Spoken["words"], lines: string[], pad = 0.06): 
   return out;
 }
 
+/** How loud a take is, one value per frame of `step` seconds. */
+export type Loudness = { step: number; rms: number[] };
+
+/** Longest pause between two lines that's kept whole; longer pauses are shortened. */
+export const MAX_PAUSE = 0.35;
+
+/**
+ * One take, cut back into lines where the narrator actually pauses (Thomas,
+ * 2026-11-20: words were clipped and doubled). The word timestamps only say
+ * roughly where a line ends: they can be a few tenths early or late, so a cut
+ * placed on them chops a word or lets it play twice. Each cut goes in the
+ * quiet stretch between the lines, found in the audio itself; a long pause is
+ * shortened to MAX_PAUSE, and each line's words are moved to where its speech
+ * really starts. Null when the words don't line up.
+ */
+export function splitReadAt(words: Spoken["words"], lines: string[], loud: Loudness): { from: number; to: number; words: Spoken["words"] }[] | null {
+  const counts = lines.map((l) => spokenText(l).split(/\s+/).filter(Boolean).length);
+  if (counts.reduce((a, b) => a + b, 0) !== words.length || counts.some((n) => !n) || !loud.rms.length) return null;
+  const groups: Spoken["words"][] = [];
+  let k = 0;
+  for (const n of counts) groups.push(words.slice(k, (k += n)));
+  const { step, rms } = loud;
+  const end = rms.length * step;
+  const sorted = [...rms].sort((a, b) => a - b);
+  const ref = sorted[Math.floor(sorted.length * 0.95)] || 0;
+  const quietBelow = ref * 10 ** (-30 / 20);
+  const quiet = (f: number) => (rms[f] ?? 0) <= quietBelow;
+  const frame = (t: number) => Math.max(0, Math.min(rms.length - 1, Math.round(t / step)));
+  const onset = (from: number, until: number) => {
+    for (let f = frame(from); f <= frame(until); f++) if (!quiet(f)) return f * step;
+    return null;
+  };
+  // Where speech starts and ends overall.
+  let first = 0;
+  while (first < rms.length && quiet(first)) first++;
+  let last = rms.length - 1;
+  while (last > 0 && quiet(last)) last--;
+  const cuts: { prevTo: number; nextFrom: number }[] = [];
+  for (let i = 0; i + 1 < groups.length; i++) {
+    const a = groups[i]!.at(-1)!.end;
+    const b = groups[i + 1]![0]!.start;
+    const lo = frame(Math.min(a, b) - 0.35);
+    const hi = frame(Math.max(a, b) + 0.35);
+    const mid = (a + b) / 2;
+    // The longest quiet run in the window (the nearest to the stamps on a tie).
+    let best: { s: number; e: number } | null = null;
+    for (let f = lo; f <= hi; f++) {
+      if (!quiet(f)) continue;
+      let e = f;
+      while (e + 1 <= hi && quiet(e + 1)) e++;
+      const len = e - f;
+      const dist = Math.abs(((f + e + 1) / 2) * step - mid);
+      if (!best || len > best.e - best.s || (len === best.e - best.s && dist < Math.abs(((best.s + best.e + 1) / 2) * step - mid))) best = { s: f, e };
+      f = e;
+    }
+    if (best) {
+      const s = best.s * step;
+      const e = (best.e + 1) * step;
+      if (e - s > MAX_PAUSE) cuts.push({ prevTo: s + MAX_PAUSE * 0.6, nextFrom: e - MAX_PAUSE * 0.4 });
+      else cuts.push({ prevTo: (s + e) / 2, nextFrom: (s + e) / 2 });
+    } else {
+      // No silence at all: cut at the softest frame.
+      let m = lo;
+      for (let f = lo; f <= hi; f++) if ((rms[f] ?? 0) < (rms[m] ?? 0)) m = f;
+      cuts.push({ prevTo: m * step, nextFrom: m * step });
+    }
+  }
+  return groups.map((ws, i) => {
+    const from = i === 0 ? Math.max(0, first * step - 0.05) : cuts[i - 1]!.nextFrom;
+    const to = i + 1 < groups.length ? cuts[i]!.prevTo : Math.min(end, (last + 1) * step + 0.2);
+    const heard = onset(from, to);
+    const drift = heard == null ? 0 : Math.max(-0.5, Math.min(0.5, heard - ws[0]!.start));
+    const span = to - from;
+    return { from, to, words: ws.map((w) => ({ word: w.word, start: Math.max(0, Math.min(span, w.start + drift - from)), end: Math.max(0, Math.min(span, w.end + drift - from)) })) };
+  });
+}
+
+/** A take's loudness from raw 16-bit mono samples. */
+export function loudness(pcm: Buffer, rate: number, step = 0.01): Loudness {
+  const n = Math.floor(pcm.length / 2);
+  const per = Math.max(1, Math.round(rate * step));
+  const rms: number[] = [];
+  for (let i = 0; i + per <= n; i += per) {
+    let sum = 0;
+    for (let j = i; j < i + per; j++) {
+      const v = pcm.readInt16LE(j * 2) / 32768;
+      sum += v * v;
+    }
+    rms.push(Math.sqrt(sum / per));
+  }
+  return { step: per / rate, rms };
+}
+
 /**
  * A sound effect from Thomas's ElevenLabs account (sound generation). Paid
  * plans may use what it makes commercially, so it's listed as ElevenLabs in
