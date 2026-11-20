@@ -106,3 +106,37 @@ describe("voice speed", () => {
     delete process.env.VOICE_SPEED;
   });
 });
+
+describe("one world the camera flies through (Thomas, 2026-11-20)", async () => {
+  const { worldPath, composeHtml, timeline, BRAND, PIECE_Y } = await import("../src/pipeline/compose.ts");
+  it("pans beside, slides below, and zooms into the piece", () => {
+    const w = worldPath(["cut", "whip", "cut", "zoom", "flash"]);
+    expect(w[0]).toEqual({ x: 0, y: 0, z: 1 });
+    expect(w[1]!.x).toBe(1180);
+    expect(w[2]).toEqual({ x: 1180, y: w[1]!.y + 1560, z: 1 });
+    // The zoom's next shot waits inside the current piece, an eighth of its size.
+    expect(w[3]!.z).toBe(1 / 8);
+    expect(w[3]!.x).toBe(w[2]!.x);
+    expect(w[3]!.y + (PIECE_Y - 960) * w[3]!.z).toBeCloseTo(w[2]!.y + (PIECE_Y - 960) * w[2]!.z);
+    expect(w[4]!.x - w[3]!.x).toBeCloseTo(1180 / 8);
+  });
+
+  it("draws an all-graphics Reel as one world with links, and keeps shot backgrounds for mixed Reels", () => {
+    const t = timeline([{ start: 0, end: 2, line: "a" }, { start: 2, end: 4, line: "b" }], [null, null]);
+    const m = [{ shot: 1, pieces: [{ kind: "title", text: "A" }] }, { shot: 2, transition: "zoom", pieces: [{ kind: "title", text: "B" }] }];
+    const html = composeHtml(t, ["", ""], m);
+    expect(html).toContain('<div id="world">');
+    expect(html).toContain('<svg id="links"');
+    expect(html).toMatch(/const WORLD=\[\{"x":0/);
+    const mixed = composeHtml(t, ["", "<svg></svg>"], [m[0]!, null]);
+    expect(mixed).not.toContain('<div id="world">');
+    expect(mixed).toContain("const WORLD=null");
+  });
+
+  it("puts the brand header on every Reel", () => {
+    const t = timeline([{ start: 0, end: 2 }], [null]);
+    const html = composeHtml(t, ["<svg></svg>"]);
+    expect(BRAND).toEqual({ name: "Wright AI Solutions", site: "wright-ai-solutions.com" });
+    expect(html).toContain("<b>Wright AI Solutions</b><i>wright-ai-solutions.com</i>");
+  });
+});

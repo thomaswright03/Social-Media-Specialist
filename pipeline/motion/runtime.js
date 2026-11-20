@@ -450,9 +450,61 @@
   /** Where pieces sit: one in the middle of the picture area, two stacked. */
   const SLOTS = { 1: [{ cy: 770, scale: 1 }], 2: [{ cy: 560, scale: 0.72 }, { cy: 1040, scale: 0.72 }] };
 
-  function mount(spec, root) {
+  /**
+   * One background for the whole Reel (Thomas, 2026-11-20: the shots should
+   * flow into each other, not each sit on its own copy of the background).
+   * The camera flies over it: the grid and specks move with the camera, the
+   * light blobs drift behind at a slower parallax, and its colours blend from
+   * one shot's mood to the next.
+   */
+  function world() {
+    const el = h("div", "position:absolute;inset:0;overflow:hidden");
+    const blobs = [0, 1].map(() => {
+      const b = h("div", "position:absolute;width:1000px;height:1000px;border-radius:50%;opacity:.55;left:0;top:0");
+      el.appendChild(b);
+      return b;
+    });
+    const grid = h("div", "position:absolute;inset:-480px");
+    el.appendChild(grid);
+    const specks = Array.from({ length: 34 }, (_, k) => {
+      const sp = h("div", `position:absolute;left:0;top:0;width:${4 + (k % 3) * 3}px;height:${4 + (k % 3) * 3}px;border-radius:50%;background:#fff;opacity:${0.08 + (k % 4) * 0.04}`);
+      el.appendChild(sp);
+      return { sp, x: (k * 397) % 1600, y: (k * 773) % 2600, depth: 0.5 + (k % 4) * 0.25, v: 18 + (k % 5) * 9 };
+    });
+    const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+    const mix = (a, b, m) => {
+      const x = hex(a), y = hex(b);
+      return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * m)).join(",")})`;
+    };
+    const wrap = (v, n) => ((v % n) + n) % n;
+    return {
+      el,
+      update(t, cam, a, b, m) {
+        const A = THEMES[a] || THEMES.navy, B = THEMES[b] || A;
+        const c = [0, 1, 2, 3].map((i) => mix(A[i], B[i], m || 0));
+        el.style.background = `linear-gradient(170deg,${c[0]},${c[1]})`;
+        const scale = 1 / cam.z;
+        const sx = cam.x * scale, sy = cam.y * scale;
+        blobs[0].style.background = `radial-gradient(circle,${c[2]} 0%,transparent 65%)`;
+        blobs[1].style.background = `radial-gradient(circle,${c[3]} 0%,transparent 65%)`;
+        blobs[0].style.transform = `translate(${wrap(-240 - sx * 0.25 + Math.sin(t * 0.35) * 160, 1800) - 600}px,${wrap(160 - sy * 0.25 + Math.cos(t * 0.27) * 140, 2600) - 600}px)`;
+        blobs[1].style.transform = `translate(${wrap(500 - sx * 0.25 + Math.cos(t * 0.3) * 180, 1800) - 600}px,${wrap(1200 - sy * 0.25 + Math.sin(t * 0.22) * 160, 2600) - 600}px)`;
+        // An endless zoom: the grid size cycles through one doubling.
+        const lvl = Math.log2(scale);
+        const size = 120 * Math.pow(2, lvl - Math.floor(lvl));
+        grid.style.backgroundImage = "linear-gradient(rgba(255,255,255,.05) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.05) 2px,transparent 2px)";
+        grid.style.backgroundSize = `${size}px ${size}px`;
+        grid.style.backgroundPosition = `${wrap(540 - sx + t * 14, size)}px ${wrap(960 - sy + t * 22, size)}px`;
+        for (const x of specks) {
+          x.sp.style.transform = `translate(${wrap(x.x - sx * x.depth + Math.sin(t + x.y) * 12, 1600) - 260}px,${wrap(x.y - sy * x.depth - t * x.v, 2600) - 340}px)`;
+        }
+      },
+    };
+  }
+
+  function mount(spec, root, opts) {
     const bg = background(spec.bg);
-    root.appendChild(bg.el);
+    if (!opts || opts.bg !== false) root.appendChild(bg.el);
     const pieces = (spec.pieces || []).slice(0, 2);
     const slots = SLOTS[pieces.length] || SLOTS[1];
     const live = pieces.map((p, k) => {
@@ -475,5 +527,5 @@
     };
   }
 
-  window.MK = { mount, ICONS: Object.keys(ICONS), KINDS: Object.keys(PIECES), THEMES: Object.keys(THEMES) };
+  window.MK = { mount, world, ICONS: Object.keys(ICONS), KINDS: Object.keys(PIECES), THEMES: Object.keys(THEMES) };
 })();

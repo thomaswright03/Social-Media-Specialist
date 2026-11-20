@@ -24,9 +24,12 @@ export const LIME = "#a3e635";
 /** The one caption band: below the action, above Instagram's bottom UI (the art keeps faces and the action out of it). */
 export const CAPTION_TOP = 1290;
 /** The small label for on-screen text that adds something the voice doesn't say (a name, a time). */
-export const LABEL_TOP = 240;
+/** The brand header on every Reel (Thomas, 2026-11-20): the name, the site under it. */
+export const BRAND = { name: "Wright AI Solutions", site: "wright-ai-solutions.com" } as const;
+export const BRAND_TOP = 228;
+export const LABEL_TOP = 330;
 /** Where a physics run's counter sits: under the label, above the arena. */
-export const PHYS_COUNTER_TOP = 330;
+export const PHYS_COUNTER_TOP = 404;
 
 /** The label's text: the shot's on-screen text, when it isn't just the spoken line again. */
 export const labelFor = (s: TimedShot) => (s.words.length && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? s.onScreenText.trim() : "");
@@ -124,10 +127,35 @@ export function transitionFor(i: number, motion: ShotMotion | null, flash: boole
   return motion ? "whip" : "cut";
 }
 
+/** Where each motion shot sits in one continuous world: x, y and depth (z, smaller is deeper). */
+export type Station = { x: number; y: number; z: number };
+/** Screen y of a shot's main piece: a zoom flies into it, and links join pieces. */
+export const PIECE_Y = 770;
+
 /**
- * The page every frame is drawn from. A shot shows its drawing, or, when the
- * motion kit plans it, its animated pieces (pipeline/motion/runtime.js).
+ * The camera's path for an all-graphics Reel (Thomas, 2026-11-20: shots
+ * should flow into each other). A whip or flash pans to the next shot beside
+ * this one, a cut slides down to the next one below, and a zoom flies into
+ * the current piece, with the next shot waiting inside it.
  */
+export function worldPath(trs: string[]): Station[] {
+  const out: Station[] = [];
+  trs.forEach((tr, i) => {
+    const p = out[i - 1];
+    if (!p) return void out.push({ x: 0, y: 0, z: 1 });
+    if (tr === "zoom") {
+      const z = p.z / 8;
+      out.push({ x: p.x, y: p.y + (PIECE_Y - H / 2) * p.z - (PIECE_Y - H / 2) * z, z });
+    } else if (tr === "cut") out.push({ x: p.x, y: p.y + 1560 * p.z, z: p.z });
+    else out.push({ x: p.x + 1180 * p.z, y: p.y + (i % 2 ? 300 : -300) * p.z, z: p.z });
+  });
+  return out;
+}
+
+/** Seconds the camera takes between two motion shots: a little before the cut and a little after. */
+export const FLY_BEFORE = 0.2;
+export const FLY_AFTER = 0.34;
+
 /**
  * The page that draws the Reel. `physics` is a recorded physics run's drawing
  * code (pipeline/physics.ts): it fills the frame behind the words, its counter
@@ -141,6 +169,8 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
     // A motion shot's pieces carry their own words, so no label on top repeats them.
     return { at: s.at, dur: s.dur, label: physics ? (s.onScreenText?.trim() ?? "") : m ? "" : labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m, ...(physics ? { tr: "cut", flash: false, grain: false } : {}) };
   });
+  // An all-graphics Reel is one world the camera flies through.
+  const world = motions.length > 0 && t.length === motions.length && motions.every(Boolean) ? worldPath(shots.map((s) => s.tr)) : null;
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=block">
@@ -157,19 +187,63 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
 #phys{position:absolute;inset:0;z-index:3}
-#pcount{position:absolute;z-index:7;left:0;right:0;top:${PHYS_COUNTER_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:68px;color:#fff;letter-spacing:.02em;text-shadow:0 4px 14px rgba(0,0,0,.85)}
+#pcount{position:absolute;z-index:7;left:0;right:0;top:${PHYS_COUNTER_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:60px;color:#fff;letter-spacing:.02em;text-shadow:0 4px 14px rgba(0,0,0,.85)}
 #pcount span{display:inline-block}
 #cap span{display:inline-block;transform-origin:50% 70%}
+#world{position:absolute;inset:0;z-index:0}
+#links{position:absolute;inset:0;z-index:1}
+#brand{position:absolute;z-index:8;left:0;right:0;top:${BRAND_TOP}px;text-align:center;font-family:Montserrat,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+#brand b{display:inline-block;font-weight:900;font-size:36px;letter-spacing:.08em;text-transform:uppercase}
+#brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
 </style></head><body>
+${world ? `<div id="world"></div><svg id="links" width="${W}" height="${H}"></svg>` : ""}
 ${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ?? "")}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
-<div id="label"></div><div id="cap"></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
+<div id="label"></div><div id="cap"></div>
+<div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
 <script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
 ${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
 <script>
 const SHOTS=${scriptJson(shots)};
-const MOUNTED=SHOTS.map(s=>s.motion&&window.MK?window.MK.mount(s.motion,document.getElementById('s'+s.i)):null);
+const WORLD=${scriptJson(world)};
+const MOUNTED=SHOTS.map(s=>s.motion&&window.MK?window.MK.mount(s.motion,document.getElementById('s'+s.i),{bg:!WORLD}):null);
+const WBG=WORLD&&window.MK?window.MK.world():null; if(WBG) document.getElementById('world').appendChild(WBG.el);
+const FB=${FLY_BEFORE}, FA=${FLY_AFTER}, PY=${PIECE_Y};
+const io=(x)=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+/** The camera at time t, and the shots it can see. */
+function camera(t){
+  let k=-1; for(let j=1;j<SHOTS.length;j++){ if(t>=SHOTS[j].at-FB&&t<SHOTS[j].at+FA){ k=j; break; } }
+  let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
+  if(k<0) return {c:WORLD[i], show:[i], from:i, to:i, m:0};
+  const a=WORLD[k-1], b=WORLD[k], p=(t-(SHOTS[k].at-FB))/(FB+FA), e=io(p), z=a.z*Math.pow(b.z/a.z,e);
+  const c=SHOTS[k].tr==='zoom'?{x:a.x,y:a.y+(PY-960)*a.z-(PY-960)*z,z}:{x:a.x+(b.x-a.x)*e,y:a.y+(b.y-a.y)*e,z};
+  return {c, show:[k-1,k], from:k-1, to:k, m:e, p};
+}
+const anchor=(st)=>({x:st.x,y:st.y+(PY-960)*st.z});
+const onScreen=(c,pt)=>({x:540+(pt.x-c.x)/c.z,y:960+(pt.y-c.y)/c.z});
+function renderWorld(t){
+  const cam=camera(t), prev=camera(Math.max(0,t-1/30)), c=cam.c;
+  const speed=Math.hypot((c.x-prev.c.x)/c.z,(c.y-prev.c.y)/c.z)+Math.abs(Math.log(c.z/prev.c.z))*600;
+  for(let k=0;k<SHOTS.length;k++){ const e=document.getElementById('s'+k); const on=cam.show.includes(k); const want=on?'block':'none'; if(e.style.display!==want) e.style.display=want; if(!on) continue;
+    const st=WORLD[k], s=SHOTS[k], local=Math.max(0,t-s.at), sc=st.z/c.z, push=1+0.035*ease(Math.min(1,local/s.dur));
+    e.style.transform='translate('+((st.x-c.x)/c.z)+'px,'+((st.y-c.y)/c.z)+'px) scale('+(sc*push)+')';
+    e.style.opacity=String(Math.max(0,Math.min(1,(5-sc)/2.5)));
+    e.style.filter=speed>4?'blur('+Math.min(10,speed*0.05).toFixed(1)+'px)':'';
+    e.style.zIndex=k===cam.to?'3':'2';
+    if(MOUNTED[k]) MOUNTED[k].update(local,s.dur,t); }
+  WBG&&WBG.update(t,c,SHOTS[cam.from].motion.bg,SHOTS[cam.to].motion.bg,cam.m);
+  // Glowing links from each shot to the next, drawn as the camera travels them.
+  let svg=''; const cur=cam.to;
+  for(let k=1;k<=cur;k++){ if(SHOTS[k].tr==='zoom') continue;
+    const A=onScreen(c,anchor(WORLD[k-1])), B=onScreen(c,anchor(WORLD[k])), dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1, ux=dx/len, uy=dy/len;
+    const gap=330*WORLD[k].z/c.z, f=k===cur&&cam.p!=null?Math.min(1,cam.p*1.25):1;
+    if(len<2*gap) continue;
+    const x1=A.x+ux*gap, y1=A.y+uy*gap, x2=x1+(B.x-ux*gap-x1)*f, y2=y1+(B.y-uy*gap-y1)*f, w=Math.max(3,Math.min(14,10*WORLD[k].z/c.z));
+    svg+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#a3e635" stroke-width="'+w+'" stroke-linecap="round" opacity=".85" style="filter:drop-shadow(0 0 10px #a3e635)"/>'
+       +'<circle cx="'+x1+'" cy="'+y1+'" r="'+(w*1.3)+'" fill="#a3e635"/><circle cx="'+x2+'" cy="'+y2+'" r="'+(w*1.3)+'" fill="#a3e635"/>'; }
+  document.getElementById('links').innerHTML=svg;
+}
 const TR=${TRANSITION};
 const CHUNKS=${scriptJson(chunks)};
 const ease=(x)=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
@@ -178,7 +252,8 @@ let shown=-1, capKey=null, labelText=null;
 window.render=(t)=>{
   let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
   const s=SHOTS[i], local=t-s.at, p=Math.min(1,local/s.dur);
-  const tp=(s.tr==='whip'||s.tr==='zoom')&&i>0&&local<TR?local/TR:1;
+  const tp=WORLD?1:(s.tr==='whip'||s.tr==='zoom')&&i>0&&local<TR?local/TR:1;
+  if(WORLD) renderWorld(t); else {
   for(let k=0;k<SHOTS.length;k++){ const on=k===i||(k===i-1&&tp<1); const e=document.getElementById('s'+k); const want=on?'block':'none'; if(e.style.display!==want) e.style.display=want; }
   shown=i;
   const el=document.getElementById('s'+i);
@@ -195,6 +270,7 @@ window.render=(t)=>{
   getComputedStyle(el).transform;
   if(MOUNTED[i]) MOUNTED[i].update(local,s.dur,t);
   for(const a of el.getAnimations({subtree:true})){ a.pause(); a.currentTime=local*1000; }
+  }
   const g=document.getElementById('grain'); g.style.opacity=s.grain?'.18':'0';
   if(s.grain){ document.getElementById('turb').setAttribute('seed',String(Math.floor(t*30)%97+1)); g.style.transform='translate('+(Math.floor(t*30)%7-3)+'px,'+(Math.floor(t*30*3)%7-3)+'px)'; }
   document.getElementById('flash').style.opacity=(s.tr==='flash'||s.flash)&&local<.1?String(.55*(1-local/.1)):'0';
@@ -207,7 +283,7 @@ window.render=(t)=>{
   else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
   const pc=document.getElementById('pcount'); if(pc&&window.physRender){ const ct=window.physRender(t); if(pc.dataset.k!==ct){ pc.innerHTML=ct?'<span>'+esc(ct)+'</span>':''; pc.dataset.k=ct; } }
-  const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null, pc&&pc.textContent.trim()?pc.firstElementChild:null]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
+  const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null, pc&&pc.textContent.trim()?pc.firstElementChild:null, document.querySelector('#brand b'), document.querySelector('#brand i')]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
 };
 </script></body></html>`;
