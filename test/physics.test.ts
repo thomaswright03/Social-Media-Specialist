@@ -104,5 +104,7 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
     expect(html).toContain("window.PHYS=");
     expect(html).toContain('"label":"WILL IT ESCAPE?"');
     expect(html).not.toContain('"tr":"whip"');
+    // Shown once, as the label: no caption chunks repeating it over the arena (test run 3 printed the hook twice).
+    expect(html).toContain("const CHUNKS=[];");
   });
 });

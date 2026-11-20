@@ -83,6 +83,17 @@ describe("gateFormat", () => {
     expect(gateFormat(news, { caption: "x", shots: [], sources: [sources[0]!, { url: "https://old.example", published: "2026-09-01" }] }, P, now).passed).toBe(false);
   });
 
+  it("keeps a satisfying video's later words off who leads, and off things the scene doesn't have", () => {
+    const sat = { format: "satisfying" as const, product: null };
+    const g = (shots: { start: number; onScreenText: string }[]) => gateFormat(sat, { caption: "Made with AI #satisfying", shots }, P);
+    const named = (r: ReturnType<typeof g>) => r.checks.find((c) => c.name.startsWith("On-screen words after the hook"))!;
+    const things = (r: ReturnType<typeof g>) => r.checks.find((c) => c.name.startsWith("On-screen words name nothing"))!;
+    expect(named(g([{ start: 0, onScreenText: "WHICH COLOUR WINS?" }, { start: 3, onScreenText: "SO CLOSE" }])).passed).toBe(true);
+    expect(named(g([{ start: 0, onScreenText: "CAN GREEN ESCAPE?" }, { start: 3, onScreenText: "ALMOST" }])).passed).toBe(true);
+    expect(named(g([{ start: 0, onScreenText: "WHICH COLOUR WINS?" }, { start: 3, onScreenText: "PINK PULLS AHEAD" }]))).toMatchObject({ passed: false, detail: 'says "PINK"' });
+    expect(things(g([{ start: 0, onScreenText: "WHOSE FLAG WINS?" }])).passed).toBe(false);
+  });
+
   it("keeps an explainer to one story: no line jumps to another fact with \"separately\" or \"elsewhere\"", () => {
     const news = { format: "explainer" as const, product: null };
     const one = (line: string) => gateFormat(news, { caption: "x", shots: [{ start: 0, line: "Cotton prices doubled on one island." }, { start: 3, line }] }, P).checks.find((c) => c.name.startsWith("Tells one story"))!;

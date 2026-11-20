@@ -61,7 +61,8 @@ The camera: `camera` is one of: wide, medium, close-up, over-the-shoulder, low a
 
 On-screen text:
 - The opening carries its hook, as stage 3 requires: a question that makes the viewer guess or pick a side.
-- After that, at most 3 words, only where it adds tension ("ONE LEFT", "SO CLOSE"). A counter is already shown at the top for the whole video.
+- After that, at most 3 words, only where it adds tension ("SO CLOSE", "ALMOST"). They never name a colour or say who leads: the run decides that, and code checks it. A counter is already shown at the top for the whole video.
+- Name only what the scene has: balls, rings, pegs, a circle. Never flags, teams, players or countries (code checks this).
 
 Other fields:
 - `place` is the scene, named the same way in every shot.

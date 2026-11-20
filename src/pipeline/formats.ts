@@ -104,6 +104,11 @@ const CUSTOM_BUILD = /\bcustom\b[^.!?]{0,60}\b(ai )?(agents?|software|apps?|tool
 const CALL_TO_ACTION = /\b(link in (my |our )?bio|visit|sign ?up|try it|book|dm us|message us|tap)\b/i;
 export const MADE_WITH_AI = /\b(made|created|generated|animated) (with|by|using) ai\b|\bai[- ](generated|made|animation|video)\b|#aiart|#ai\b/i;
 
+/** Colour words a satisfying video's later on-screen text can't use: the simulation, not the script, decides who leads. */
+export const COLOUR_WORD = /\b(green|pink|blue|yellow|orange|red|purple|gold|teal|cyan|mint|white|lilac|cream|sky|lime)\b/i;
+/** Things a physics scene never has. */
+export const NOT_IN_SCENE = /\b(flags?|teams?|players?|countr(y|ies)|nations?|horses?|cars?|runners?)\b/i;
+
 /** Words that jump an explainer to a second, unrelated fact. */
 export const STORY_JUMP = /\b(separately|elsewhere|meanwhile|in other news|on top of that|in another)\b/i;
 
@@ -125,7 +130,15 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const sell = all.match(SELLING)?.[0];
     checks.push(check("Entertainment doesn't sell", !sell && others.length === 0, sell ? `says "${sell}"` : others.length ? `names ${others.join(", ")}` : undefined));
   }
-  if (c.format === "satisfying") checks.push(check("The caption says it was made with AI", MADE_WITH_AI.test(d.caption)));
+  if (c.format === "satisfying") {
+    checks.push(check("The caption says it was made with AI", MADE_WITH_AI.test(d.caption)));
+    // The run decides who leads and wins, so later words can't say (test run 3: "PINK PULLS AHEAD", "WHOSE FLAG WINS?").
+    const ordered = [...d.shots].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+    const called = ordered.slice(1).map((s) => s.onScreenText?.match(COLOUR_WORD)?.[0]).find(Boolean);
+    const invented = ordered.map((s) => s.onScreenText?.match(NOT_IN_SCENE)?.[0]).find(Boolean);
+    checks.push(check("On-screen words after the hook name no colour (the run decides who leads)", !called, called ? `says "${called}"` : undefined));
+    checks.push(check("On-screen words name nothing the scene doesn't have (flags, teams, players)", !invented, invented ? `says "${invented}"` : undefined));
+  }
   if (c.format === "explainer") {
     const fresh = (d.sources ?? []).filter((s) => {
       const t = Date.parse(s.published ?? "");
