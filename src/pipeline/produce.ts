@@ -39,6 +39,9 @@ export function picturesLine(answer: string): { ok: boolean; detail?: string } {
   return /^\W*(fine|none|nothing)\b/i.test(v) || !v ? { ok: true } : { ok: false, detail: `doesn't match the voice: ${v.slice(0, 200)}` };
 }
 
+/** A closing line as the end card shows it: without the voice's audio tags like "[curious]". */
+export const endQuestionText = (line: string | undefined) => (line ?? "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+
 /** The newest Reel whose script passed stage 4 and that has no passed stage 5. */
 export async function nextToProduce(vault: Vault, subject?: string): Promise<{ subject: string; format: string; script: ScriptOut } | null> {
   for (const r of await vault.reelsStarted()) {
@@ -320,7 +323,8 @@ export async function runProduce(d: {
   const framesDir = join(work, "frames");
   try {
     // Explainers ask their closing question over the end card (Thomas, 2026-11-20).
-    const lastLine = t.at(-1)?.line?.trim() ?? "";
+    // Without the voice's audio tags ("[curious]"), which are for the voice, not the screen.
+    const lastLine = endQuestionText(t.at(-1)?.line);
     const html = composeHtml(t, svgs, motions, physics, { endQuestion: format === "explainer" && /\?["'”’)]*$/.test(lastLine) ? lastLine : undefined });
     await writeFile(join(work, "compose.html"), html);
     // Every Reel ends on the end card (logo, name, website) after its last shot.
