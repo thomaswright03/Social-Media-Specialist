@@ -200,6 +200,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #cap span{display:inline-block;transform-origin:50% 70%}
 #world{position:absolute;inset:0;z-index:0}
 #links{position:absolute;inset:0;z-index:1;-webkit-mask-image:linear-gradient(180deg,transparent 0,transparent ${BRAND_TOP + 100}px,#000 ${BRAND_TOP + 190}px);mask-image:linear-gradient(180deg,transparent 0,transparent ${BRAND_TOP + 100}px,#000 ${BRAND_TOP + 190}px)}
+#scrim{position:absolute;z-index:6;left:0;right:0;top:0;height:${BRAND_TOP + 150}px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.6) 0,rgba(0,0,0,.45) ${BRAND_TOP + 60}px,rgba(0,0,0,0) 100%)}
 #brand{position:absolute;z-index:8;left:0;right:0;top:${BRAND_TOP}px;text-align:center;font-family:Montserrat,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)}
 #brand b{display:inline-block;font-weight:900;font-size:36px;letter-spacing:.08em;text-transform:uppercase}
 #brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
@@ -218,7 +219,7 @@ ${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ??
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
 <div id="label"></div><div id="cap"></div>
-<div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>
+<div id="scrim"></div><div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>
 <div id="endcard"${endQuestion ? ' class="q"' : ""}>${endQuestion ? `<p>${esc(endQuestion).replace(/\?+$/, "<em>?</em>")}</p>` : ""}${LOGO_SVG}<b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
 <script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
 ${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
