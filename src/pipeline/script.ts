@@ -47,7 +47,9 @@ export async function soundOffReads(o: Opening | null, ask: Ask): Promise<SoundO
 
 const spokenLines = (shots: Shot[]) =>
   shots
-    .map((s) => (s.line?.trim() ? spokenText(s.line) : ""))
+    // An opening's shots carry their words in `audio`; a script's in `line`.
+    .map((s) => s.line?.trim() || s.audio?.trim() || "")
+    .map((l) => (l ? spokenText(l) : ""))
     .filter(Boolean)
     .map((l) => `"${l}"`)
     .join("\n");
