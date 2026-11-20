@@ -81,9 +81,9 @@ describe("drawings", () => {
     const { formatPrompt } = await import("../src/pipeline/formats.ts");
     const { lookSheet } = await import("../src/pipeline/scenes.ts");
     const seen: string[] = [];
-    await lookSheet([{ visual: "marbles drop" }], async (p) => (seen.push(p), "PALETTE\nLIGHT\nCHARACTERS none\nOBJECTS\nPLACES\nSHOT BY SHOT\n1. close-up"), formatPrompt("satisfying", "style"));
+    await lookSheet([{ visual: "marbles drop" }], async (p) => (seen.push(p), "PALETTE\nLIGHT\nCHARACTERS none\nOBJECTS\nPLACES\nSHOT BY SHOT\n1. close-up"), formatPrompt("story", "style"));
     await drawScene([{ start: 0, end: 2, visual: "marbles drop" }], 0, "look", async (p) => (seen.push(p), good), NO_CAST, formatPrompt("explainer", "style"));
-    expect(seen[0]).toMatch(/candy colours/);
+    expect(seen[0]).toMatch(/stick figures/);
     expect(seen[1]).toMatch(/editorial motion graphics/);
     expect(seen[1]).not.toMatch(/white stick figures \(stroke #f5f5f5, stroke-width 12 to 18/);
     expect(seen[1]).toMatch(/<cast>\n\(none/);

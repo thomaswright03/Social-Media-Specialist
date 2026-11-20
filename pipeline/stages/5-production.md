@@ -353,6 +353,38 @@ How to choose:
 Reply with only JSON: {"shots":[{"shot":1,"bg":"navy","transition":"cut","pieces":[{…}]}, …]}, one entry for every shot in the list, numbered as there.
 <!-- /motion -->
 
+<!-- physics -->
+You are making a satisfying Instagram Reel (1080x1920, {{SECONDS}} seconds, no voice) as a real physics simulation, like the leading satisfying physics accounts: glowing balls and rings on a dark background, one continuous shot, and every bounce plays a note. Code runs the physics and makes the music; your job is to pick the scene that best tells this video's story and fill in its settings.
+
+<story>
+{{STORY}}
+</story>
+
+<shot_list>
+{{SHOTS}}
+</shot_list>
+
+The scenes (every field not marked optional is required):
+- escape-rings: {"kind":"escape-rings","rings":8,"gap":34,"balls":1,"counter":"{n} RINGS LEFT"} Spinning rings inside each other, each with a gap; a ball bounces inside and breaks out ring by ring. rings 3 to 14, gap in degrees 18 to 70 (smaller is harder), balls 1 to 4. The finish: the last ring breaks.
+- growing-ball: {"kind":"growing-ball","counter":"{n} BOUNCES"} One ball bounces inside a circle and grows a little on every bounce until it fills the circle. The finish: it fills it.
+- multiply: {"kind":"multiply","balls":80,"counter":"{n} BALLS"} One ball; some bounces make a new ball, until there are `balls` of them (20 to 150). The finish: the last one appears.
+- galton: {"kind":"galton","balls":90,"counter":"{n} TO GO"} Balls drop one by one through a triangle of pegs into bins, building a bell curve. balls 30 to 160. The finish: the last ball lands.
+- race: {"kind":"race","balls":4,"names":["Green","Pink","Blue","Yellow"]} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. names are the colours in order (green, pink, blue, yellow on neon). The counter shows the lap, then the winner.
+
+Every scene also takes palette (optional): neon (default), sunset, ocean or candy.
+
+How to choose:
+1. The scene whose finish is the story's payoff. A story about getting out is escape-rings; filling up is growing-ball; more and more is multiply; order out of chaos is galton; a contest is race.
+2. The counter (optional) is short words with {n}, at most 24 characters, in capitals, counting toward the finish. It sits near the top for the whole video.
+3. Code runs the scene and moves its timing so the finish lands between 55% and 90% of the video. If it can't, it tells you, and you change the settings.
+
+<last_refusal>
+{{PROBLEMS}}
+</last_refusal>
+
+Reply with only the JSON of one scene.
+<!-- /physics -->
+
 <!-- follow -->
 These are frames from a short Instagram Reel, one per shot, in order, with what the voice says over each:
 
