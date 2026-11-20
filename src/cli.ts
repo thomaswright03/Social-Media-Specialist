@@ -5,6 +5,8 @@
 //   requests        answers Hitta's open requests (run first, every time)
 //   run             the morning run (see social.ts): token, stats, drafts, Hitta
 //   publish         posts every approved post whose time has come
+//   reel-drafts     adds the finished Reels listed in posts/reels/drafts.json to the Vault page as
+//                   drafts (once each); they go out like any post, after Thomas approves them
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   hitta-test      sends Hitta a low-urgency test report
@@ -38,6 +40,7 @@ import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
+import { addReelDrafts } from "./reel-drafts.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch, studyAccounts, summaryText, type ResearchResult } from "./pipeline/research.ts";
 import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
@@ -408,6 +411,17 @@ async function main() {
     return;
   }
 
+  if (command === "reel-drafts") {
+    const vault = connect();
+    try {
+      const r = await addReelDrafts({ vault, log });
+      log(`Added ${r.added.length} Reel ${r.added.length === 1 ? "draft" : "drafts"}${r.skipped.length ? `; ${r.skipped.length} already there` : ""}. They wait for Thomas's approval on the Vault page.`);
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "publish") {
     const vault = connect();
     try {
@@ -421,7 +435,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test or hitta-test.`);
     process.exit(2);
   }
 

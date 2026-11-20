@@ -34,6 +34,10 @@ Thomas's computer off.
    because Instagram fetches it from a URL. Each post is claimed before
    posting, so it can never go out twice; one Instagram refuses is marked
    failed, Hitta is told, and Thomas taps Try again.
+   A finished Reel kept in `posts/reels` (listed in `posts/reels/drafts.json`,
+   added as a draft by `social reel-drafts`) is approved the same way; its video
+   is uploaded from the repo as a normal Reel. The Facebook Page skips it, as the
+   Page only takes a video from a public link.
 
 Approving on the page puts the post on the next posting day (Monday,
 Wednesday and Friday by default) at the posting time (11:30 Arizona by
@@ -158,6 +162,7 @@ Vercel (or make `CDO_DISPATCH_TOKEN` cover this repo too).
 npx social requests        answer Hitta's open requests
 npx social run             the morning run: token, stats, drafts, Hitta
 npx social publish         post every approved post that's due
+npx social reel-drafts     add the Reels in posts/reels/drafts.json to the Vault page as drafts
 npx social preview         draft one post into preview.jpg; saves nothing, posts nothing
 npx social diagnose        content pipeline stage 0: Insights diagnosis (pipeline/README.md)
 npx social research        content pipeline stage 1, every format: winners against average Reels

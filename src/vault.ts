@@ -28,7 +28,7 @@ import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID }
 import { createClient, type Client, type InValue, type Row } from "@libsql/client";
 
 export type PostState = "draft" | "approved" | "publishing" | "published" | "failed" | "rejected";
-export type PostKind = "screenshot" | "card";
+export type PostKind = "screenshot" | "card" | "reel";
 export const THEMES = ["ink", "ocean", "sunset", "forest", "sand"] as const;
 export type Theme = (typeof THEMES)[number];
 
@@ -249,7 +249,7 @@ export function rowToPost(r: Row): Post {
     productId: str(r.productId),
     productName: str(r.productName),
     ideaId: str(r.ideaId),
-    kind: r.kind === "card" ? "card" : "screenshot",
+    kind: r.kind === "card" || r.kind === "reel" ? r.kind : "screenshot",
     angle: str(r.angle),
     headline: String(r.headline ?? ""),
     subline: str(r.subline),

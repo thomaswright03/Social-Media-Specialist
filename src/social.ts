@@ -17,6 +17,7 @@ import { crosspostOn, facebookPageClient, type FacebookPageClient } from "./face
 import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
+import { readReel } from "./reel-drafts.ts";
 import { DAY_MS } from "./time.ts";
 import { siteProducts, SITE_URL } from "./site.ts";
 import { vaultNow, type Post, type Product, type SocialSnapshot, type Vault } from "./vault.ts";
@@ -36,6 +37,8 @@ export type Deps = {
   /** The Facebook Page for a token (null with an Instagram-login token); tests pass a fake. */
   facebook?: (token: string) => FacebookPageClient | null;
   fetchImpl?: typeof fetch;
+  /** A reel post's video bytes; the file in posts/reels unless a test passes its own. */
+  readReel?: (sourceUrl: string | null) => Promise<Uint8Array>;
   /** The products to post about; the website's product cards unless a test passes its own. */
   products?: () => Promise<Product[]>;
   now?: Date;
@@ -228,7 +231,9 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
   const due = (await vault.duePosts(now)).slice(0, 3);
   if (due.length === 0) return { ...result, skipped: "nothing due" };
   const token = await currentToken(vault, { fetchImpl: d.fetchImpl, now, log }).catch(() => null);
-  const missing = !token ? "INSTAGRAM_ACCESS_TOKEN isn't set" : !process.env.VAULT_PUBLIC_URL?.trim() ? "VAULT_PUBLIC_URL isn't set, so Instagram can't fetch the image" : null;
+  // Instagram fetches a picture from the Vault; a Reel's video is uploaded from the repo instead.
+  const needsVault = due.some((p) => p.kind !== "reel");
+  const missing = !token ? "INSTAGRAM_ACCESS_TOKEN isn't set" : needsVault && !process.env.VAULT_PUBLIC_URL?.trim() ? "VAULT_PUBLIC_URL isn't set, so Instagram can't fetch the image" : null;
   if (missing) {
     // Left approved: it goes out as soon as the setup is fixed.
     log(`${due.length} approved ${due.length === 1 ? "post is" : "posts are"} due, but ${missing}.`);
@@ -244,6 +249,10 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
   for (const p of due) {
     if (!(await vault.claimForPublishing(p.id, now))) continue;
     try {
+      if (p.kind === "reel") {
+        await publishApprovedReel(d, ig, p, now, result);
+        continue;
+      }
       const url = mediaUrl(p)!;
       await checkImage(url, d.fetchImpl);
       const r = await ig.publishImage(url, fullCaption(p));
@@ -277,6 +286,26 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
     }
   }
   return result;
+}
+
+/**
+ * An approved Reel from posts/reels: uploads the video and posts it as a normal
+ * Reel (Thomas approved it, so it isn't a Trial Reel). The Facebook Page only
+ * takes a video from a public link, which the repo's file doesn't have, so the
+ * Page is skipped and that's logged.
+ */
+async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: InstagramClient, p: Post, now: Date, result: PublishResult): Promise<void> {
+  if (!ig.publishReelFile) throw new Error("This Instagram client can't upload a video.");
+  const video = await (d.readReel ?? readReel)(p.sourceUrl);
+  const r = await ig.publishReelFile(video, fullCaption(p));
+  await d.vault.updatePost(p.id, { state: "published", publishedAt: vaultNow(now), igContainerId: r.containerId, igMediaId: r.mediaId, permalink: r.permalink, error: null }, now);
+  result.published.push({ ...p, state: "published", permalink: r.permalink });
+  d.log(`Posted the Reel "${p.headline}"${r.permalink ? `: ${r.permalink}` : ""}.`);
+  await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to Instagram.`, detail: r.permalink, target: p.id, onInstagram: true }, now);
+  if (crosspostOn()) {
+    d.log(`Didn't put the Reel "${p.headline}" on the Facebook Page: the Page only takes a video from a public link.`);
+    await d.vault.logAction({ kind: "posted", summary: `Didn't put the Reel "${p.headline}" on the Facebook Page (it only takes a video from a public link).`, target: p.id }, now);
+  }
 }
 
 /** Instagram fetches the image itself; make sure the Vault really serves it first, for a clear error. */
