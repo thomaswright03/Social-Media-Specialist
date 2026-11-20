@@ -437,28 +437,21 @@ export const PRODUCTION_AXES = ["art", "readability", "voice", "sound"] as const
 export type ProductionJudgement = { seen?: { ours?: string; benchmark?: string }; ours?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; benchmark?: Partial<Record<(typeof PRODUCTION_AXES)[number], number>>; fixFirst?: string };
 
 /**
- * How the judge's comparison with the big accounts counts. "strict": ours
- * must score at least as high on every axis. "within1": at most 1 point
- * lower. "score": the judge must score both, and the scores go on the
- * History, but a lower score doesn't stop the Reel. The other stage-5 checks
- * (frames, voice, a cold viewer gets it, pictures match the voice) block
- * either way.
+ * Stage 5 is graded on our own rubric (the levels in 5-production.md's
+ * prompt), not against other accounts' Reels (Thomas, 2026-11-20: "grade
+ * stuff according to our rubric, not what other people do in their
+ * content"). Every axis must score at least RUBRIC_MIN of 5: 3 is "readable
+ * but uneven", 2 is "several frames hard to read or broken". The scores go
+ * on the History either way.
  */
-export type BenchmarkPolicy = "strict" | "within1" | "score";
-export const BENCHMARK_POLICY: BenchmarkPolicy = "score";
+export const RUBRIC_MIN = 3;
 
-export function gateProduction(j: ProductionJudgement | null, frames: { ours: number; benchmarks: number }, learned: Check[] = [], policy: BenchmarkPolicy = BENCHMARK_POLICY): GateResult {
+export function gateProduction(j: ProductionJudgement | null, frames: { ours: number }, learned: Check[] = [], min = RUBRIC_MIN): GateResult {
   return gate([
     check("Our key frames are there", frames.ours >= 3, `${frames.ours} frames`),
-    check("Frames from at least 2 benchmark Reels", frames.benchmarks >= 2, `${frames.benchmarks} benchmarks`),
     ...PRODUCTION_AXES.map((a) => {
       const o = j?.ours?.[a];
-      const b = j?.benchmark?.[a];
-      const scored = typeof o === "number" && typeof b === "number";
-      const detail = `ours ${o ?? "?"}, benchmark ${b ?? "?"}`;
-      if (policy === "score") return check(`The judge scored ${a} against the benchmark`, scored, detail);
-      if (policy === "within1") return check(`Ours is at most 1 point worse on ${a}`, scored && o >= b - 1, detail);
-      return check(`Ours isn't worse on ${a}`, scored && o >= b, detail);
+      return check(`${a[0]!.toUpperCase()}${a.slice(1)} scores at least ${min} of 5 on our rubric`, typeof o === "number" && o >= min, `${o ?? "?"} of 5`);
     }),
     ...learned,
   ]);

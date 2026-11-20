@@ -11,8 +11,8 @@ Each of these probably hurt, and each is checked by a gate:
 3. **Every part depends on the one before.** Part 5 makes no sense to someone
    who never saw Part 1. Gate: stage 2 one-sentence test read cold, and
    stage 4 standalone check (no "part", "episode", "last time", "previously").
-4. **A text-to-speech voice that sounds like it.** Gate: stage 5 side-by-side
-   with the benchmark; the voice is decided there.
+4. **A text-to-speech voice that sounds like it.** Gate: stage 5's voice
+   score on our rubric; the voice is decided there.
 5. **Judged on continuity instead of retention.** Both matter; we only ever
    checked continuity. Gate: stage 4 three-second slices, and stage 7 judges
    by 3-second hold, watch % and shares, not by how well it fits the series.

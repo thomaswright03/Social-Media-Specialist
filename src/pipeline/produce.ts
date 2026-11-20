@@ -1,13 +1,12 @@
 // Stage 5 of the content pipeline: Production (pipeline/stages/5-production.md).
 // Turns the newest script that passed stage 4 into a 1080x1920 mp4: the
 // ElevenLabs voice line by line, a drawing per shot (scenes.ts), captions and
-// our own sound (compose.ts). The gate puts key frames of ours next to the
-// covers of the benchmark accounts' best Reels in front of a separate judge.
+// our own sound (compose.ts). The gate puts our key frames in front of a
+// separate judge who grades them on our rubric, not against other accounts.
 // Nothing is posted here.
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
-import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
@@ -27,7 +26,6 @@ export function voiceSpeed(): number {
   const v = Number(process.env.VOICE_SPEED);
   return process.env.VOICE_SPEED?.trim() && Number.isFinite(v) && v >= 0.8 && v <= 1.5 ? v : VOICE_SPEED;
 }
-export const BENCHMARKS = 3;
 
 type ScriptOut = { shots?: Shot[]; story?: string; payoff?: string; nextHook?: string; caption?: string };
 
@@ -88,29 +86,6 @@ export async function mediaFacts(file: string): Promise<MediaFacts> {
     lufs: num(/I:\s+(-?[\d.]+) LUFS/),
     truePeak: num(/Peak:\s+(-?[\d.]+) dBFS/),
   };
-}
-
-/** Covers of the benchmark accounts' most liked Reels, saved into `dir`. */
-export async function benchmarkCovers(d: { fetchImpl?: typeof fetch; token: string; igUserId: string; accounts: string[]; dir: string; discover?: typeof discoverAccount; max?: number }): Promise<string[]> {
-  const f = d.fetchImpl ?? fetch;
-  const reels: { url: string; likes: number }[] = [];
-  for (const a of d.accounts) {
-    const acc = await (d.discover ?? discoverAccount)(f, d.token, d.igUserId, a, 50).catch(() => null);
-    for (const m of acc?.media ?? []) if ((m.productType === "REELS" || m.mediaType === "VIDEO") && m.thumbnailUrl) reels.push({ url: m.thumbnailUrl, likes: m.likes ?? 0 });
-  }
-  reels.sort((a, b) => b.likes - a.likes);
-  const out: string[] = [];
-  for (const r of reels) {
-    if (out.length >= (d.max ?? BENCHMARKS)) break;
-    try {
-      const res = await f(r.url, { signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) continue;
-      const name = `benchmark-${out.length + 1}.jpg`;
-      await writeFile(join(d.dir, name), Buffer.from(await res.arrayBuffer()));
-      out.push(name);
-    } catch {}
-  }
-  return out;
 }
 
 /** Frame numbers (1-based) in the middle of evenly spread shots, the first shot always included. */
@@ -186,8 +161,6 @@ export async function runProduce(d: {
   /** Sound effects for the script's cues; left out, the Reel gets only our own bed. */
   sfx?: SoundEffect;
   browser: () => Promise<Browser>;
-  /** Saves benchmark frames into the folder and returns their file names. */
-  benchmarks: (dir: string, format: Format) => Promise<string[]>;
   outDir: string;
   subject?: string;
   log?: (m: string) => void;
@@ -380,7 +353,7 @@ export async function runProduce(d: {
     log(`Made ${video}: ${facts.width}x${facts.height}, ${facts.seconds.toFixed(1)} s, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB.`);
     await writeFile(join(d.outDir, "timeline.json"), JSON.stringify({ subject: reel.subject, shots: t.map(({ at, dur, visual, onScreenText, line }) => ({ at, dur, visual, onScreenText, line })), boxes }, null, 1));
 
-    // The gate: our key frames next to the benchmark covers, in front of a separate judge.
+    // The gate: our key frames in front of a separate judge, scored on our rubric.
     const judgeDir = join(d.outDir, "judge");
     await mkdir(judgeDir, { recursive: true });
     const ours: string[] = [];
@@ -388,7 +361,6 @@ export async function runProduce(d: {
       const name = `ours-${k + 1}.jpg`;
       await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(judgeDir, name)).then(() => ours.push(name)).catch(() => {});
     }
-    const bench = await d.benchmarks(judgeDir, format).catch(() => [] as string[]);
 
     // Can a stranger follow the finished video? A separate viewer sees one
     // frame of every shot with what's said over it, and retells it.
@@ -421,7 +393,6 @@ export async function runProduce(d: {
       physics
         ? `Our sound: ${effects[0]?.cue ?? "our own notes"}, an original chord loop that climbs as it goes, a chord and a burst on each big moment, over our own low pad and room tone, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns. Our picture: ${look}, one continuous simulated shot like the leading satisfying physics accounts.`
         : `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
-      `Benchmark: the most liked Reels of the leading ${format} accounts from stage 1's list (${format === "explainer" ? "motion-graphics news explainers" : format === "story" ? "stick-figure stories" : format === "satisfying" ? "satisfying loops" : "brand ads"}; cover images only, Instagram gives no audio for other accounts). Judge their voice and sound as what top accounts of that kind use: a clear narrator over trending music with sound effects.`,
     ].join(" ");
     const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
     r = await runStage<ProductionJudgement>({
@@ -429,10 +400,10 @@ export async function runProduce(d: {
       stage: 5,
       subject: reel.subject,
       ask: d.judge(judgeDir),
-      prompt: () => stagePrompt(5, { FRAMES: `ours: ${ours.join(", ")}; benchmark: ${bench.join(", ") || "none"} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
+      prompt: () => stagePrompt(5, { FRAMES: `${ours.join(", ")} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
       gate: (j) => {
-        if (j?.seen) log(`The judge saw: ours: ${j.seen.ours ?? "?"} Benchmark: ${j.seen.benchmark ?? "?"}`);
-        const g = gateProduction(j, { ours: ours.length, benchmarks: bench.length }, learned);
+        if (j?.seen) log(`The judge saw: ${j.seen.ours ?? "?"}`);
+        const g = gateProduction(j, { ours: ours.length }, learned);
         return gate([
           check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
           check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),

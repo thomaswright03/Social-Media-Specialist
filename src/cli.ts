@@ -15,7 +15,7 @@
 //   script          stages 3 and 4: the first 3 seconds, then the full script, for the newest Reel
 //                   that passed stage 2
 //   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
-//                   captions, our own sound) and judges it against the benchmark Reels; posts nothing
+//                   captions, our own sound) and grades it on our rubric; posts nothing
 //   reel            one Reel of the format after the command (explainer, satisfying, ad) from idea to
 //                   Instagram: stages 2 to 6, then posted as a Trial Reel only when every check passed
 //                   (src/pipeline/reel.ts); REEL_POST=off makes and checks it but posts nothing
@@ -48,7 +48,7 @@ import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/researc
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
 import { DAILY_FORMATS, runReel } from "./pipeline/reel.ts";
-import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
+import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
 import { soundEffect, speak } from "./voice.ts";
@@ -475,8 +475,6 @@ async function produce(vault: Vault, subject?: string) {
     speak,
     sfx: process.env.REEL_SFX === "off" ? undefined : soundEffect,
     browser: () => chromium.launch(),
-    // The judge compares ours with the leading accounts of the same format (stage 1's list).
-    benchmarks: (dir, format) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts: accountsFor(format), dir }) : Promise.resolve([])),
     outDir: "reel",
     subject,
     log,

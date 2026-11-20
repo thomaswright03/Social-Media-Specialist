@@ -14,7 +14,7 @@ export const STAGES = [
   { n: 2, file: "2-ideas.md", name: "Ideas", gate: "Each of the 3 finalists passes the cold one-sentence test" },
   { n: 3, file: "3-first-3-seconds.md", name: "The first 3 seconds", gate: "A sound-off viewer knows why to keep watching by 1.5 s" },
   { n: 4, file: "4-script.md", name: "Script", gate: "No 3-second slice without something new; Low Tide checks clean" },
-  { n: 5, file: "5-production.md", name: "Production", gate: "Our frames aren't worse than the benchmark's" },
+  { n: 5, file: "5-production.md", name: "Production", gate: "Every axis of our rubric scores at least 3 of 5, a stranger follows it, and every picture shows what the voice says" },
   { n: 6, file: "6-prepublish.md", name: "Pre-publish checks", gate: "Every checklist item passes" },
   { n: 7, file: "7-test.md", name: "Test small", gate: "After 48 h, the winner by 3-second hold, watch % and shares per reach" },
   { n: 8, file: "8-learn.md", name: "Learn", gate: "Every lesson becomes a check for stages 3 to 6" },
