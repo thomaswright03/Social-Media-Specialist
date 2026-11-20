@@ -758,6 +758,24 @@ describe("runResearch", () => {
     vault.close();
   });
 
+  it("says when an account mostly posts something other than the format", async () => {
+    // The first real ad run looked at 20 of Duolingo's Reels, and the reader marked none of them as an ad.
+    const vault = await memoryVault();
+    const claude = fakeClaude({ label: (r) => ({ ...labelFor(r), onFormat: r.caption.includes("@c") ? "no" : "yes" }), patterns: [] });
+    const f = fakes();
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, discover: async (_f, _t, _ig, name) => bigAccount(name, (i) => ({ caption: `${i < 10 ? "He lost $100 in one day." : "A quiet day at the office."} By @${name}` })) }));
+    expect(r.passed).toBe(true);
+    const fromC = r.findings.reels.filter((x) => x.account === "c");
+    expect(fromC.length).toBeGreaterThanOrEqual(12);
+    expect(fromC.every((x) => x.labels?.onFormat === "no")).toBe(true);
+    expect(r.findings.notes).toContain(`Only 0 of the ${fromC.length} Reels looked at from @c were story Reels. It mostly posts other things, so another account would tell more about this format.`);
+    expect(r.findings.notes.join(" ")).not.toContain("from @a");
+    // The Reels left out were replaced by the next in line, from the three accounts in turns.
+    expect(r.findings.replaced).toBeGreaterThan(0);
+    expect(r.report).toContain("Only 0 of the");
+    vault.close();
+  });
+
   it("counts only Reels of the format toward the six a side", () => {
     const looked = (n: number, group: "winner" | "average") => Array.from({ length: n }, (_, i) => ({ id: `${group[0]}${i}`, group, sight: "none" as const, shotFrames: 0, heard: false }));
     const reels = [...looked(6, "winner"), ...looked(7, "average")];

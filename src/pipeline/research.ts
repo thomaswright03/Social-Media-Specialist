@@ -43,6 +43,8 @@ export const LABEL_ROUNDS = 3;
 export const MAX_PATTERNS = 5;
 /** Accounts post other things too. A Reel the reader says isn't the format is replaced by the next in line: at most this many a group. */
 export const TOP_UP_MAX = 10;
+/** With this many of an account's Reels looked at and under a third of them the format, the report says the account is a poor fit. */
+export const OFF_FORMAT_MIN_LOOKED = 5;
 /** A transcript with fewer words than this is treated as no speech. */
 export const MIN_WORDS_HEARD = 5;
 
@@ -529,6 +531,13 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
     if (working.length && videosGiven < working.length) notes.push(`Instagram gave no video for ${working.length - videosGiven} of the ${working.length} Reels (their sound is from its music library, or the owner turned downloads off). Those were studied from the cover and the caption.`);
     for (const r of working) r.labels = labels.get(r.id) ?? null;
     const labelled = ready && working.every((r) => problemsOf(r).length === 0);
+    // An account that mostly posts other things tells little about the format: the first real ad run
+    // looked at 20 of Duolingo's Reels and the reader marked none of them as an ad.
+    for (const s of studies.filter((x) => !x.problem)) {
+      const mine = working.filter((r) => r.account === s.username && r.labels);
+      const on = mine.filter((r) => r.labels!.onFormat !== "no").length;
+      if (mine.length >= OFF_FORMAT_MIN_LOOKED && on * 3 < mine.length) notes.push(`Only ${on} of the ${mine.length} Reels looked at from @${s.username} ${on === 1 ? "was a" : "were"} ${format} ${on === 1 ? "Reel" : "Reels"}. It mostly posts other things, so another account would tell more about this format.`);
+    }
     if (ready) log(`Labelled ${labels.size} of ${working.length} Reels in ${count(labelRounds, "round")}${labelled ? "" : "; some labels are still wrong"}.`);
 
     // 5. Our own rules, counted on the winners and on the average Reels.

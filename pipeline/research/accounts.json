@@ -15,12 +15,12 @@
   ],
   "ad": [
     { "account": "clickup", "why": "ClickUp: office comedy skits that sell work software", "tested": "2026-11-20: 430,934 followers, 100 Reels to score, 15 winners (12 with a video file), 50 average (38 with a video file)" },
-    { "account": "duolingo", "why": "Duolingo: a brand account that entertains first", "tested": "2026-11-20: 5,427,984 followers, 63 Reels to score, 15 winners and 33 average, a video file for every one" },
+    { "account": "notionhq", "why": "Notion: product Reels for a work app. Replaces duolingo: the first real ad run looked at 20 of its Reels and the reader marked none of them as an ad", "tested": "2026-11-20: 497,033 followers, 40 Reels to score, 6 winners (2 with a video file), 20 average (14 with a video file)" },
     { "account": "shopify", "why": "Shopify: stories about small business owners", "tested": "2026-11-20: 2,839,180 followers, 68 Reels to score, 5 winners (5 with a video file), 34 average (28 with a video file)" }
   ],
   "also tested": [
     { "account": "canva", "for": "ad", "tested": "2026-11-20: usable. 2,652,406 followers, 68 Reels to score, 17 winners (6 with a video file), 34 average (3 with a video file)" },
-    { "account": "notionhq", "for": "ad", "tested": "2026-11-20: usable. 497,033 followers, 40 Reels to score, 6 winners (2 with a video file), 20 average (14 with a video file)" },
+    { "account": "duolingo", "for": "ad", "tested": "2026-11-20: readable (5,428,026 followers, 63 Reels to score, a video file for every one), but a poor fit: in the first real ad run the reader marked all 20 of its Reels looked at as not ads" },
     { "account": "theodd1sout", "for": "story", "tested": "2026-11-20: usable but thin. 3,425,856 followers, 16 Reels to score, 4 winners, 8 average" },
     { "account": "stickman_animation_007", "for": "story", "tested": "2026-11-20: not usable. None of its 80 Reels is under a year old" },
     { "account": "brewstewfilms", "for": "story", "tested": "2026-11-20: not usable. Instagram doesn't show it to other apps" },

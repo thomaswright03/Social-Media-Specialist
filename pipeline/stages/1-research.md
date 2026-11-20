@@ -65,7 +65,10 @@ What the first real runs changed (2026-11-20). The story run counted 19 of
 described several of them as "part 12 of a serialized story": the reader now
 answers `series` for every Reel, and the rule counts that as well as the
 caption. The explainer run lost 12 of its 40 Reels as not explainers (one
-account posts mostly skits), which is why those are now replaced. And both
+account posts mostly skits), which is why those are now replaced. The ad run
+looked at 20 of Duolingo's Reels and the reader marked none of them as an
+ad, so the report now says when under a third of an account's Reels looked
+at are the format, and Notion took Duolingo's place. And both
 runs kept a pattern on 3 winners against 1 average Reel, so a kept pattern
 must now be shown by at least half of the winners it wasn't drawn from.
 
