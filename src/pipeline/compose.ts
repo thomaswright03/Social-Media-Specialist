@@ -191,7 +191,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #pcount span{display:inline-block}
 #cap span{display:inline-block;transform-origin:50% 70%}
 #world{position:absolute;inset:0;z-index:0}
-#links{position:absolute;inset:0;z-index:1}
+#links{position:absolute;inset:0;z-index:1;-webkit-mask-image:linear-gradient(180deg,transparent 0,transparent ${BRAND_TOP + 100}px,#000 ${BRAND_TOP + 190}px);mask-image:linear-gradient(180deg,transparent 0,transparent ${BRAND_TOP + 100}px,#000 ${BRAND_TOP + 190}px)}
 #brand{position:absolute;z-index:8;left:0;right:0;top:${BRAND_TOP}px;text-align:center;font-family:Montserrat,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)}
 #brand b{display:inline-block;font-weight:900;font-size:36px;letter-spacing:.08em;text-transform:uppercase}
 #brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
