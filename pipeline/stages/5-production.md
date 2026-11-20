@@ -1,6 +1,6 @@
 # Stage 5: Production
 
-Art, voice, music and captions, compared with the best Reels from stage 1.
+Art, voice, music and captions, graded on our own rubric (Thomas, 2026-11-20: not against what other accounts do).
 
 How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 
@@ -34,7 +34,7 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   up as that last shot starts, with the question in big type above the logo,
   so the narrator asks it over the card. Stories, satisfying videos and ads
   get the card with no question.
-- **Captions and text:** one caption band, like the benchmark: the spoken
+- **Captions and text:** one caption band: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).
   On-screen text that adds something the voice doesn't say (a name, a time,
@@ -54,32 +54,31 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 - the cold viewer's PICTURES line names no frame whose picture doesn't show what the voice says (in a drawn Reel, when that is all that failed, the shots it names are redrawn once and the new video is judged again by fresh viewers);
 - a cold viewer who sees one frame of every shot with what the voice says
   over it retells the story right and isn't confused;
-- key frames from our video and from at least 2 benchmark Reels, side by side;
-- a judge (Claude looking at the images, or Thomas) scores art, text
-  readability, voice and sound from 1 to 5 for both;
-- the judge scores every axis for both. The comparison is a score on the
-  History, not a block (Thomas, 2026-11-20: "Post it, just log the score";
-  `BENCHMARK_POLICY` in `gates.ts`, which can be set back to "strict" or
-  "within1"). The fixFirst note is still what gets worked on next;
+- a separate judge (Claude looking at our key frames) scores art, text
+  readability, voice and sound from 1 to 5 on our rubric (the levels in the
+  prompt below), never against other accounts' Reels (Thomas, 2026-11-20:
+  "grade stuff according to our rubric, not what other people do in their
+  content");
+- every axis scores at least 3 of 5 (`RUBRIC_MIN` in `gates.ts`); the
+  scores go on the History, and the fixFirst note is what gets worked on next;
 - every learned check for stage 5.
 
 <!-- prompt -->
-You are judging stage 5 of a Reel pipeline: is our finished Reel as good as the Reels people already choose to watch?
+You are judging stage 5 of a Reel pipeline: is our finished Reel good, by our rubric below?
 
-Your scores decide whether it ships, and your fixFirst note is what gets fixed if it doesn't. A generous score ships a weak Reel. A harsh one sends good work back. Be strict, and make every point you take off stand on something you can point to.
+Grade it on the rubric's levels as written. Don't compare it with other accounts or with what Reels usually look like: the levels are the standard. Your scores decide whether it ships, and your fixFirst note is what gets fixed next. A generous score ships a weak Reel; a harsh one sends good work back. Be strict, and make every point you take off stand on something you can point to.
 
 <frames>
 {{FRAMES}}
 </frames>
-- Ours: one frame from every shot, in order.
-- The benchmark: the cover image of each benchmark Reel. A cover is the one frame its maker chose to represent it.
+These are our Reel: one frame from every shot, in order.
 
 <audio_notes>
 {{AUDIO_NOTES}}
 </audio_notes>
-You cannot hear anything. Judge voice and sound only from these notes. If the notes don't cover something, don't assume it is good or bad. For the benchmark you have only an assumed description: score it from that description as written, and don't move it on a guess.
+You cannot hear anything. Judge voice and sound only from these notes. If the notes don't cover something, don't assume it is good or bad.
 
-Score ours and the benchmark from 1 to 5, in whole numbers, on the four things below. Score each against the levels as written, not against the other side, and use the same levels for both.
+Score ours from 1 to 5, in whole numbers, on the four things below.
 
 ART (the pictures)
 Look for: can you tell in half a second who is there, where they are and what is happening? Do the people, places, colours and light stay the same from frame to frame? Is there depth and one lit centre of attention? Is anything broken: limbs that don't join, objects that float, empty bands, things cut off?
@@ -115,10 +114,9 @@ Look for: is the loudness on target? Does the music stay under the voice? Do the
 
 Write `seen` first, then the scores, then `fixFirst`.
 - `seen.ours`: two sentences on what our frames show at their best and at their worst, naming shot numbers.
-- `seen.benchmark`: one sentence on what the covers show.
-- `fixFirst`: the one change that would close the biggest gap. Name the score, the shots, what is wrong and what to do instead. If we are level or ahead on all four, name the weakest thing still worth fixing.
+- `fixFirst`: the one change that would raise the lowest score the most. Name the score, the shots, what is wrong and what to do instead. If every score is 5, name the weakest thing still worth fixing.
 
-Reply with only JSON: {"seen": {"ours": "...", "benchmark": "..."}, "ours": {"art": 3, "readability": 4, "voice": 2, "sound": 3}, "benchmark": {"art": 4, "readability": 4, "voice": 4, "sound": 4}, "fixFirst": "..."}
+Reply with only JSON: {"seen": {"ours": "..."}, "ours": {"art": 3, "readability": 4, "voice": 2, "sound": 3}, "fixFirst": "..."}
 <!-- /prompt -->
 
 <!-- look -->

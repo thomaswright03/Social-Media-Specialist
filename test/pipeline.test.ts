@@ -361,27 +361,22 @@ describe("stage 4, script", () => {
 });
 
 describe("stage 5, production", () => {
-  const j = { ours: { art: 4, readability: 4, voice: 4, sound: 3 }, benchmark: { art: 4, readability: 3, voice: 4, sound: 3 } };
-  it("strict: passes only when ours is at least as good on every axis", () => {
-    expect(gateProduction(j, { ours: 5, benchmarks: 2 }, [], "strict").passed).toBe(true);
-    expect(gateProduction({ ...j, ours: { ...j.ours, voice: 2 } }, { ours: 5, benchmarks: 2 }, [], "strict").passed).toBe(false);
-    expect(gateProduction(j, { ours: 5, benchmarks: 1 }, [], "strict").passed).toBe(false);
+  const j = { ours: { art: 4, readability: 4, voice: 4, sound: 3 } };
+  it("grades ours on our rubric alone: every axis at least 3 of 5, no other accounts needed", () => {
+    const g = gateProduction(j, { ours: 5 });
+    expect(g.passed).toBe(true);
+    expect(g.checks.find((c) => c.name.startsWith("Sound"))).toMatchObject({ name: "Sound scores at least 3 of 5 on our rubric", detail: "3 of 5" });
+    expect(g.checks.some((c) => /benchmark/i.test(c.name))).toBe(false);
   });
-  it("within1: allows one point lower, not two", () => {
-    expect(gateProduction({ ...j, ours: { ...j.ours, art: 3 } }, { ours: 5, benchmarks: 2 }, [], "within1").passed).toBe(true);
-    expect(gateProduction({ ...j, ours: { ...j.ours, art: 2 } }, { ours: 5, benchmarks: 2 }, [], "within1").passed).toBe(false);
-  });
-  it("score: a lower score is recorded, but the judge must still score every axis and the frames must be there", () => {
-    const low = gateProduction({ ...j, ours: { ...j.ours, art: 1 } }, { ours: 5, benchmarks: 2 }, [], "score");
-    expect(low.passed).toBe(true);
-    expect(low.checks.find((c) => c.name.includes("art"))!.detail).toBe("ours 1, benchmark 4");
-    expect(gateProduction({ ours: { art: 3 }, benchmark: { art: 5 } }, { ours: 5, benchmarks: 2 }, [], "score").passed).toBe(false);
-    expect(gateProduction(null, { ours: 5, benchmarks: 2 }, [], "score").passed).toBe(false);
-    expect(gateProduction(j, { ours: 2, benchmarks: 2 }, [], "score").passed).toBe(false);
-    expect(gateProduction(j, { ours: 5, benchmarks: 1 }, [], "score").passed).toBe(false);
+  it("fails an axis below the bar, an axis left unscored, or too few frames", () => {
+    expect(gateProduction({ ours: { ...j.ours, art: 2 } }, { ours: 5 }).passed).toBe(false);
+    expect(gateProduction({ ours: { art: 4, readability: 4, voice: 4 } }, { ours: 5 }).passed).toBe(false);
+    expect(gateProduction(null, { ours: 5 }).passed).toBe(false);
+    expect(gateProduction(j, { ours: 2 }).passed).toBe(false);
+    expect(gateProduction({ ours: { ...j.ours, sound: 3 } }, { ours: 5 }, [], 4).passed).toBe(false);
   });
   it("learned checks still block", () => {
-    expect(gateProduction(j, { ours: 5, benchmarks: 2 }, [{ name: "lesson", passed: false }], "score").passed).toBe(false);
+    expect(gateProduction(j, { ours: 5 }, [{ name: "lesson", passed: false }]).passed).toBe(false);
   });
 });
 
