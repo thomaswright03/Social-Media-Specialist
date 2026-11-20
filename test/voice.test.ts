@@ -29,7 +29,7 @@ describe("ElevenLabs voice", () => {
 });
 
 describe("one expressive take (Thomas, 2026-11-19)", async () => {
-  const { splitRead, splitReadAt, loudness, MAX_PAUSE, spokenText, align } = await import("../src/voice.ts");
+  const { splitRead, splitReadAt, loudness, mergeAligned, MAX_PAUSE, spokenText, align } = await import("../src/voice.ts");
   it("drops audio tags from the timed words and the counted text", () => {
     const text = "[excited] Hi you";
     const n = [...text].length;
@@ -74,6 +74,19 @@ describe("one expressive take (Thomas, 2026-11-19)", async () => {
     expect(parts[0]!.to - 1.0 + (2.0 - parts[1]!.from)).toBeCloseTo(MAX_PAUSE, 2);
   });
 
+  it("takes WhisperX's measured word times over the speech service's stamps", () => {
+    const w = (word: string, start: number) => ({ word, start, end: start + 0.2 });
+    const stamps = [w("Add", 1), w("them", 1.3), w("$156", 1.6), w("billion", 2)];
+    const out = mergeAligned(stamps, [{ start: 1.2, end: 1.4 }, { start: 1.5, end: 1.7 }, { start: null, end: null }, { start: 2.6, end: 3 }]);
+    expect(out[0]).toEqual({ word: "Add", start: 1.2, end: 1.4 });
+    // "$156" can't be aligned: it moves by the typical offset and stays between its neighbours.
+    expect(out[2]!.start).toBeGreaterThanOrEqual(1.7);
+    expect(out[2]!.end).toBeLessThanOrEqual(2.6);
+    expect(out[3]).toEqual({ word: "billion", start: 2.6, end: 3 });
+    expect(mergeAligned(stamps, null)).toBe(stamps);
+    expect(mergeAligned(stamps, [{ start: 1, end: 2 }])).toBe(stamps);
+  });
+
   it("measures loudness from raw samples", () => {
     const pcm = Buffer.alloc(16000 * 2 * 0.1);
     for (let i = 800; i < 1600; i++) pcm.writeInt16LE(16384, i * 2);
@@ -98,5 +111,15 @@ describe("one expressive take (Thomas, 2026-11-19)", async () => {
     expect((calls[1]!.body as FormData).get("text")).toBe("Hi there");
     expect(s.words.map((x) => x.word)).toEqual(["Hi", "there"]);
     expect(align).toBeTypeOf("function");
+  });
+});
+
+describe("WhisperX alignment (Thomas, 2026-11-20)", () => {
+  it("is skipped when turned off, and never throws", async () => {
+    const { alignWords } = await import("../src/pipeline/produce.ts");
+    process.env.WHISPERX = "off";
+    expect(await alignWords("/nope.wav", ["a"], "/tmp")).toBeNull();
+    delete process.env.WHISPERX;
+    expect(await alignWords("/nope.wav", ["a"], "/tmp")).toBeNull();
   });
 });

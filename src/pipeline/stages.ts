@@ -22,6 +22,9 @@ export const STAGES = [
 
 const PIPELINE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "pipeline");
 
+/** A file's path in pipeline/, for a tool that reads it itself. */
+export const pipelinePath = (name: string) => join(PIPELINE_DIR, name);
+
 export function pipelineFile(name: string): string {
   return readFileSync(join(PIPELINE_DIR, name), "utf8");
 }

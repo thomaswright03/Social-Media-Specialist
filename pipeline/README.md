@@ -133,3 +133,11 @@ need his approval on the Vault page.
   past 75%.
 - Videos are fetched by Instagram from a public URL; with Instagram Login
   there's no direct upload.
+
+## Open-source tools (Thomas, 2026-11-20)
+
+- **Matter.js** (MIT) runs satisfying Reels as real physics (`src/pipeline/physics.ts`).
+- **WhisperX** (BSD-2) times the narrator's words from the audio by forced alignment (`pipeline/align/align.py`). The
+  `produce` run installs it; without it, stage 5 uses the speech service's stamps. `WHISPERX=off` skips it.
+- **Remotion's agent skills** are in `.claude/skills/remotion-best-practices` (copied from remotion-dev/skills
+  4.0.545). Sessions working on the videos follow them. Remotion itself is free for a company of up to 3 people.

@@ -187,6 +187,23 @@ jobs:
         if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'diagnose' || env.COMMAND == 'research' || env.COMMAND == 'produce')
         run: command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
+      # WhisperX times the narrator's words from the audio itself (forced
+      # alignment, pipeline/align); without it stage 5 uses the speech
+      # service's own stamps, so a failed install never stops the run.
+      - uses: actions/setup-python@v5
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'produce'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/align/requirements.txt
+
+      - name: Install WhisperX
+        if: steps.go.outputs.yes == 'true' && env.COMMAND == 'produce'
+        continue-on-error: true
+        run: |
+          pip install --quiet -r pipeline/align/requirements.txt
+          python -m nltk.downloader -q punkt_tab
+
       # Writes the drafts and answers Hitta's requests.
       - name: Install Claude Code
         if: steps.go.outputs.yes == 'true' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
