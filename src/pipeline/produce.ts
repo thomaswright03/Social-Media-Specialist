@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
-import { loudness, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
+import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
@@ -17,7 +17,7 @@ import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.t
 import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
-import { runStage, stagePrompt } from "./stages.ts";
+import { pipelinePath, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const KEY_FRAMES = 4;
@@ -109,6 +109,22 @@ export function keyFrameNumbers(t: TimedShot[], n = KEY_FRAMES): number[] {
   return [...picks].map((i) => Math.max(1, Math.round((t[i]!.at + Math.min(t[i]!.dur * 0.6, t[i]!.dur - 0.1)) * FPS)));
 }
 
+/** Each word's time in a take by WhisperX forced alignment (pipeline/align/align.py), or null when it isn't installed or fails. */
+export async function alignWords(take: string, words: string[], work: string): Promise<{ start: number | null; end: number | null }[] | null> {
+  if (process.env.WHISPERX === "off") return null;
+  try {
+    const wav = join(work, "align-16k.wav");
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", take, "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", wav]);
+    const list = join(work, "align-words.json");
+    await writeFile(list, JSON.stringify(words));
+    const out = await runOut(process.env.PYTHON ?? "python3", [pipelinePath("align/align.py"), wav, list]);
+    const j = JSON.parse(out.toString("utf8")) as { start: number | null; end: number | null }[];
+    return Array.isArray(j) && j.length === words.length ? j : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ProduceResult = {
   subject: string | null;
   video: string | null;
@@ -165,7 +181,11 @@ export async function runProduce(d: {
       const speed = voiceSpeed();
       const whole = join(work, "voice-take.wav");
       await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", `atempo=${speed}`, whole]);
-      const words = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
+      const stamps = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
+      // When each word is really heard, by forced alignment (WhisperX); the speech service's stamps run a few tenths off.
+      const aligned = await alignWords(whole, stamps.map((w) => w.word), work);
+      if (aligned) log(`WhisperX placed ${aligned.filter((a) => a.start != null).length} of ${stamps.length} words from the audio.`);
+      const words = mergeAligned(stamps, aligned);
       // Cut where the narrator really pauses, found in the audio; the stamps alone clip words.
       const pcm = await runOut("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", whole, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"]).catch(() => null);
       const parts = (pcm && splitReadAt(words, spokenLines, loudness(pcm, 16000))) || splitRead(words, spokenLines);

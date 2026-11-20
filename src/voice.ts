@@ -214,6 +214,32 @@ export function splitReadAt(words: Spoken["words"], lines: string[], loud: Loudn
   });
 }
 
+/**
+ * The speech service's word stamps, corrected by forced alignment (WhisperX,
+ * pipeline/align): each word the aligner placed takes its measured time; a
+ * word it couldn't place (like "$156") sits between its placed neighbours, or
+ * keeps its stamp moved by the typical offset. Null `aligned` keeps the stamps.
+ */
+export function mergeAligned(stamps: Spoken["words"], aligned: { start: number | null; end: number | null }[] | null): Spoken["words"] {
+  if (!aligned || aligned.length !== stamps.length) return stamps;
+  const offsets = aligned.flatMap((a, i) => (a.start == null ? [] : [a.start - stamps[i]!.start])).sort((x, y) => x - y);
+  if (!offsets.length) return stamps;
+  const shift = offsets[Math.floor(offsets.length / 2)]!;
+  const out = stamps.map((w, i) => {
+    const a = aligned[i]!;
+    return a.start != null && a.end != null ? { word: w.word, start: a.start, end: a.end } : { word: w.word, start: w.start + shift, end: w.end + shift };
+  });
+  // Keep the unplaced words between their placed neighbours.
+  for (let i = 0; i < out.length; i++) {
+    if (aligned[i]!.start != null) continue;
+    const prev = out[i - 1];
+    const next = out.slice(i + 1).find((_, k) => aligned[i + 1 + k]!.start != null);
+    if (prev && out[i]!.start < prev.end) out[i] = { ...out[i]!, start: prev.end, end: Math.max(prev.end, out[i]!.end) };
+    if (next && out[i]!.end > next.start) out[i] = { ...out[i]!, end: Math.max(out[i]!.start, next.start) };
+  }
+  return out;
+}
+
 /** A take's loudness from raw 16-bit mono samples. */
 export function loudness(pcm: Buffer, rate: number, step = 0.01): Loudness {
   const n = Math.floor(pcm.length / 2);
