@@ -188,6 +188,14 @@ async function main() {
         post: process.env.REEL_POST !== "off",
         log,
       });
+      // The last script and what its gate said, kept with the run's files, so a failed script can be read.
+      if (r.subject) {
+        const s4 = await vault.latestStage(4, { subject: r.subject }).catch(() => null);
+        if (s4) {
+          await mkdir("reel", { recursive: true });
+          await writeFile("reel/script.json", JSON.stringify({ subject: r.subject, attempt: s4.attempt, passed: s4.passed, script: s4.output, gate: s4.gate }, null, 1));
+        }
+      }
       if (!r.posted && process.env.REEL_POST !== "off") process.exitCode = 1;
       if (!r.posted && process.env.REEL_POST === "off" && r.stage < 6) process.exitCode = 1;
     } finally {

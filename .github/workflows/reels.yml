@@ -116,6 +116,7 @@ jobs:
           name: reel-${{ matrix.format }}
           path: |
             reel/reel.mp4
+            reel/script.json
             reel/timeline.json
             reel/motion.json
             reel/physics.json
