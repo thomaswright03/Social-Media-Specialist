@@ -14,6 +14,9 @@
 //                   that passed stage 2
 //   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
 //                   captions, our own sound) and judges it against the benchmark Reels; posts nothing
+//   reel            one Reel of the format after the command (explainer, satisfying, ad) from idea to
+//                   Instagram: stages 2 to 6, then posted as a Trial Reel only when every check passed
+//                   (src/pipeline/reel.ts); REEL_POST=off makes and checks it but posts nothing
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
@@ -28,7 +31,7 @@ import "dotenv/config";
 import { mkdir, writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
-import { askClaude, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
+import { askClaude, askClaudeReading, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
 import { DISCOVERY_USAGE_STOP, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
@@ -36,11 +39,12 @@ import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
-import { askClaudeWithFiles, runResearch, studyAccounts, summaryText, type ResearchResult } from "./pipeline/research.ts";
+import { runResearch, studyAccounts, summaryText, type ResearchResult } from "./pipeline/research.ts";
 import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
 import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
+import { DAILY_FORMATS, runReel } from "./pipeline/reel.ts";
 import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
@@ -156,25 +160,43 @@ async function main() {
     return;
   }
 
+  if (command === "reel") {
+    // One Reel of a format from idea to Instagram (reels.yml runs it daily for each format).
+    const format = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
+    if (!isFormat(format)) {
+      console.error(`"${format}" isn't a format. Use ${DAILY_FORMATS.join(", ")} (or story).`);
+      process.exit(2);
+    }
+    const vault = connect();
+    try {
+      const products = await siteProducts().catch((err) => {
+        log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
+        return [];
+      });
+      const token = await currentToken(vault, { log }).catch(() => null);
+      const r = await runReel({
+        vault,
+        format,
+        products,
+        ask: askClaude,
+        produce: (subject) => produce(vault, subject),
+        client: token ? instagramClient(token.token) : null,
+        // REEL_POST=off makes and checks the Reel but posts nothing.
+        post: process.env.REEL_POST !== "off",
+        log,
+      });
+      if (!r.posted && process.env.REEL_POST !== "off") process.exitCode = 1;
+      if (!r.posted && process.env.REEL_POST === "off" && r.stage < 6) process.exitCode = 1;
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "produce") {
     const vault = connect();
     try {
-      const token = await currentToken(vault, { log }).catch(() => null);
-      const me = token ? await instagramClient(token.token).account().catch(() => null) : null;
-      const { chromium } = await import("playwright");
-      const r = await runProduce({
-        vault,
-        ask: askClaude,
-        judge: (dir) => askClaudeWithFiles(dir),
-        speak,
-        sfx: process.env.REEL_SFX === "off" ? undefined : soundEffect,
-        browser: () => chromium.launch(),
-        // The judge compares ours with the leading accounts of the same format (stage 1's list).
-        benchmarks: (dir, format) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts: accountsFor(format), dir }) : Promise.resolve([])),
-        outDir: "reel",
-        subject: process.argv[3] || undefined,
-        log,
-      });
+      const r = await produce(vault, process.argv[3] || undefined);
       if (r.video) log(`The Reel is under this run's Artifacts as "reel" (${r.seconds.toFixed(1)} s). Nothing was posted.`);
       if (!r.passed) {
         console.error(`\n${r.problem ?? "Stage 5 didn't pass its gate"}:`);
@@ -399,7 +421,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, accounts-test, ideas, script, voice-test, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test or hitta-test.`);
     process.exit(2);
   }
 
@@ -424,6 +446,27 @@ async function main() {
   } finally {
     vault.close();
   }
+}
+
+// Stage 5 with the real voice, browser and judge; the video goes to reel/.
+async function produce(vault: Vault, subject?: string) {
+  const token = await currentToken(vault, { log }).catch(() => null);
+  const me = token ? await instagramClient(token.token).account().catch(() => null) : null;
+  const { chromium } = await import("playwright");
+  return runProduce({
+    vault,
+    ask: askClaude,
+    // askClaudeReading counts the judge's tokens too.
+    judge: (dir) => askClaudeReading(dir),
+    speak,
+    sfx: process.env.REEL_SFX === "off" ? undefined : soundEffect,
+    browser: () => chromium.launch(),
+    // The judge compares ours with the leading accounts of the same format (stage 1's list).
+    benchmarks: (dir, format) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts: accountsFor(format), dir }) : Promise.resolve([])),
+    outDir: "reel",
+    subject,
+    log,
+  });
 }
 
 // A failed run, once a day at most.

@@ -11,7 +11,7 @@ import { discoverAccount } from "../instagram.ts";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
-import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
+import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
@@ -142,7 +142,31 @@ export type ProduceResult = {
   boxes: TextBox[];
   fixFirst: string | null;
   problem: string | null;
+  /** The Reel's format and script (stage 6 packages its caption). */
+  format?: Format;
+  script?: ScriptOut;
+  /** When each shot starts and what it shows in text (stage 6 picks the cover). */
+  shots?: { at: number; dur: number; onScreenText?: string }[];
+  /** Every sound and picture in the video and where it's from (stage 6's rights check). */
+  assets?: Packaging["assets"];
 };
+
+/** Where this pipeline's sounds and pictures come from, for stage 6's rights check. */
+export function reelAssets(r: { voiced: number; sfx: number; physics: boolean; motion: boolean }): NonNullable<Packaging["assets"]> {
+  const ours = "ours, made in code for this Reel";
+  const eleven = "ElevenLabs paid plan (commercial use allowed)";
+  return [
+    ...(r.voiced ? [{ name: "Narration", kind: "voice" as const, source: "ElevenLabs text to speech, made for this Reel", license: eleven }] : []),
+    ...(r.sfx ? [{ name: `${r.sfx} sound effects`, kind: "sfx" as const, source: "ElevenLabs sound effects, made for this Reel", license: eleven }] : []),
+    ...(r.physics ? [{ name: "Collision notes and chord loop", kind: "music" as const, source: "synthesized from the simulation (src/pipeline/physics.ts)", license: ours }] : []),
+    { name: "Pad, room tone and whooshes", kind: "music", source: "synthesized (src/pipeline/compose.ts)", license: ours },
+    r.physics
+      ? { name: "Physics simulation", kind: "art", source: "Matter.js, run for this Reel", license: "MIT (Matter.js); the picture is ours" }
+      : { name: r.motion ? "Motion graphics" : "Drawings", kind: "art", source: r.motion ? "our motion kit (pipeline/motion)" : "SVG drawn for this Reel", license: ours },
+    { name: "Logo and end card", kind: "art", source: "Wright AI Solutions' own logo", license: "ours" },
+    { name: "Montserrat font", kind: "art", source: "Google Fonts", license: "SIL Open Font License (commercial use allowed)" },
+  ];
+}
 
 export async function runProduce(d: {
   vault: Vault;
@@ -405,5 +429,19 @@ export async function runProduce(d: {
     log,
     now: d.now,
   });
-  return { subject: reel.subject, video, seconds, passed: r.gate.passed, gate: r.gate, facts, boxes, fixFirst: r.output?.fixFirst ?? null, problem: null };
+  return {
+    subject: reel.subject,
+    video,
+    seconds,
+    passed: r.gate.passed,
+    gate: r.gate,
+    facts,
+    boxes,
+    fixFirst: r.output?.fixFirst ?? null,
+    problem: null,
+    format,
+    script: reel.script,
+    shots: t.map((s) => ({ at: s.at, dur: s.dur, onScreenText: s.onScreenText })),
+    assets: reelAssets({ voiced: voiceFiles.filter(Boolean).length, sfx: physics ? 0 : effects.length, physics: Boolean(physics), motion: !physics && motions.some(Boolean) }),
+  };
 }

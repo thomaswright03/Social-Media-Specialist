@@ -14,6 +14,7 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { Client } from "@libsql/client";
+import { addUsage } from "./claude-usage.ts";
 
 export const HITTA_BASE_URL = "https://34-67-123-90.sslip.io";
 
@@ -379,16 +380,28 @@ export function claudeAnswerer(opts: ClaudeAnswererOptions): Answerer {
 
 /** One headless Claude turn from an empty folder: it only reads the prompt and answers. */
 export function askClaude(prompt: string): Promise<string> {
+  return runClaude(prompt, { model: process.env.HITTA_CLAUDE_MODEL || "sonnet" });
+}
+
+/**
+ * Like askClaude, but Claude may read the files in `dir` (images included):
+ * the pipeline's judge. Its usage is counted too (src/claude-usage.ts).
+ */
+export function askClaudeReading(dir: string): (prompt: string) => Promise<string> {
+  return (prompt) => runClaude(prompt, { model: process.env.PIPELINE_CLAUDE_MODEL || "sonnet", cwd: dir, maxTurns: 40, tools: ["Read"], timeoutMs: 15 * 60_000 });
+}
+
+function runClaude(prompt: string, o: { model: string; cwd?: string; maxTurns?: number; tools?: string[]; timeoutMs?: number }): Promise<string> {
   const bin = process.env.HITTA_CLAUDE_BIN || "claude";
-  const model = process.env.HITTA_CLAUDE_MODEL || "sonnet";
+  const args = ["-p", "--model", o.model, "--output-format", "json", "--max-turns", String(o.maxTurns ?? 1), ...(o.tools?.length ? ["--allowedTools", o.tools.join(",")] : []), "--no-session-persistence"];
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, ["-p", "--model", model, "--output-format", "json", "--max-turns", "1", "--no-session-persistence"], {
-      cwd: tmpdir(),
+    const child = spawn(bin, args, {
+      cwd: o.cwd ?? tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
     let err = "";
-    const timer = setTimeout(() => child.kill("SIGTERM"), 3 * 60_000);
+    const timer = setTimeout(() => child.kill("SIGTERM"), o.timeoutMs ?? 3 * 60_000);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
     child.on("error", (e) => {
@@ -399,7 +412,8 @@ export function askClaude(prompt: string): Promise<string> {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(`Claude stopped with an error (${code}): ${err.slice(0, 200)}`));
       try {
-        const json = JSON.parse(out) as { result?: string; is_error?: boolean };
+        const json = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, unknown>; total_cost_usd?: number };
+        addUsage(json);
         if (json.is_error) return reject(new Error(`Claude returned an error: ${String(json.result).slice(0, 200)}`));
         resolve(json.result ?? "");
       } catch {

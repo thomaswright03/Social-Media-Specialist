@@ -57,8 +57,10 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 - key frames from our video and from at least 2 benchmark Reels, side by side;
 - a judge (Claude looking at the images, or Thomas) scores art, text
   readability, voice and sound from 1 to 5 for both;
-- ours is not worse than the benchmark on any of them. If it is, that is
-  fixed before anything else;
+- the judge scores every axis for both. The comparison is a score on the
+  History, not a block (Thomas, 2026-11-20: "Post it, just log the score";
+  `BENCHMARK_POLICY` in `gates.ts`, which can be set back to "strict" or
+  "within1"). The fixFirst note is still what gets worked on next;
 - every learned check for stage 5.
 
 <!-- prompt -->
