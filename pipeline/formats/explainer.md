@@ -75,6 +75,8 @@ The narrator:
 - Introduce every person or company by who they are, with or before the name ("a Stanford mathematician, Leo Masullo"). Two names at most in the whole video; anyone else is "a researcher" or "the company".
 - Every line follows from the one before. A listener never has to guess how two lines connect: join them with because, but, so, which means. Never jump to a new person or fact without saying how it connects.
 - A famous term gets its plain meaning the first time it's said ("the Riemann hypothesis, a famous puzzle about prime numbers").
+- No initials, codes or insider names a stranger wouldn't know (say "a big tech consulting firm", not "FTI"). The voice never leans on the pictures: every "it", "they", "his" or "the staff" points to something the voice already named.
+- Before you answer, read only your lines, top to bottom, as someone who has never heard this news. Fix any line where they'd ask "who?", "which one?" or "why does that matter?".
 - Ears-only test: someone listening without looking learns what happened, why, and what it means for them. Code checks this: listeners who hear only the narration must say what it's about, who everyone is, and what happened, with nothing central confusing them.
 
 The graphics (`visual`):
