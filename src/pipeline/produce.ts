@@ -20,6 +20,12 @@ import { runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const KEY_FRAMES = 4;
+/** How much faster than ElevenLabs' read the narrator plays (VOICE_SPEED overrides, 0.8 to 1.5). */
+export const VOICE_SPEED = 1.12;
+export function voiceSpeed(): number {
+  const v = Number(process.env.VOICE_SPEED);
+  return process.env.VOICE_SPEED?.trim() && Number.isFinite(v) && v >= 0.8 && v <= 1.5 ? v : VOICE_SPEED;
+}
 export const BENCHMARKS = 3;
 
 type ScriptOut = { shots?: Shot[]; story?: string; payoff?: string; nextHook?: string; caption?: string };
@@ -147,13 +153,19 @@ export async function runProduce(d: {
   const voices: ({ seconds: number; words: { word: string; start: number; end: number }[] } | null)[] = [];
   const voiceFiles: (string | null)[] = [];
   let voiceProblem: string | null = null;
+  let oneTake = false;
   const spokenLines = lines.filter((l): l is string => Boolean(l));
   if (spokenLines.length) {
     try {
       const take = await d.speak(spokenLines.join(" "));
-      const whole = join(work, "voice-take.mp3");
-      await writeFile(whole, take.audio);
-      const parts = splitRead(take.words, spokenLines);
+      const raw = join(work, "voice-take-raw.mp3");
+      await writeFile(raw, take.audio);
+      // Faster, same pitch (Thomas, 2026-11-19: a voice talking a little faster keeps people from scrolling).
+      const speed = voiceSpeed();
+      const whole = join(work, "voice-take.wav");
+      await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", `atempo=${speed}`, whole]);
+      const words = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
+      const parts = splitRead(words, spokenLines);
       if (!parts) throw new Error(`the take's ${take.words.length} timed words don't match the script's lines`);
       let k = 0;
       for (let i = 0; i < shots.length; i++) {
@@ -168,7 +180,8 @@ export async function runProduce(d: {
         voices.push({ seconds: p.words.at(-1)!.end, words: p.words });
         voiceFiles.push(file);
       }
-      log(`Voiced the script in one take (${take.words.length} words) and cut it into ${spokenLines.length} lines.`);
+      oneTake = true;
+      log(`Voiced the script in one take (${take.words.length} words) and played it ${Math.round((speed - 1) * 100)}% faster, and cut it into ${spokenLines.length} lines.`);
     } catch (err) {
       log(`One take didn't work (${(err as Error).message}); voicing line by line.`);
       voices.length = 0;
@@ -197,7 +210,7 @@ export async function runProduce(d: {
     }
   }
   if (voiceProblem) return stop(voiceProblem, reel.subject);
-  const t = timeline(shots, voices);
+  const t = timeline(shots, voices, { oneTake: oneTake });
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 

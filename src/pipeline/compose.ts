@@ -17,6 +17,9 @@ export const FPS = 30;
 export const LEAD = 0.15;
 export const TAIL = 0.3;
 export const MIN_SHOT = 1.5;
+/** A voiced shot in a one-take read: at least this long, and this much after its last word. */
+export const ONE_TAKE_MIN = 1.2;
+export const ONE_TAKE_TAIL = 0.18;
 export const LIME = "#a3e635";
 /** The one caption band: below the action, above Instagram's bottom UI (the art keeps faces and the action out of it). */
 export const CAPTION_TOP = 1290;
@@ -33,13 +36,16 @@ export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null
  * Where each shot starts and how long it lasts. A shot keeps its scripted
  * length unless its line needs longer; its words move to where they're heard.
  */
-export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[]): TimedShot[] {
+export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[] } | null)[], opts: { oneTake?: boolean } = {}): TimedShot[] {
   let at = 0;
   return shots.map((s, i) => {
     const v = voices[i] ?? null;
     const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
-    const dur = Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
-    const voiceAt = v ? at + LEAD : null;
+    // One take cut into lines already carries the narrator's own pauses, so a
+    // voiced shot lasts as long as its words (and a breath), not the script's guess.
+    const lead = opts.oneTake ? 0 : LEAD;
+    const dur = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const voiceAt = v ? at + lead : null;
     const t: TimedShot = { ...s, at, dur, voiceAt, words: v ? v.words.map((w) => ({ word: w.word, start: w.start + voiceAt!, end: w.end + voiceAt! })) : [] };
     at += dur;
     return t;
@@ -125,7 +131,8 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
     const cam = cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`);
     const m = motions[i] ?? null;
     const move = m ? { from: 1, to: 1.035 } : {};
-    return { at: s.at, dur: s.dur, label: labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
+    // A motion shot's pieces carry their own words, so no label on top repeats them.
+    return { at: s.at, dur: s.dur, label: m ? "" : labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
   });
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
@@ -135,12 +142,12 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 .scene{position:absolute;inset:0;display:none;transform-origin:50% 50%;overflow:hidden}
 .scene>svg{width:${W}px;height:${H}px;display:block}
-#grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen}
-#vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
-#flash{position:absolute;inset:0;background:#fff;opacity:0}
-#label{position:absolute;left:0;right:0;top:${LABEL_TOP}px;text-align:center;opacity:0}
+#grain{position:absolute;inset:-20px;opacity:0;pointer-events:none;mix-blend-mode:screen;z-index:5}
+#vignette{position:absolute;inset:0;z-index:5;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55) 100%)}
+#flash{position:absolute;inset:0;z-index:6;background:#fff;opacity:0}
+#label{position:absolute;z-index:7;left:0;right:0;top:${LABEL_TOP}px;text-align:center;opacity:0}
 #label span{display:inline-block;max-width:820px;font-family:Montserrat,sans-serif;font-weight:800;font-size:46px;line-height:1.15;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:rgba(10,12,18,.72);padding:10px 26px;border-radius:14px}
-#cap{position:absolute;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
+#cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
 #cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>
