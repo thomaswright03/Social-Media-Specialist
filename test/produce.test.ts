@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cameraFor, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
-import { keyFrameNumbers } from "../src/pipeline/produce.ts";
+import { endQuestionText, keyFrameNumbers } from "../src/pipeline/produce.ts";
 import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 
@@ -172,5 +172,13 @@ describe("timeline", () => {
     expect(f.length).toBe(4);
     expect(f[0]).toBeLessThan(60);
     expect(f.at(-1)).toBeGreaterThan(540);
+  });
+});
+
+describe("the end card's question", () => {
+  it("drops the voice's audio tags (Reel 12 showed \"[CURIOUS]\")", () => {
+    expect(endQuestionText("[curious] Who should decide where it goes?")).toBe("Who should decide where it goes?");
+    expect(endQuestionText("So [whispers] would you?")).toBe("So would you?");
+    expect(endQuestionText(undefined)).toBe("");
   });
 });
