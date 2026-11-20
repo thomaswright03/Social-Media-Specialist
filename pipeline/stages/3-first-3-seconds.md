@@ -49,7 +49,7 @@ Hard limits (code checks these):
 - `textAt` is the second the text appears. It must be readable by 1.5 s at 4 words a second: textAt + (words ÷ 4) is 1.5 or less. Putting it on at 0.2 or earlier always passes.
 
 The sound (`audio`):
-- In a format with a narrator, the voice starts at 0 s. `audio` is the narrator's exact words over that shot, following the format's narrator rules. At about 2.5 words a second, that is seven or eight words across the whole opening.
+- In a format with a narrator, the voice starts at 0 s. `audio` is the narrator's exact words over that shot, following the format's narrator rules. That is 4 words at most in a 1.5 s shot (3 in a 1 s shot, 9 in a single 3 s shot). Count each shot's words before you answer: a name like "Grand Theft Auto VI" is 4 words.
 - The narrator may open with one audio tag in square brackets that sets the delivery ([curious], [whispers], [excited]). It isn't counted as a word.
 - In a format with no narrator, `audio` is the sound.
 - The opening has to work with the sound off. The voice adds to it for viewers with sound on; the hook never depends on it.

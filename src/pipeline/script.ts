@@ -90,7 +90,7 @@ export async function listenReads(shots: Shot[], intended: string, ask: Ask): Pr
       const people = a.match(/PEOPLE:\s*(.*)/i)?.[1]?.trim() ?? "";
       const story = a.match(/STORY:\s*(.*)/i)?.[1]?.trim() ?? "";
       // The whole of what confused them and what they took away, so a revision can fix the exact line.
-      out.notes.push(a ? `${wrong.length ? `Got wrong: ${wrong.join(", ")}. ` : ""}${confused ? `Confused by: ${confused.slice(0, 400)}. ` : ""}${story ? `Understood it as: ${story.slice(0, 240)}. ` : ""}${/not said/i.test(people) ? `People: ${people.slice(0, 160)}` : ""}`.trim() : "no answer");
+      out.notes.push(a ? `${wrong.length ? `Got wrong: ${wrong.join(", ")}. ` : ""}${confused ? `Confused by: ${confused.slice(0, 600)}. ` : ""}${story ? `Understood it as: ${story.slice(0, 240)}. ` : ""}${/not said/i.test(people) ? `People: ${people.slice(0, 160)}` : ""}`.trim() : "no answer");
     }
   }
   return out;
