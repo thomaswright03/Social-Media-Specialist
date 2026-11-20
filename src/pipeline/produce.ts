@@ -20,6 +20,12 @@ import { runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const KEY_FRAMES = 4;
+/** How much faster than ElevenLabs' read the narrator plays (VOICE_SPEED overrides, 0.8 to 1.5). */
+export const VOICE_SPEED = 1.12;
+export function voiceSpeed(): number {
+  const v = Number(process.env.VOICE_SPEED);
+  return process.env.VOICE_SPEED?.trim() && Number.isFinite(v) && v >= 0.8 && v <= 1.5 ? v : VOICE_SPEED;
+}
 export const BENCHMARKS = 3;
 
 type ScriptOut = { shots?: Shot[]; story?: string; payoff?: string; nextHook?: string; caption?: string };
@@ -152,9 +158,14 @@ export async function runProduce(d: {
   if (spokenLines.length) {
     try {
       const take = await d.speak(spokenLines.join(" "));
-      const whole = join(work, "voice-take.mp3");
-      await writeFile(whole, take.audio);
-      const parts = splitRead(take.words, spokenLines);
+      const raw = join(work, "voice-take-raw.mp3");
+      await writeFile(raw, take.audio);
+      // Faster, same pitch (Thomas, 2026-11-19: a voice talking a little faster keeps people from scrolling).
+      const speed = voiceSpeed();
+      const whole = join(work, "voice-take.wav");
+      await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", `atempo=${speed}`, whole]);
+      const words = take.words.map((w) => ({ word: w.word, start: w.start / speed, end: w.end / speed }));
+      const parts = splitRead(words, spokenLines);
       if (!parts) throw new Error(`the take's ${take.words.length} timed words don't match the script's lines`);
       let k = 0;
       for (let i = 0; i < shots.length; i++) {
@@ -170,7 +181,7 @@ export async function runProduce(d: {
         voiceFiles.push(file);
       }
       oneTake = true;
-      log(`Voiced the script in one take (${take.words.length} words) and cut it into ${spokenLines.length} lines.`);
+      log(`Voiced the script in one take (${take.words.length} words) and played it ${Math.round((speed - 1) * 100)}% faster, and cut it into ${spokenLines.length} lines.`);
     } catch (err) {
       log(`One take didn't work (${(err as Error).message}); voicing line by line.`);
       voices.length = 0;

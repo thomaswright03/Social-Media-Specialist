@@ -94,3 +94,15 @@ describe("one take", () => {
     expect(composeHtml(t, [""])).toContain('"label":"WHO PAYS?"');
   });
 });
+
+describe("voice speed", () => {
+  it("plays 12% faster unless VOICE_SPEED says otherwise", async () => {
+    const { voiceSpeed } = await import("../src/pipeline/produce.ts");
+    expect(voiceSpeed()).toBe(1.12);
+    process.env.VOICE_SPEED = "1.2";
+    expect(voiceSpeed()).toBe(1.2);
+    process.env.VOICE_SPEED = "9";
+    expect(voiceSpeed()).toBe(1.12);
+    delete process.env.VOICE_SPEED;
+  });
+});
