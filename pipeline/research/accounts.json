@@ -5,8 +5,8 @@
     { "account": "alanbecker", "why": "Alan Becker (Animator vs. Animation): stick-figure animation with no narrator. Replaces stickman_animation_007, which has posted no Reel in the last year", "tested": "2026-11-20: 1,251,967 followers, 190 Reels to score, 47 winners (2 with a video file), 96 average (5 with a video file)" }
   ],
   "satisfying": [
-    { "account": "satisfy_ai_reels", "why": "Satisfying Reels made with AI (its bio says Veo 3 clips)", "tested": "2026-11-20: 162,110 followers, 59 Reels to score, 14 winners, 31 average, no video files; nothing posted in the last 90 days" },
-    { "account": "oddlysatisfying", "why": "A page of oddly satisfying clips of every kind, posting about 6 a week. Replaces wannerstedt (9 Reels in a year, no winners) and glasmr_ (Instagram doesn't show it to other apps)", "tested": "2026-11-20: 229,076 followers, 71 Reels to score, 17 winners, 37 average, no video files" }
+    { "account": "codecraftedphysics", "why": "Thomas's pick (2026-11-20): \"these are good satisfying examples\"", "tested": "2026-11-20: 101,032 followers, 43 Reels to score, 10 winners (none with a video file), 8 average (1 with a video file)" },
+    { "account": "cutcountasmr", "why": "Thomas's pick (2026-11-20), with codecraftedphysics. Posts about 37 a week", "tested": "2026-11-20: 66,922 followers, 63 Reels to score, 15 winners, 19 average, no video files" }
   ],
   "explainer": [
     { "account": "cleoabram", "why": "Cleo Abram, video journalist: explainers about technology", "tested": "2026-11-20: 3,279,941 followers, 195 Reels to score, 48 winners, 99 average, no video files" },
@@ -24,6 +24,8 @@
     { "account": "theodd1sout", "for": "story", "tested": "2026-11-20: usable but thin. 3,425,856 followers, 16 Reels to score, 4 winners, 8 average" },
     { "account": "stickman_animation_007", "for": "story", "tested": "2026-11-20: not usable. None of its 80 Reels is under a year old" },
     { "account": "brewstewfilms", "for": "story", "tested": "2026-11-20: not usable. Instagram doesn't show it to other apps" },
+    { "account": "oddlysatisfying", "for": "satisfying", "tested": "2026-11-20: usable, no video files. 229,076 followers, 71 Reels to score, 17 winners, 37 average. Claude's pick; replaced by Thomas's two" },
+    { "account": "satisfy_ai_reels", "for": "satisfying", "tested": "2026-11-20: usable but dormant, no video files. 162,110 followers, 59 Reels to score, 14 winners, 31 average; nothing posted in the last 90 days. Replaced by Thomas's two" },
     { "account": "wannerstedt", "for": "satisfying", "tested": "2026-11-20: not usable. 9 Reels to score in a year and no winners" },
     { "account": "glasmr_", "for": "satisfying", "tested": "2026-11-20: not usable. Instagram doesn't show it to other apps" },
     { "account": "extraweg", "for": "satisfying", "tested": "2026-11-20: not usable. None of its 60 Reels is under a year old" }
