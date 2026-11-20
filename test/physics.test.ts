@@ -7,7 +7,8 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
     expect(physicsProblems(null)).toHaveLength(1);
     expect(physicsProblems({ kind: "lava" as never })[0]).toMatch(/isn't a scene/);
     expect(physicsProblems({ kind: "escape-rings", rings: 40 })[0]).toMatch(/rings is a number from 3 to 14/);
-    expect(physicsProblems({ kind: "galton", balls: 5 })[0]).toMatch(/balls is a number from 30 to 160/);
+    expect(physicsProblems({ kind: "multiply", balls: 5 })[0]).toMatch(/balls is a number from 60 to 250/);
+    expect(physicsProblems({ kind: "galton" as never })[0]).toMatch(/isn't a scene/);
     expect(physicsProblems({ kind: "race", counter: "LAPS" })[0]).toMatch(/\{n\}/);
     expect(physicsProblems({ kind: "escape-rings", rings: 8, gap: 30, balls: 1, palette: "neon", counter: "{n} RINGS LEFT" })).toEqual([]);
   });
@@ -21,12 +22,39 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
   });
 
   it.each(PHYSICS_KINDS)("tunes %s so its finish lands late in the video", (kind) => {
-    const plan: PhysicsPlan = { kind, ...(kind === "galton" ? { balls: 50 } : kind === "multiply" ? { balls: 40 } : {}) };
+    const plan: PhysicsPlan = { kind, ...(kind === "multiply" ? { balls: 80 } : {}) };
     const { run, problem } = tuneRun(plan, 24);
     expect(problem).toBeNull();
     expect(run!.doneAt! / 24).toBeGreaterThanOrEqual(FINISH_WINDOW[0]);
     expect(run!.doneAt! / 24).toBeLessThanOrEqual(FINISH_WINDOW[1]);
   }, 60_000);
+
+  it.each(PHYSICS_KINDS)("never leaves a ball stuck in %s (Thomas, 2026-11-20)", (kind) => {
+    for (const seed of [1, 2, 3]) {
+      const run = simulate({ kind, ...(kind === "multiply" ? { balls: 80 } : {}) }, 24, seed);
+      const still = new Map<number, number>();
+      run.frames.forEach((f, k) => {
+        if (k === 0) return;
+        const prev = run.frames[k - 1]!.b;
+        for (let i = 0; i < Math.min(prev.length, f.b.length); i += 4) {
+          // Finished race balls rest below the hole on purpose.
+          if (f.b[i + 1]! >= 1590) continue;
+          const moved = Math.hypot(f.b[i]! - prev[i]!, f.b[i + 1]! - prev[i + 1]!);
+          still.set(i, moved < 1 ? (still.get(i) ?? 0) + 1 : 0);
+          expect(still.get(i)!, `${kind} seed ${seed}: ball ${i / 4} still at ${f.b[i]},${f.b[i + 1]} at ${(k / 30).toFixed(1)} s`).toBeLessThan(30);
+        }
+      });
+    }
+  }, 60_000);
+
+  it("doubles in multiply: each ball makes another, so the count grows faster and faster", () => {
+    const run = simulate({ kind: "multiply", balls: 120 }, 30);
+    const count = (s: number) => run.frames[Math.round(s * 30)]!.b.length / 4;
+    const firstHalf = count(run.doneAt! / 2) - 1;
+    const secondHalf = count(run.doneAt!) - count(run.doneAt! / 2);
+    expect(secondHalf).toBeGreaterThan(firstHalf * 3);
+    expect(counterText({ kind: "multiply" }, 50, null, false)).toBe("50% FULL");
+  });
 
   it("asks again when the plan is refused, then runs it", async () => {
     const asks: string[] = [];

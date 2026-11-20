@@ -8,12 +8,13 @@ sound carry it. It never sells, and the caption says it was made with AI.
 <!-- ideas -->
 Format: a satisfying physics video. It is entertainment: no selling, no product, no business.
 
-How it's made, which is why the rules below exist: code runs a real physics simulation of one of five scenes, about 35 seconds, one continuous shot with no voice, and every collision plays a note. The scenes:
+How it's made, which is why the rules below exist: code runs a real physics simulation of one of four scenes, about 35 seconds, one continuous shot with no voice, and every collision plays a note. The scenes:
 - escape-rings: a ball bounces inside spinning rings, each with a gap, and breaks out ring by ring.
 - growing-ball: a ball bounces inside a circle and grows on every bounce until it fills it.
-- multiply: one ball becomes two, then more, until the circle is packed.
-- galton: balls drop through a triangle of pegs and build a bell curve in the bins.
+- multiply: every ball that hits the wall makes a new one, so the count doubles faster and faster until the balls fill the whole circle.
 - race: coloured balls race down a field of pegs for three laps; one wins.
+
+Every video needs an end the viewer roots for (Thomas, 2026-11-20): the ball getting free, the colour they picked winning, the circle finally filling. Balls that only fall and stop give them nothing to hope for, and they scroll.
 
 People watch these to the end because they can see what "finished" looks like and need to see it get there, and because they want to know who wins or whether it makes it. So the pitches that win share a shape:
 - One scene, with a goal the viewer can see from the first second: rings to escape, a circle to fill, a race to win.
@@ -23,7 +24,7 @@ People watch these to the end because they can see what "finished" looks like an
 A pitch is one sentence that names the scene, its numbers and its last, best moment: "A ball has to break out of 12 spinning rings with tiny gaps; the last ring shatters with a full chord."
 
 Test every pitch before you offer it:
-1. Scene test. Is it one of the five scenes above, with numbers in their ranges?
+1. Scene test. Is it one of the four scenes above, with numbers in their ranges?
 2. Goal test. Would a stranger, with the sound off, know from the first frame what it is building toward?
 3. Bet test. Does the hook make the viewer guess or pick a side?
 4. Last-moment test. Is the finish the biggest moment?
@@ -34,7 +35,7 @@ Not a story: no characters, no faces, no dialogue.
 <!-- script -->
 Format: a satisfying physics video. It is entertainment: no selling, no product and no business, in any field.
 
-How this video is made, which is the reason for the rules below: there is no voice. Code runs one continuous physics simulation (escape-rings, growing-ball, multiply, galton or race), and every collision plays a note. The shots are the beats of that one run, in order; stage 5 picks the scene and its settings from your story and shots, and the run's finish lands where your payoff is.
+How this video is made, which is the reason for the rules below: there is no voice. Code runs one continuous physics simulation (escape-rings, growing-ball, multiply or race), and every collision plays a note. The shots are the beats of that one run, in order; stage 5 picks the scene and its settings from your story and shots, and the run's finish lands where your payoff is.
 
 The run:
 - One scene, with a goal the viewer can see from the first frame.
