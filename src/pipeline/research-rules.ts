@@ -139,7 +139,14 @@ export const RULES: readonly Rule[] = [
     stage: 4,
     rule: `Stands alone: no "part 2", "episode" or "to be continued"`,
     needs: "the caption",
-    follows: (r) => !r.facts.leansOnEpisodes && !REFERS_TO_OTHER_EPISODES.test(`${r.labels?.hookText ?? ""} ${r.labels?.coverText ?? ""}`),
+    // The caption alone misses a serial: the first real run counted 19 of 19
+    // average Reels as standing alone while its reader described several of
+    // them as "part 12 of a serialized story" (the part number was on screen,
+    // not in the caption). So the reader's own answer counts as well.
+    follows: (r) => {
+      if (r.facts.leansOnEpisodes || REFERS_TO_OTHER_EPISODES.test(`${r.labels?.hookText ?? ""} ${r.labels?.coverText ?? ""}`)) return false;
+      return is(r.labels?.series, "stands-alone");
+    },
   },
   { id: "no-selling", stage: 4, rule: "Entertainment doesn't sell", formats: ENTERTAINMENT_FORMATS, needs: "the caption", follows: (r) => !r.facts.sells },
   { id: "made-with-ai", stage: 4, rule: "The caption says it was made with AI", formats: ["satisfying"], needs: "the caption", follows: (r) => r.facts.saysAI },

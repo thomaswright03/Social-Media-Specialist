@@ -74,6 +74,7 @@ export function gateDiagnose(d: Diagnosis | null, data: DiagnosisData): GateResu
 export const UNCLEAR = "unclear";
 export const LABELS = {
   onFormat: ["yes", "no"],
+  series: ["part-of-a-series", "stands-alone"],
   art: ["stick-figures", "other-drawn", "3d-render", "live-action", "screen-recording", "graphics"],
   lighting: ["dark", "bright"],
   opening: ["action", "face", "title-card", "blank", "graphic"],
@@ -89,6 +90,8 @@ export type ShotLabels = { camera?: string; people?: string; place?: string };
 export type ReelLabels = {
   id?: string;
   onFormat?: string;
+  /** Whether the caption, the cover, the frames or the words mark it as one part of a continuing series. */
+  series?: string;
   premise?: string;
   art?: string;
   lighting?: string;
@@ -117,6 +120,7 @@ export function labelProblems(l: ReelLabels, looked: Looked): string[] {
     if (!oneOf(v, LABELS[field])) bad.push(`${field} must be one of ${[...LABELS[field], UNCLEAR].join(", ")}`);
   };
   need("onFormat", l.onFormat);
+  need("series", l.series);
   if (!l.premise?.trim()) bad.push("premise is empty");
   if (looked.sight !== "none") {
     need("art", l.art);
@@ -160,6 +164,8 @@ export type PatternTally = {
 };
 
 export const PATTERN_MIN_WINNERS = 3;
+/** And they are at least this share of the winners it could be told for: what under half of the winners do isn't what winners do. */
+export const PATTERN_MIN_SHARE = 0.5;
 /** A yes or a no is needed for this many Reels in each group. */
 export const PATTERN_MIN_ASKED = 5;
 /** One creator's habit isn't a pattern: the winners that show it come from at least this many accounts. */
@@ -171,6 +177,7 @@ export const PATTERN_MIN_GAP = 0.25;
 export function patternProblem(p: PatternTally): string | null {
   if (p.winnersAsked < PATTERN_MIN_ASKED || p.averageAsked < PATTERN_MIN_ASKED) return `it could be told for only ${p.winnersAsked} winners and ${p.averageAsked} average Reels (needs ${PATTERN_MIN_ASKED} of each)`;
   if (p.winnersYes < PATTERN_MIN_WINNERS) return `only ${p.winnersYes} of those winners show it (needs ${PATTERN_MIN_WINNERS})`;
+  if (p.winnersYes / p.winnersAsked < PATTERN_MIN_SHARE - 1e-9) return "fewer than half of those winners show it";
   if ((p.winnerAccounts ?? 0) < PATTERN_MIN_ACCOUNTS) return "the winners that show it are all from one account";
   if (p.winnersYes / p.winnersAsked - p.averageYes / p.averageAsked < PATTERN_MIN_GAP - 1e-9) return "average Reels show it nearly as often";
   return null;
@@ -178,8 +185,9 @@ export function patternProblem(p: PatternTally): string | null {
 
 /**
  * A pattern is kept only when the Reels it wasn't drawn from back it: a yes
- * or no for 5+ Reels in each group, 3+ winners from 2+ accounts show it, and
- * winners show it at least 25 points more often than average Reels.
+ * or no for 5+ Reels in each group, 3+ winners from 2+ accounts show it, they
+ * are at least half of those winners, and winners show it at least 25 points
+ * more often than average Reels.
  */
 export function patternHolds(p: PatternTally): boolean {
   return patternProblem(p) === null;
@@ -211,9 +219,12 @@ export function gateResearch(x: ResearchGateInput): GateResult {
   const name = `${x.format.charAt(0).toUpperCase()}${x.format.slice(1)}`;
   const usable = x.accounts.filter((a) => !a.problem);
   const unusable = x.accounts.filter((a) => a.problem);
-  const winners = x.looked.filter((r) => r.group === "winner").length;
-  const average = x.looked.filter((r) => r.group === "average").length;
   const byId = new Map((x.labels ?? []).filter((l) => l.id).map((l) => [l.id!, l]));
+  // A Reel the reader says isn't the format (a skit, a repost) isn't one to compare.
+  const onFormat = x.looked.filter((r) => byId.get(r.id)?.onFormat !== "no");
+  const winners = onFormat.filter((r) => r.group === "winner").length;
+  const average = onFormat.filter((r) => r.group === "average").length;
+  const off = x.looked.length - onFormat.length;
   const known = new Set(x.looked.map((r) => r.id));
   const missing = x.looked.filter((r) => !byId.has(r.id)).map((r) => r.id);
   const added = (x.labels ?? []).filter((l) => !l.id || !known.has(l.id)).map((l) => l.id ?? "(no id)");
@@ -222,13 +233,13 @@ export function gateResearch(x: ResearchGateInput): GateResult {
   const notAsked = x.labels === null ? "Claude wasn't asked: the checks above come first" : undefined;
   return gate([
     check(`${name}: at least ${MIN_ACCOUNTS} accounts could be studied`, usable.length >= MIN_ACCOUNTS, `${usable.length} of ${x.accounts.length}${unusable.length ? `. ${unusable.map((a) => `@${a.username}: ${a.problem}`).join("; ")}` : ""}`),
-    check(`${name}: at least ${MIN_LOOKED_PER_GROUP} winners and ${MIN_LOOKED_PER_GROUP} average Reels to compare`, winners >= MIN_LOOKED_PER_GROUP && average >= MIN_LOOKED_PER_GROUP, `${winners} winners, ${average} average`),
+    check(`${name}: at least ${MIN_LOOKED_PER_GROUP} winners and ${MIN_LOOKED_PER_GROUP} average Reels to compare`, winners >= MIN_LOOKED_PER_GROUP && average >= MIN_LOOKED_PER_GROUP, `${winners} winners, ${average} average${off ? `; ${off} more ${off === 1 ? "wasn't a" : "weren't"} ${x.format} ${off === 1 ? "Reel" : "Reels"}` : ""}`),
     check(`${name}: the videos Instagram gave were measured`, x.videosGiven === 0 || x.videosMeasured * 2 >= x.videosGiven, x.videosGiven === 0 ? "Instagram gave no video files, so only covers and captions were studied" : `${x.videosMeasured} of ${x.videosGiven}`),
     check(`${name}: every Reel was labelled, and none was added`, x.labels !== null && x.looked.length > 0 && missing.length === 0 && added.length === 0, notAsked ?? (missing.length ? `not labelled: ${missing.slice(0, 8).join(", ")}` : added.length ? `not among the Reels given: ${added.slice(0, 5).join(", ")}` : undefined)),
     check(`${name}: every label is one of its choices`, x.labels !== null && x.looked.length > 0 && problems.length === 0, notAsked ?? (problems.length ? problems.slice(0, 8).join("; ") : undefined)),
     check(`${name}: at least ${MIN_VERDICTS} of our rules have enough Reels behind them for a verdict`, x.verdicts >= MIN_VERDICTS, `${x.verdicts} rules`),
     check(
-      `${name}: every pattern kept is shown by ${PATTERN_MIN_WINNERS}+ winners it wasn't drawn from, in ${PATTERN_MIN_ACCOUNTS}+ accounts, and clearly more often than by average Reels`,
+      `${name}: every pattern kept is shown by ${PATTERN_MIN_WINNERS}+ winners it wasn't drawn from, at least half of them, in ${PATTERN_MIN_ACCOUNTS}+ accounts, and clearly more often than by average Reels`,
       weak.length === 0,
       weak.length ? weak.map((p) => `"${p.pattern.slice(0, 50)}": ${p.winnersYes} of ${p.winnersAsked} winners, ${p.averageYes} of ${p.averageAsked} average, ${patternProblem(p)}`).join("; ") : `${x.patterns.length} kept`,
     ),

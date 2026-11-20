@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { DISCOVERY_USAGE_STOP, discoverAccount, usageFrom, type DiscoveredAccount, type DiscoveryState, type Media } from "../src/instagram.ts";
-import { CAMERAS, LABELS, MAX_SHOTS, MIN_SHOTS, UNCLEAR, type ReelLabels } from "../src/pipeline/gates.ts";
+import { CAMERAS, LABELS, gateResearch, MAX_SHOTS, MIN_SHOTS, UNCLEAR, type ReelLabels } from "../src/pipeline/gates.ts";
 import { LEGACY_SOURCE, PER_GROUP, soundSigns, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, studyAccounts, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
 import { RESEARCH_FORMATS, accountsFor, cleanHandle, fileAccounts, parseAccounts } from "../src/pipeline/research-accounts.ts";
 import { captionFacts, cutTimes, lufsFrom, sampleShots, shotBounds, shotStats, soundShareFrom, speechFacts, type MeasureFile, type VideoFacts } from "../src/pipeline/research-measure.ts";
 import { NOT_MEASURED, RULES, fisher, rowText, rulesTable, tableText, verdictOf, type StudiedReel } from "../src/pipeline/research-rules.ts";
-import { ENOUGH_SCORED, MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, readEnough, studyAccount } from "../src/pipeline/research-sample.ts";
+import { AVERAGE_LIFT, ENOUGH_SCORED, MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, readEnough, studyAccount } from "../src/pipeline/research-sample.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 import { heardFrom, transcribe, type Heard } from "../src/transcribe.ts";
 import { Vault } from "../src/vault.ts";
@@ -262,6 +262,19 @@ describe("scoring an account's Reels against the account itself", () => {
     expect(new Set(s.candidates.filter((c) => c.group === "average").map((c) => c.views))).toEqual(new Set([1000, 100]));
   });
 
+  it("calls no Reel average that got as much as a winner, or far less than usual", () => {
+    // A few Reels run far ahead, so the middle half by rank reaches past 1.5 times the usual
+    // (the first real run had "average" Reels at 1.68 next to another account's winner at 1.79).
+    const s = studyAccount(account("skewed", [900, 800, 700, 600, 170, 160, 140, 100, 100, 100, 100, 100, 60, 50, 40, 30]), NOW);
+    expect(s.median).toBe(100);
+    expect(s.candidates.filter((c) => c.group === "winner").map((c) => c.lift)).toEqual([9, 8, 7, 6]);
+    // 1.7 and 1.6 are in the middle half by rank, and so is 1.4: only that one and the five at 1 are average.
+    expect(s.candidates.filter((c) => c.group === "average").map((c) => c.lift)).toEqual([1.4, 1, 1, 1, 1, 1]);
+    expect(AVERAGE_LIFT).toEqual({ min: 0.67, max: 1.5 });
+    const low = studyAccount(account("low", [900, 800, 700, 600, 100, 100, 100, 100, 100, 70, 60, 50, 40, 30, 20, 10]), NOW);
+    expect(low.candidates.filter((c) => c.group === "average").map((c) => c.lift)).toEqual([1, 1, 1, 1, 1, 0.7]);
+  });
+
   it("takes Reels that come with a video file first, so there is something to measure", () => {
     // Instagram gives a video for only two of the four winners (not the biggest) and one of the eight average Reels.
     const s = studyAccount(account("a", SIXTEEN, (i) => ({ mediaUrl: i === 2 || i === 3 || i === 9 ? `https://cdn.example/a${i}.mp4` : null })), NOW);
@@ -489,6 +502,22 @@ describe("our rules, counted on winners and on average Reels", () => {
     expect(rulesTable("story", reels).map((r) => r.id)).not.toContain("made-with-ai");
   });
 
+  it("takes the reader's word that a Reel is one part of a series, not just the caption's", () => {
+    // The first real story run counted 19 of 19 average Reels as standing alone from their captions,
+    // while its reader described several of them as "part 12 of a serialized story".
+    const quiet = captionFacts("She opens the door.\n#stickman #story #fyp");
+    const said = (series: string | undefined, facts = quiet) => RULES.find((r) => r.id === "standalone")!.follows(studied("winner", 0, { facts, labels: { onFormat: "yes", ...(series ? { series } : {}) } }));
+    expect(said("stands-alone")).toBe(true);
+    expect(said("part-of-a-series")).toBe(false);
+    expect(said(UNCLEAR)).toBeNull();
+    expect(said(undefined)).toBeNull();
+    // The caption or the words on screen settle it whatever the reader said.
+    expect(said("stands-alone", captionFacts("Part 7. She opens the door."))).toBe(false);
+    expect(RULES.find((r) => r.id === "standalone")!.follows(studied("winner", 0, { facts: quiet, labels: { onFormat: "yes", series: "stands-alone", coverText: "EPISODE 3" } }))).toBe(false);
+    const reels = [...Array.from({ length: 6 }, (_, i) => studied("winner", i, { facts: quiet, labels: { onFormat: "yes", series: "part-of-a-series" } })), ...Array.from({ length: 6 }, (_, i) => studied("average", i, { facts: quiet, labels: { onFormat: "yes", series: i < 5 ? "part-of-a-series" : "stands-alone" } }))];
+    expect(rulesTable("story", reels).find((r) => r.id === "standalone")).toMatchObject({ verdict: "winners break it", winners: { n: 6, follow: 0 }, average: { n: 6, follow: 1 } });
+  });
+
   it("counts labels and never counts \"unclear\"", () => {
     const labels = (opening: string): ReelLabels => ({ onFormat: "yes", opening, hookText: "He never came back", shots: [{ camera: "wide", people: "1", place: "The kitchen" }, { camera: "close-up", people: "3+", place: "kitchen" }, { camera: "insert", people: "1", place: "a street" }] });
     const reels = [...Array.from({ length: 5 }, (_, i) => studied("winner", i, { labels: labels("action") })), studied("winner", 8, { labels: labels(UNCLEAR) }), ...Array.from({ length: 5 }, (_, i) => studied("average", i, { labels: labels("title-card") }))];
@@ -519,9 +548,11 @@ describe("stage 1's prompts", () => {
   });
 
   it("fills the pattern and check prompts", () => {
-    const p = stagePrompt(1, { COUNT: "12", FORMAT: "ad", NICHE: "n", WINNER_LIFT: "1.5", REELS: "[]", TABLE: "t" }, "patterns");
+    const p = stagePrompt(1, { COUNT: "12", FORMAT: "ad", NICHE: "n", WINNER_LIFT: "1.5", AVERAGE_FROM: "0.67", REELS: "[]", TABLE: "t" }, "patterns");
     expect(p).toContain("12 ad Reels");
     expect(p).toContain("with a lift of at least 1.5");
+    expect(p).toContain("with a lift from 0.67 to under 1.5");
+    expect(p).toContain("at least half of those winners");
     expect(p).toContain("more than one account");
     expect(p).not.toContain("{{");
     expect(stagePrompt(1, { QUESTIONS: "1. Is it?", REELS: "[]" }, "check")).toContain("1. Is it?");
@@ -544,6 +575,7 @@ const reelsIn = (prompt: string): Record<string, unknown>[] => JSON.parse(prompt
 const labelFor = (r: Shown): ReelLabels => ({
   id: r.id,
   onFormat: "yes",
+  series: "stands-alone",
   premise: `A man and his money: ${r.caption.slice(0, 20)}`,
   ...(r.open || r.cover ? { art: "stick-figures", lighting: "dark" } : {}),
   ...(r.cover ? { coverText: "" } : {}),
@@ -694,6 +726,44 @@ describe("runResearch", () => {
     expect(logs.some((l) => l.includes("40 transcripts (20 min of sound, about $0.07"))).toBe(true);
     await rm(out, { recursive: true, force: true });
     vault.close();
+  });
+
+  it("looks at the next Reels in line when some turn out not to be the format", async () => {
+    // The first real explainer run lost 12 of its 40 Reels this way (one account posts mostly skits)
+    // and was left with a video for 4 winners and 3 average Reels.
+    const vault = await memoryVault();
+    const off = new Set(["r03", "r07", "r11", "r41"]);
+    const claude = fakeClaude({ label: (r) => ({ ...labelFor(r), onFormat: off.has(r.id) ? "no" : "yes" }), patterns: [] });
+    const f = fakes();
+    const logs: string[] = [];
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, log: (m) => logs.push(m) }));
+    expect(r.passed).toBe(true);
+    const found = r.findings;
+    // Three were replaced, from the same groups; a replacement that isn't the format either isn't replaced again.
+    expect(found.reels.map((x) => x.id)).toHaveLength(43);
+    expect(found.reels.slice(40).map((x) => x.id)).toEqual(["r41", "r42", "r43"]);
+    expect(found.replaced).toBe(3);
+    expect(found.reels.slice(40).map((x) => x.group).sort()).toEqual(found.reels.filter((x) => ["r03", "r07", "r11"].includes(x.id)).map((x) => x.group).sort());
+    expect(new Set(found.reels.map((x) => x.url)).size).toBe(43);
+    expect(found.reels.every((x) => x.labels)).toBe(true);
+    expect(found).toMatchObject({ videosGiven: 43, videosMeasured: 43, labelRounds: 1 });
+    // Only Reels of the format are compared, and counted.
+    const compared = found.reels.filter((x) => x.labels?.onFormat !== "no");
+    expect(compared).toHaveLength(39);
+    expect(found.table.find((x) => x.id === "length")!.winners.n + found.table.find((x) => x.id === "length")!.average.n).toBe(39);
+    expect(r.gate.checks[1]!.detail).toMatch(/^(19|20) winners, (19|20) average; 4 more weren't story Reels$/);
+    expect(logs.some((l) => l.startsWith("3 Reels weren't story Reels, so the next 3 in line are looked at too. Measured 3 more Reels: 3 of 3 videos"))).toBe(true);
+    expect(r.report).toContain("4 more Reels weren't story Reels (these accounts post other things too) and were left out; the next 3 in line were looked at in their place. Instagram gave the video for 43 of the 43 Reels looked at; 43 were measured and 43 transcribed.");
+    expect((await vault.actions()).find((a) => a.kind === "lesson")!.summary).toMatch(/^Research, story: (19|20) winners compared with (19|20) average Reels from @a, @b, @c\./);
+    vault.close();
+  });
+
+  it("counts only Reels of the format toward the six a side", () => {
+    const looked = (n: number, group: "winner" | "average") => Array.from({ length: n }, (_, i) => ({ id: `${group[0]}${i}`, group, sight: "none" as const, shotFrames: 0, heard: false }));
+    const reels = [...looked(6, "winner"), ...looked(7, "average")];
+    const labels = reels.map((l, i) => ({ id: l.id, onFormat: i === 0 || i === 12 ? "no" : "yes", series: "stands-alone", premise: "p" }));
+    const g = gateResearch({ format: "explainer", accounts: [{ username: "a", problem: null }, { username: "b", problem: null }], looked: reels, labels, videosGiven: 0, videosMeasured: 0, verdicts: 5, patterns: [] });
+    expect(g.checks.filter((c) => !c.passed).map((c) => `${c.name}: ${c.detail}`)).toEqual(["Explainer: at least 6 winners and 6 average Reels to compare: 5 winners, 6 average; 2 more weren't explainer Reels"]);
   });
 
   it("studies covers and captions when Instagram gives no video", async () => {

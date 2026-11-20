@@ -23,7 +23,7 @@ import type { Format } from "./formats.ts";
 import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP, UNCLEAR, gateResearch, labelProblems, patternProblem, type GateResult, type Looked, type PatternTally, type ReelLabels } from "./gates.ts";
 import { captionFacts, download as downloadFile, hasFfmpeg, measureFile, speechFacts, type MeasureFile, type SpeechFacts, type VideoFacts } from "./research-measure.ts";
 import { FOR_THOMAS, NOT_MEASURED, rowText, rulesTable, tableText, type RuleRow, type StudiedReel } from "./research-rules.ts";
-import { MAX_AGE_DAYS, MIN_AGE_DAYS, WINDOW, WINNER_LIFT, accountLine, pickSample, readEnough, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
+import { AVERAGE_LIFT, MAX_AGE_DAYS, MIN_AGE_DAYS, WINDOW, WINNER_LIFT, accountLine, pickSample, readEnough, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
 import { parseJson, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (prompt: string) => Promise<string>;
@@ -41,6 +41,8 @@ export const POSTS_PER_ACCOUNT = 200;
 export const CHUNK = 8;
 export const LABEL_ROUNDS = 3;
 export const MAX_PATTERNS = 5;
+/** Accounts post other things too. A Reel the reader says isn't the format is replaced by the next in line: at most this many a group. */
+export const TOP_UP_MAX = 10;
 /** A transcript with fewer words than this is treated as no speech. */
 export const MIN_WORDS_HEARD = 5;
 
@@ -127,6 +129,8 @@ export type Findings = {
   notes: string[];
   /** Accounts whose winners and average Reels differ in how often Instagram gives the video, and what that suggests about their sound. */
   soundSigns?: string[];
+  /** Reels looked at in place of ones that turned out not to be the format. */
+  replaced?: number;
 };
 
 export type ResearchResult = { format: Format; passed: boolean; gate: GateResult; findings: Findings; report: string; reportFile: string | null };
@@ -227,8 +231,10 @@ export function soundSigns(accounts: Omit<AccountStudy, "candidates">[]): string
 
 const tallyText = (p: PatternTally) => `${p.winnersYes} of ${p.winnersAsked} winners${p.winnerAccounts > 1 ? ` (in ${p.winnerAccounts} accounts)` : ""} and ${p.averageYes} of ${p.averageAsked} average Reels it wasn't drawn from`;
 const verdictRows = (f: Findings, v: RuleRow["verdict"]) => f.table.filter((r) => r.verdict === v);
-const winnersOf = (f: Findings) => f.reels.filter((r) => r.group === "winner");
-const averageOf = (f: Findings) => f.reels.filter((r) => r.group === "average");
+/** The Reels compared: those the reader didn't mark as something other than the format. */
+const winnersOf = (f: Findings) => f.reels.filter((r) => r.group === "winner" && r.labels?.onFormat !== "no");
+const averageOf = (f: Findings) => f.reels.filter((r) => r.group === "average" && r.labels?.onFormat !== "no");
+const leftOutOf = (f: Findings) => f.reels.filter((r) => r.labels?.onFormat === "no");
 const usableOf = (f: Findings) => f.accounts.filter((a) => !a.problem);
 
 /** A few spoken sentences for Hitta and the log: what was studied and what stood out. */
@@ -259,14 +265,14 @@ export function reportText(f: Findings, gate: GateResult): string {
   const failed = gate.checks.filter((c) => !c.passed);
   const reel = (r: FoundReel) => {
     const result = r.views !== null ? `${r.views} views` : `${r.likes ?? "?"} likes, ${r.comments ?? "?"} comments`;
-    const seen = r.sight === "frames" ? `video, ${r.video?.seconds ?? "?"} s, ${r.video?.shots ?? "?"} shots` : r.sight === "cover" ? "cover only" : "caption only";
+    const seen = r.sight === "frames" ? `video, ${r.video?.seconds ?? "?"} s, ${r.video ? count(r.video.shots, "shot") : "? shots"}` : r.sight === "cover" ? "cover only" : "caption only";
     return `| ${r.id} | @${r.account} | ${r.group} | ${r.lift}× | ${result} | ${r.postedAt} | ${seen}${r.heard ? ", transcript" : ""} | ${r.labels?.onFormat === "no" ? "not this format, left out" : (r.labels?.premise ?? "").replace(/\|/g, "/").slice(0, 110)} | ${r.url} |`;
   };
   return [
     `# Stage 1 research: ${f.format}`,
     `Studied ${f.studiedAt.slice(0, 10)}. ${gate.passed ? "Passed its gate." : "Did not pass its gate, so nothing was saved for later stages."}`,
     failed.length ? `## Checks that failed\n${failed.map((c) => `- ${c.name}${c.detail ? `: ${c.detail}` : ""}`).join("\n")}` : "",
-    `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels (the middle half). Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}${f.soundSigns?.length ? `\n\n${f.soundSigns.join("\n\n")} Our Reels carry their own sound (stages 5 and 6): for Thomas to weigh.` : ""}\n\nLooked at: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first. Instagram gave the video for ${f.videosGiven} of them; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
+    `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels: the middle half, with a lift from ${AVERAGE_LIFT.min} to under ${AVERAGE_LIFT.max}. Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}${f.soundSigns?.length ? `\n\n${f.soundSigns.join("\n\n")} Our Reels carry their own sound (stages 5 and 6): for Thomas to weigh.` : ""}\n\nCompared: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first.${leftOutOf(f).length ? ` ${count(leftOutOf(f).length, "more Reel")} ${leftOutOf(f).length === 1 ? "wasn't a" : "weren't"} ${f.format} ${leftOutOf(f).length === 1 ? "Reel" : "Reels"} (these accounts post other things too) and ${leftOutOf(f).length === 1 ? "was" : "were"} left out${f.replaced ? `; the next ${f.replaced} in line ${f.replaced === 1 ? "was" : "were"} looked at in their place` : ""}.` : ""} Instagram gave the video for ${f.videosGiven} of the ${f.reels.length} Reels looked at; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
     f.notes.length ? `## What limited this run\n${f.notes.map((n) => `- ${n}`).join("\n")}` : "",
     f.table.length ? `## Our rules, measured on these Reels\nThis table never changes a rule. A rule the winners speak against, or one most of them break, is for Thomas to weigh. About ${f.table.length} rules are tested at once, so one or two can look clear by chance.\n\n${tableText(f.table)}` : "",
     `## Patterns\nProposed from half of the Reels, then checked by a reader who didn't know the results on the other half.\n\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}: ${patternProblem(p)}.)`).join("\n")}` : ""}`,
@@ -299,7 +305,7 @@ export async function researchBrief(vault: Vault, format: Format): Promise<strin
   const parts = [
     head,
     backed.length ? `Rules of ours that winners follow clearly more often than average Reels:\n${backed.map((r) => `- ${rowText(r)}`).join("\n")}` : "",
-    patterns.length ? `What else winners do more often than average Reels:\n${patterns.map((l) => `- ${l.text}${l.evidence ? ` (${l.evidence})` : ""}`).join("\n")}` : "",
+    patterns.length ? `Leads from a small blind check (winners showed these more often than average Reels; worth trying, not rules):\n${patterns.map((l) => `- ${l.text}${l.evidence ? ` (${l.evidence})` : ""}`).join("\n")}` : "",
     !backed.length && !patterns.length ? "It found no clear difference between winners and average Reels yet, so there is no pattern to lean on." : "",
     about.length ? `What some of the winners were about (to show the kind of thing, never to copy):\n${about.map((r) => `- ${r.labels!.premise!.trim()} (${r.lift} times its account's usual)`).join("\n")}` : "",
   ];
@@ -384,10 +390,14 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
   if (studies.some((s) => s.scoredBy === "likes and comments")) notes.push(`Instagram gave no views for ${handles(studies.filter((s) => s.scoredBy === "likes and comments"))}, so those Reels are scored by likes plus comments.`);
 
   // 2. The winners and the average Reels to look at, in an order that doesn't give the groups away.
-  const sample = pickSample(studies, perGroupFrom(d));
-  const heldOut = new Set([...sample.winners.filter((_, i) => i % 2 === 1), ...sample.average.filter((_, i) => i % 2 === 1)].map((c) => c.url));
+  // More are lined up than are looked at: a Reel the reader says isn't the format is replaced by the next in line.
+  const perGroup = perGroupFrom(d);
+  const line = pickSample(studies, perGroup + TOP_UP_MAX);
+  const sample = { winners: line.winners.slice(0, perGroup), average: line.average.slice(0, perGroup) };
+  const heldOut = new Set([...line.winners.filter((_, i) => i % 2 === 1), ...line.average.filter((_, i) => i % 2 === 1)].map((c) => c.url));
   const mixed = (url: string) => createHash("sha1").update(url).digest("hex");
-  const picked = [...sample.winners, ...sample.average].sort((a, b) => (mixed(a.url) < mixed(b.url) ? -1 : 1));
+  const shuffled = (cs: Candidate[]) => [...cs].sort((a, b) => (mixed(a.url) < mixed(b.url) ? -1 : 1));
+  const picked = shuffled([...sample.winners, ...sample.average]);
   const enough = sample.winners.length >= MIN_LOOKED_PER_GROUP && sample.average.length >= MIN_LOOKED_PER_GROUP;
 
   const dir = await mkdtemp(join(tmpdir(), "research-"));
@@ -406,8 +416,8 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
     const save = d.download ?? downloadFile;
     const measure = d.measure ?? measureFile;
 
-    const working = await pool(picked, 3, async (c: Candidate, i): Promise<Working> => {
-      const id = `r${String(i + 1).padStart(2, "0")}`;
+    const idOf = (i: number) => `r${String(i + 1).padStart(2, "0")}`;
+    const measureOne = async (c: Candidate, id: string): Promise<Working> => {
       let video: VideoFacts | null = null;
       let speech: SpeechFacts | null = null;
       const files: Working["files"] = { open: null, shots: null, cover: null };
@@ -453,13 +463,14 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
         heldOut: heldOut.has(c.url),
         files,
       };
-    });
-    if (sttDown) notes.push(`ElevenLabs stopped transcribing part of the way: ${sttDown}`);
-    const videosGiven = working.filter((r) => r.videoGiven).length;
-    const videosMeasured = working.filter((r) => r.video).length;
-    const transcripts = working.filter((r) => r.speech).length;
-    if (working.length && videosGiven < working.length) notes.push(`Instagram gave no video for ${working.length - videosGiven} of the ${working.length} Reels (their sound is from its music library, or the owner turned downloads off). Those were studied from the cover and the caption.`);
-    log(`Measured ${working.length} Reels: ${videosMeasured} of ${videosGiven} videos, ${count(transcripts, "transcript")}${transcripts ? ` (${Math.round(heardSeconds / 60)} min of sound, about $${((heardSeconds / 3600) * STT_USD_PER_HOUR).toFixed(2)} at ElevenLabs' $${STT_USD_PER_HOUR} an hour)` : ""}, ${working.filter((r) => r.sight === "cover").length} from the cover only.`);
+    };
+    const given = (rs: Working[]) => rs.filter((r) => r.videoGiven).length;
+    const measured = (rs: Working[]) => rs.filter((r) => r.video).length;
+    const heard = (rs: Working[]) => rs.filter((r) => r.speech).length;
+    const measuredLine = (rs: Working[], more = false) =>
+      `Measured ${rs.length}${more ? " more" : ""} Reels: ${measured(rs)} of ${given(rs)} videos, ${count(heard(rs), "transcript")}${heard(rs) ? ` (${Math.round(heardSeconds / 60)} min of sound${more ? " in all" : ""}, about $${((heardSeconds / 3600) * STT_USD_PER_HOUR).toFixed(2)} at ElevenLabs' $${STT_USD_PER_HOUR} an hour)` : ""}, ${rs.filter((r) => r.sight === "cover").length} from the cover only.`;
+    const working = await pool(picked, 3, (c: Candidate, i) => measureOne(c, idOf(i)));
+    log(measuredLine(working));
 
     // 4. Claude labels each Reel, blind. Labels that break the lists go back to it with what was wrong.
     const ask = d.ask ?? askClaudeWithFiles(dir);
@@ -467,28 +478,55 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
     const labels = new Map<string, ReelLabels>();
     const problemsOf = (r: Working) => (labels.has(r.id) ? labelProblems(labels.get(r.id)!, lookedOf(r)) : ["not labelled yet"]);
     // Claude is asked only when the checks that don't need it would pass.
-    const ready = studies.filter((x) => !x.problem).length >= MIN_ACCOUNTS && enough && (videosGiven === 0 || videosMeasured * 2 >= videosGiven);
-    let labelRounds = 0;
-    for (; ready && labelRounds < LABEL_ROUNDS; labelRounds++) {
-      const todo = working.filter((r) => problemsOf(r).length);
-      if (!todo.length) break;
-      await pool(chunks(todo, CHUNK), 2, async (chunk) => {
-        const wrong = chunk.filter((r) => labels.has(r.id)).map((r) => `- ${r.id}: ${problemsOf(r).join("; ")}`);
-        const answer = await ask(
-          stagePrompt(1, {
-            FORMAT: format,
-            NICHE: niche,
-            REELS: JSON.stringify(chunk.map(blindView), null, 1),
-            GATE_FAILURES: wrong.length ? `Your last answers for these Reels failed the check. Answer for every Reel above again, and fix these:\n${wrong.join("\n")}` : "",
-          }),
-        ).catch((err) => {
-          log(`A labelling turn failed: ${err instanceof Error ? err.message : String(err)}`);
-          return "";
+    const ready = studies.filter((x) => !x.problem).length >= MIN_ACCOUNTS && enough && (given(working) === 0 || measured(working) * 2 >= given(working));
+    const labelAll = async (reels: Working[]): Promise<number> => {
+      let rounds = 0;
+      for (; rounds < LABEL_ROUNDS; rounds++) {
+        const todo = reels.filter((r) => problemsOf(r).length);
+        if (!todo.length) break;
+        await pool(chunks(todo, CHUNK), 2, async (chunk) => {
+          const wrong = chunk.filter((r) => labels.has(r.id)).map((r) => `- ${r.id}: ${problemsOf(r).join("; ")}`);
+          const answer = await ask(
+            stagePrompt(1, {
+              FORMAT: format,
+              NICHE: niche,
+              REELS: JSON.stringify(chunk.map(blindView), null, 1),
+              GATE_FAILURES: wrong.length ? `Your last answers for these Reels failed the check. Answer for every Reel above again, and fix these:\n${wrong.join("\n")}` : "",
+            }),
+          ).catch((err) => {
+            log(`A labelling turn failed: ${err instanceof Error ? err.message : String(err)}`);
+            return "";
+          });
+          const ids = new Set(chunk.map((r) => r.id));
+          for (const l of parseJson<{ reels?: ReelLabels[] }>(answer)?.reels ?? []) if (l?.id && ids.has(l.id)) labels.set(l.id, l);
         });
-        const ids = new Set(chunk.map((r) => r.id));
-        for (const l of parseJson<{ reels?: ReelLabels[] }>(answer)?.reels ?? []) if (l?.id && ids.has(l.id)) labels.set(l.id, l);
-      });
+      }
+      return rounds;
+    };
+    let labelRounds = ready ? await labelAll(working) : 0;
+
+    // Accounts post other things too (a skit, a repost, an announcement). Each
+    // Reel the reader says isn't the format is replaced, once, by the next in
+    // line from the same group; the first real explainer run lost 12 of its
+    // 40 Reels this way and had nothing left to say about the video.
+    let replaced = 0;
+    if (ready && working.every((r) => problemsOf(r).length === 0)) {
+      const off = (group: "winner" | "average") => working.filter((r) => r.group === group && labels.get(r.id)?.onFormat === "no").length;
+      const next = shuffled([...line.winners.slice(perGroup, perGroup + off("winner")), ...line.average.slice(perGroup, perGroup + off("average"))]);
+      if (next.length) {
+        const from = working.length;
+        const more = await pool(next, 3, (c: Candidate, i) => measureOne(c, idOf(from + i)));
+        working.push(...more);
+        replaced = more.length;
+        log(`${count(off("winner") + off("average"), "Reel")} ${off("winner") + off("average") === 1 ? "wasn't a" : "weren't"} ${format} ${off("winner") + off("average") === 1 ? "Reel" : "Reels"}, so the next ${more.length} in line ${more.length === 1 ? "is" : "are"} looked at too. ${measuredLine(more, true)}`);
+        labelRounds = Math.max(labelRounds, await labelAll(more));
+      }
     }
+    if (sttDown) notes.push(`ElevenLabs stopped transcribing part of the way: ${sttDown}`);
+    const videosGiven = given(working);
+    const videosMeasured = measured(working);
+    const transcripts = heard(working);
+    if (working.length && videosGiven < working.length) notes.push(`Instagram gave no video for ${working.length - videosGiven} of the ${working.length} Reels (their sound is from its music library, or the owner turned downloads off). Those were studied from the cover and the caption.`);
     for (const r of working) r.labels = labels.get(r.id) ?? null;
     const labelled = ready && working.every((r) => problemsOf(r).length === 0);
     if (ready) log(`Labelled ${labels.size} of ${working.length} Reels in ${count(labelRounds, "round")}${labelled ? "" : "; some labels are still wrong"}.`);
@@ -502,7 +540,7 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
       const onFormat = working.filter((r) => r.labels?.onFormat !== "no");
       const shown = onFormat.filter((r) => !r.heldOut);
       const held = onFormat.filter((r) => r.heldOut);
-      const answer = await ask(stagePrompt(1, { COUNT: String(shown.length), FORMAT: format, NICHE: niche, WINNER_LIFT: String(WINNER_LIFT), REELS: JSON.stringify(shown.map(knownView), null, 1), TABLE: tableText(table) }, "patterns")).catch((err) => {
+      const answer = await ask(stagePrompt(1, { COUNT: String(shown.length), FORMAT: format, NICHE: niche, WINNER_LIFT: String(WINNER_LIFT), AVERAGE_FROM: String(AVERAGE_LIFT.min), REELS: JSON.stringify(shown.map(knownView), null, 1), TABLE: tableText(table) }, "patterns")).catch((err) => {
         log(`The pattern turn failed: ${err instanceof Error ? err.message : String(err)}`);
         return "";
       });
@@ -530,7 +568,7 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
     // 7. The gate, the record, and what later stages get.
     const reels: FoundReel[] = working.map(({ files: _files, ...r }) => r);
     const accounts = studies.map(({ candidates: _c, ...a }) => a);
-    const findings: Findings = { format, studiedAt: now().toISOString(), accounts, reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes, soundSigns: soundSigns(accounts) };
+    const findings: Findings = { format, studiedAt: now().toISOString(), accounts, reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes, soundSigns: soundSigns(accounts), ...(replaced ? { replaced } : {}) };
     const kept = patterns.filter((p) => p.kept);
     const r = await runStage<Findings>({
       vault: d.vault,

@@ -207,6 +207,7 @@ describe("stage 1, research", () => {
   const label = (l: Looked): ReelLabels => ({
     id: l.id,
     onFormat: "yes",
+    series: "stands-alone",
     premise: "A night cleaner hears a knock.",
     ...(l.sight !== "none" ? { art: "stick-figures", lighting: "dark" } : {}),
     ...(l.sight === "cover" ? { coverText: "" } : {}),
@@ -258,20 +259,20 @@ describe("stage 1, research", () => {
 
   it("asks only for the labels a Reel could give", () => {
     const cover: Looked = { id: "c1", group: "winner", sight: "cover", shotFrames: 0, heard: false };
-    expect(labelProblems({ onFormat: "yes", premise: "p", art: "3d-render", lighting: "bright", coverText: "WAIT FOR IT" }, cover)).toEqual([]);
-    expect(labelProblems({ onFormat: "yes", premise: "p", art: "3d-render", lighting: "bright" }, cover)).toEqual([`coverText must be the cover's words or ""`]);
+    expect(labelProblems({ onFormat: "yes", series: "part-of-a-series", premise: "p", art: "3d-render", lighting: "bright", coverText: "WAIT FOR IT" }, cover)).toEqual([]);
+    expect(labelProblems({ onFormat: "yes", series: "unclear", premise: "p", art: "3d-render", lighting: "bright" }, cover)).toEqual([`coverText must be the cover's words or ""`]);
     const caption: Looked = { id: "n1", group: "average", sight: "none", shotFrames: 0, heard: false };
-    expect(labelProblems({ onFormat: "no", premise: "A giveaway announcement." }, caption)).toEqual([]);
-    expect(labelProblems({ onFormat: "maybe", premise: " " }, caption)).toEqual(["onFormat must be one of yes, no, unclear", "premise is empty"]);
+    expect(labelProblems({ onFormat: "no", series: "stands-alone", premise: "A giveaway announcement." }, caption)).toEqual([]);
+    expect(labelProblems({ onFormat: "maybe", premise: " " }, caption)).toEqual(["onFormat must be one of yes, no, unclear", "series must be one of part-of-a-series, stands-alone, unclear", "premise is empty"]);
     const heard: Looked = { id: "h1", group: "winner", sight: "none", shotFrames: 0, heard: true };
-    expect(labelProblems({ onFormat: "yes", premise: "p", narrator: "me", firstLineSaysWhoAndWhere: "yes", question: "Why?", answered: "at-the-end" }, heard)).toEqual(["narrator must be one of first-person, second-person, named-character, third-person, several-voices, none, unclear"]);
+    expect(labelProblems({ onFormat: "yes", series: "stands-alone", premise: "p", narrator: "me", firstLineSaysWhoAndWhere: "yes", question: "Why?", answered: "at-the-end" }, heard)).toEqual(["narrator must be one of first-person, second-person, named-character, third-person, several-voices, none, unclear"]);
   });
 
   it("needs five rules with a verdict, and keeps no pattern the blind check didn't back", () => {
     expect(failed({ ...ok, verdicts: 4 })).toEqual(["Story: at least 5 of our rules have enough Reels behind them for a verdict: 4 rules"]);
     const weak = { ...ok.patterns[0]!, winnersYes: 2 };
     expect(failed({ ...ok, patterns: [weak] })).toEqual([
-      `Story: every pattern kept is shown by 3+ winners it wasn't drawn from, in 2+ accounts, and clearly more often than by average Reels: "Open on the problem": 2 of 5 winners, 0 of 5 average, only 2 of those winners show it (needs 3)`,
+      `Story: every pattern kept is shown by 3+ winners it wasn't drawn from, at least half of them, in 2+ accounts, and clearly more often than by average Reels: "Open on the problem": 2 of 5 winners, 0 of 5 average, only 2 of those winners show it (needs 3)`,
     ]);
   });
 
@@ -287,6 +288,9 @@ describe("stage 1, research", () => {
     // The first real run kept a pattern on 3 of 5 winners against 1 of 4 average Reels.
     expect(patternProblem({ ...p, winnersYes: 3, winnersAsked: 5, averageYes: 1, averageAsked: 4 })).toBe("it could be told for only 5 winners and 4 average Reels (needs 5 of each)");
     expect(patternProblem({ ...p, winnersYes: 2, winnersAsked: 5, averageYes: 0, averageAsked: 5 })).toBe("only 2 of those winners show it (needs 3)");
+    // The first real story run kept one on 3 of 7 winners against 1 of 6 average Reels: what under half of the winners do isn't what winners do.
+    expect(patternProblem({ ...p, winnersYes: 3, winnersAsked: 7, averageYes: 1, averageAsked: 6 })).toBe("fewer than half of those winners show it");
+    expect(patternProblem({ ...p, winnersYes: 4, winnersAsked: 7, averageYes: 1, averageAsked: 6 })).toBeNull();
   });
 });
 

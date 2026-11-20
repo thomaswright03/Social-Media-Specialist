@@ -8,9 +8,12 @@
 // newest Reels as winners, and the comparison would show how the account
 // changed, not why a Reel won. A winner is in its account's top quarter by
 // lift, with a lift of at least WINNER_LIFT. It is compared with the same
-// account's average Reels, the middle half. The top Reels on their own show
-// only what an account always does; the difference between the two groups is
-// what the winners did that the rest didn't.
+// account's average Reels: the middle half, as long as the Reel got between
+// 1/WINNER_LIFT and WINNER_LIFT times the usual. (In an account where a few
+// Reels run far ahead, the middle half by rank reaches past 1.5: the first
+// real run had "average" Reels at 1.68 next to a winner at 1.79.) The top
+// Reels on their own show only what an account always does; the difference
+// between the two groups is what the winners did that the rest didn't.
 import type { DiscoveredAccount, Media } from "../instagram.ts";
 import { median } from "./diagnose.ts";
 
@@ -21,6 +24,8 @@ export const MAX_AGE_DAYS = 365;
 /** An account needs this many scored Reels before a "top quarter" means anything. */
 export const MIN_SCORED = 8;
 export const WINNER_LIFT = 1.5;
+/** An average Reel's lift is inside this band: under a winner's, and not as far below the usual as a winner is above it. */
+export const AVERAGE_LIFT = { min: Math.round((1 / WINNER_LIFT) * 100) / 100, max: WINNER_LIFT } as const;
 /** A Reel is scored against the median of this many Reels posted nearest to it (itself included). */
 export const WINDOW = 21;
 
@@ -126,7 +131,7 @@ export function studyAccount(acc: DiscoveredAccount, now = new Date()): AccountS
     .sort((a, b) => b.lift - a.lift || b.score - a.score);
   const quarter = Math.floor(scored.length / 4);
   const candidates = scored.map(({ m, score, lift }, i): Candidate => {
-    const group: Group = i < quarter ? (lift >= WINNER_LIFT ? "winner" : "other") : i < scored.length - quarter ? "average" : "other";
+    const group: Group = i < quarter ? (lift >= WINNER_LIFT ? "winner" : "other") : i < scored.length - quarter && lift >= AVERAGE_LIFT.min && lift < AVERAGE_LIFT.max ? "average" : "other";
     return { url: m.permalink!, account: acc.username, postedAt: m.timestamp.slice(0, 10), ageDays: Math.round(age(m)), caption: m.caption ?? "", views: m.views ?? null, likes: m.likes, comments: m.comments, audioType: m.audioType ?? null, mediaUrl: m.mediaUrl, thumbnailUrl: m.thumbnailUrl, score, lift, group };
   });
   const inGroup = (group: Group, video = false) => candidates.filter((c) => c.group === group && (!video || c.mediaUrl)).length;
@@ -140,7 +145,7 @@ export function accountLine(a: Omit<AccountStudy, "candidates">): string {
   const read = a.postsRead !== undefined ? `${n(a.postsRead)}${a.postsInAll ? ` of its ${n(a.postsInAll)}` : ""} posts read, ` : "";
   if (a.problem) return `@${a.username}: not used. ${a.problem}${a.postsRead ? ` (${read.replace(/, $/, "")})` : ""}.`;
   const video = (count: number | undefined) => (count === undefined ? "" : ` (${count} with a video file)`);
-  return `@${a.username}: ${a.followers === null ? "?" : n(a.followers)} followers, ${read}${a.settled} Reels scored by ${a.scoredBy}, median ${a.median === null ? "?" : n(a.median)}, ${a.postsPerWeek ?? "?"} posts a week. ${a.winners} ${a.winners === 1 ? "winner" : "winners"}${video(a.winnersWithVideo)}, ${a.average} average${video(a.averageWithVideo)}.`;
+  return `@${a.username}: ${a.followers === null ? "?" : n(a.followers)} followers, ${read}${a.settled} Reels scored by ${a.scoredBy}, median ${a.median === null ? "?" : n(Math.round(a.median))}, ${a.postsPerWeek ?? "?"} posts a week. ${a.winners} ${a.winners === 1 ? "winner" : "winners"}${video(a.winnersWithVideo)}, ${a.average} average${video(a.averageWithVideo)}.`;
 }
 
 /**
