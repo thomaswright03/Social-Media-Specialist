@@ -186,4 +186,14 @@ describe("one world the camera flies through (Thomas, 2026-11-20)", async () => 
     }
     expect(END_CARD).toBeGreaterThanOrEqual(2);
   });
+
+  it("asks an explainer's closing question over the end card (Thomas, 2026-11-20)", () => {
+    const t = timeline([{ start: 0, end: 2 }, { start: 2, end: 4, line: "Would you?" }], [null, null]);
+    const asked = composeHtml(t, ["", ""], [], "", { endQuestion: "Would you give 5% away?" });
+    expect(asked).toContain('<div id="endcard" class="q"><p>Would you give 5% away<em>?</em></p><svg class="mark"');
+    expect(asked).toContain("SHOTS[SHOTS.length-1].at+(0)");
+    const plain = composeHtml(t, ["", ""]);
+    expect(plain).toContain('<div id="endcard"><svg class="mark"');
+    expect(plain).toContain("SHOTS[SHOTS.length-1].at+(SHOTS[SHOTS.length-1].dur)");
+  });
 });
