@@ -4,7 +4,7 @@
 // our own sound (compose.ts). The gate puts key frames of ours next to the
 // covers of the benchmark accounts' best Reels in front of a separate judge.
 // Nothing is posted here.
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import { discoverAccount } from "../instagram.ts";
@@ -117,8 +117,9 @@ export async function alignWords(take: string, words: string[], work: string, lo
     await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", take, "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", wav]);
     const list = join(work, "align-words.json");
     await writeFile(list, JSON.stringify(words));
-    const out = await runOut(process.env.PYTHON ?? "python3", [pipelinePath("align/align.py"), wav, list]);
-    const j = JSON.parse(out.toString("utf8")) as { start: number | null; end: number | null }[];
+    const answer = join(work, "align-out.json");
+    await run(process.env.PYTHON ?? "python3", [pipelinePath("align/align.py"), wav, list, answer]);
+    const j = JSON.parse(await readFile(answer, "utf8")) as { start: number | null; end: number | null }[];
     if (Array.isArray(j) && j.length === words.length) return j;
     log?.(`WhisperX gave ${Array.isArray(j) ? j.length : "no"} words for ${words.length}; using the speech service's stamps.`);
     return null;
