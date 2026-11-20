@@ -159,7 +159,8 @@ describe("the title-card check", () => {
 import { earsCheck, listenReads, topicReads } from "../src/pipeline/script.ts";
 
 describe("ears only (listeners who never see the screen)", () => {
-  const vague = { shots: [{ start: 0, end: 1.5, line: "[curious] Two people solved it." }, { start: 1.5, end: 3, line: "Who gets the credit?" }] };
+  // An opening (stage 3) carries its words in `audio`, as stage 3's prompt asks.
+  const vague = { shots: [{ start: 0, end: 1.5, audio: "[curious] Two people solved it." }, { start: 1.5, end: 3, audio: "Who gets the credit?" }] };
 
   it("fails an opening whose words don't say what it's about", async () => {
     const prompts: string[] = [];
@@ -180,7 +181,7 @@ describe("ears only (listeners who never see the screen)", () => {
   it("listens to the whole narration and says what the listener couldn't place", async () => {
     const ask = async (p: string) =>
       p.includes("Did the voice alone make it clear?") ? "About: RIGHT\nWhat happened: WRONG\nPeople: WRONG\nFollowed: WRONG\nVERDICT: NO" : "ABOUT: math\nSTORY: someone solved something.\nPEOPLE: Alpöge: not said\nCONFUSED: who Alpöge is and why Anthropic matters";
-    const reads = await listenReads(vague.shots, "intended", ask);
+    const reads = await listenReads(vague.shots.map((x) => ({ start: x.start, end: x.end, line: x.audio })), "intended", ask);
     const c = earsCheck("Listeners who only hear the voice follow it (2 of 3)", reads);
     expect(c.passed).toBe(false);
     expect(c.detail).toContain("Got wrong: what happened, people, followed");
