@@ -160,7 +160,6 @@ async function main() {
     try {
       const token = await currentToken(vault, { log }).catch(() => null);
       const me = token ? await instagramClient(token.token).account().catch(() => null) : null;
-      const accounts = (process.env.RESEARCH_ACCOUNTS || "stickmanstorys22").split(/[\s,]+/).map((a) => a.trim().replace(/^@/, "")).filter(Boolean);
       const { chromium } = await import("playwright");
       const r = await runProduce({
         vault,
@@ -169,7 +168,8 @@ async function main() {
         speak,
         sfx: process.env.REEL_SFX === "off" ? undefined : soundEffect,
         browser: () => chromium.launch(),
-        benchmarks: (dir) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts, dir }) : Promise.resolve([])),
+        // The judge compares ours with the leading accounts of the same format (stage 1's list).
+        benchmarks: (dir, format) => (token && me ? benchmarkCovers({ token: token.token, igUserId: me.id, accounts: accountsFor(format), dir }) : Promise.resolve([])),
         outDir: "reel",
         subject: process.argv[3] || undefined,
         log,

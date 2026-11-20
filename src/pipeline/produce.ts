@@ -130,7 +130,7 @@ export async function runProduce(d: {
   sfx?: SoundEffect;
   browser: () => Promise<Browser>;
   /** Saves benchmark frames into the folder and returns their file names. */
-  benchmarks: (dir: string) => Promise<string[]>;
+  benchmarks: (dir: string, format: Format) => Promise<string[]>;
   outDir: string;
   subject?: string;
   log?: (m: string) => void;
@@ -297,7 +297,7 @@ export async function runProduce(d: {
     const name = `ours-${k + 1}.jpg`;
     await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(judgeDir, name)).then(() => ours.push(name)).catch(() => {});
   }
-  const bench = await d.benchmarks(judgeDir).catch(() => [] as string[]);
+  const bench = await d.benchmarks(judgeDir, format).catch(() => [] as string[]);
 
   // Can a stranger follow the finished video? A separate viewer sees one
   // frame of every shot with what's said over it, and retells it.
@@ -328,7 +328,7 @@ export async function runProduce(d: {
   const notes = [
     `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
     `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
-    `Benchmark: the most liked Reels of the accounts Thomas admires (cover images only; Instagram gives no audio for other accounts). Judge their voice and sound as what top stick-figure story accounts use: a clear narrator over trending music with sound effects.`,
+    `Benchmark: the most liked Reels of the leading ${format} accounts from stage 1's list (${format === "explainer" ? "motion-graphics news explainers" : format === "story" ? "stick-figure stories" : format === "satisfying" ? "satisfying loops" : "brand ads"}; cover images only, Instagram gives no audio for other accounts). Judge their voice and sound as what top accounts of that kind use: a clear narrator over trending music with sound effects.`,
   ].join(" ");
   const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
   const r = await runStage<ProductionJudgement>({
