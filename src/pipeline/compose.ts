@@ -25,6 +25,8 @@ export const LIME = "#a3e635";
 export const CAPTION_TOP = 1290;
 /** The small label for on-screen text that adds something the voice doesn't say (a name, a time). */
 export const LABEL_TOP = 240;
+/** Where a physics run's counter sits: under the label, above the arena. */
+export const PHYS_COUNTER_TOP = 330;
 
 /** The label's text: the shot's on-screen text, when it isn't just the spoken line again. */
 export const labelFor = (s: TimedShot) => (s.words.length && s.onScreenText?.trim() && !repeatsLine(s.onScreenText, s.line) ? s.onScreenText.trim() : "");
@@ -126,13 +128,18 @@ export function transitionFor(i: number, motion: ShotMotion | null, flash: boole
  * The page every frame is drawn from. A shot shows its drawing, or, when the
  * motion kit plans it, its animated pieces (pipeline/motion/runtime.js).
  */
-export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion | null)[] = []): string {
+/**
+ * The page that draws the Reel. `physics` is a recorded physics run's drawing
+ * code (pipeline/physics.ts): it fills the frame behind the words, its counter
+ * shows near the top, and each shot's on-screen text shows as the label.
+ */
+export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion | null)[] = [], physics = ""): string {
   const shots = t.map((s, i) => {
     const cam = cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`);
     const m = motions[i] ?? null;
     const move = m ? { from: 1, to: 1.035 } : {};
     // A motion shot's pieces carry their own words, so no label on top repeats them.
-    return { at: s.at, dur: s.dur, label: m ? "" : labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m };
+    return { at: s.at, dur: s.dur, label: physics ? (s.onScreenText?.trim() ?? "") : m ? "" : labelFor(s), ...cam, ...move, i, tr: transitionFor(i, m, cam.flash), motion: m, ...(physics ? { tr: "cut", flash: false, grain: false } : {}) };
   });
   const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
@@ -149,13 +156,17 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #label span{display:inline-block;max-width:820px;font-family:Montserrat,sans-serif;font-weight:800;font-size:46px;line-height:1.15;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:rgba(10,12,18,.72);padding:10px 26px;border-radius:14px}
 #cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
+#phys{position:absolute;inset:0;z-index:3}
+#pcount{position:absolute;z-index:7;left:0;right:0;top:${PHYS_COUNTER_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:68px;color:#fff;letter-spacing:.02em;text-shadow:0 4px 14px rgba(0,0,0,.85)}
+#pcount span{display:inline-block}
 #cap span{display:inline-block;transform-origin:50% 70%}
 </style></head><body>
 ${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ?? "")}</div>`).join("\n")}
 <svg id="grain" width="${W + 40}" height="${H + 40}"><filter id="n"><feTurbulence id="turb" type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="1"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 <div id="vignette"></div><div id="flash"></div>
-<div id="label"></div><div id="cap"></div>
+<div id="label"></div><div id="cap"></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
 <script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
+${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
 <script>
 const SHOTS=${scriptJson(shots)};
 const MOUNTED=SHOTS.map(s=>s.motion&&window.MK?window.MK.mount(s.motion,document.getElementById('s'+s.i)):null);
@@ -195,7 +206,8 @@ window.render=(t)=>{
   if(!c){ if(capKey!==null){ cap.innerHTML=''; capKey=null; } }
   else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
-  const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
+  const pc=document.getElementById('pcount'); if(pc&&window.physRender){ const ct=window.physRender(t); if(pc.dataset.k!==ct){ pc.innerHTML=ct?'<span>'+esc(ct)+'</span>':''; pc.dataset.k=ct; } }
+  const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null, pc&&pc.textContent.trim()?pc.firstElementChild:null]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
 };
 </script></body></html>`;
@@ -263,7 +275,8 @@ export async function audioSeconds(file: string): Promise<number> {
  * a soft whoosh on every cut, all ducked under the voice, then loudness
  * normalised to -14 LUFS with true peak under -1.5 dBTP (two passes).
  */
-export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string, sfx: { file: string; at: number }[] = []): Promise<string> {
+/** `continuous`: one unbroken shot (a physics run), so no whoosh on cuts and no heartbeat under its own music. */
+export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], dir: string, sfx: { file: string; at: number }[] = [], opts: { continuous?: boolean } = {}): Promise<string> {
   const total = totalSeconds(t);
   const inputs: string[] = [];
   const filters: string[] = [];
@@ -273,10 +286,10 @@ export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], di
   filters.push(`[0:a]lowpass=f=400,afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, total - 1.5).toFixed(3)}:d=1.5[pad]`);
   filters.push(`[1:a]lowpass=f=300,aformat=channel_layouts=stereo[room]`);
   // A soft low pulse, like a slow heartbeat, from the second shot on.
-  const beatFrom = t[1]?.at ?? 0;
+  const beatFrom = opts.continuous ? totalSeconds(t) + 1 : (t[1]?.at ?? 0);
   inputs.push("-f", "lavfi", "-i", `aevalsrc='if(gte(t,${beatFrom.toFixed(3)}),0.5*sin(2*PI*52*t)*exp(-9*mod(t-${beatFrom.toFixed(3)},0.82)),0)':s=44100:d=${total.toFixed(3)}`);
   filters.push(`[2:a]lowpass=f=160,volume=0.55,aformat=channel_layouts=stereo[beat]`);
-  const cuts = t.slice(1).map((s) => s.at);
+  const cuts = opts.continuous ? [] : t.slice(1).map((s) => s.at);
   const whooshes: string[] = [];
   cuts.forEach((c, i) => {
     const idx = 3 + i;

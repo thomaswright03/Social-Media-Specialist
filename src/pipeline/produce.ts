@@ -14,6 +14,7 @@ import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOu
 import { check, gate, gateProduction, type GateResult, type MediaFacts, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScenes, lookSheet, NO_CAST } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
+import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { runStage, stagePrompt } from "./stages.ts";
@@ -225,7 +226,24 @@ export async function runProduce(d: {
   let look = "";
   let svgs: string[] = t.map(() => "");
   let motions: (ShotMotion | null)[] = [];
-  if (USES_MOTION[format]) {
+  let physics = "";
+  const effects: { file: string; at: number; cue: string }[] = [];
+  if (USES_PHYSICS[format]) {
+    // Satisfying videos are one continuous physics run with its own notes.
+    const ph = await physicsPlan(timed, reel.script.story ?? "", seconds, d.ask, log);
+    await writeFile(join(d.outDir, "physics.json"), JSON.stringify({ plan: ph.plan, problems: ph.problems, doneAt: ph.run?.doneAt ?? null, tempo: ph.run?.tempo ?? null }, null, 1));
+    if (!ph.run) {
+      const g = gate([check("The physics plan passed its checks and finishes late in the video", false, ph.problems.slice(0, 4).join(" "))]);
+      await d.vault.saveStage({ stage: 5, subject: reel.subject, attempt: 1, passed: false, output: { physics: ph.plan, problems: ph.problems }, gate: g }, now());
+      await d.vault.logAction({ kind: "stage", summary: "Stage 5, Production: stopped, the physics plan didn't pass its checks.", detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
+      return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
+    }
+    physics = physicsRuntime(ph.run);
+    const notes = join(work, "collisions.wav");
+    await writeFile(notes, collisionAudio(ph.run));
+    effects.push({ file: notes, at: 0, cue: `our own notes, one per collision (${ph.run.events.length} events)` });
+    look = `physics: ${ph.plan!.kind} (${ph.plan!.palette ?? "neon"}), finish at ${ph.run.doneAt!.toFixed(1)} s`;
+  } else if (USES_MOTION[format]) {
     const m = await motionPlan(timed, d.ask, log, style);
     await writeFile(join(d.outDir, "motion.json"), JSON.stringify(m.plan, null, 1));
     look = `motion kit: ${(m.plan?.shots ?? []).map((s) => `${s.shot}. ${s.pieces.map((p) => p.kind).join(" + ")}`).join("; ")}`;
@@ -256,8 +274,7 @@ export async function runProduce(d: {
   }
 
   // Sound effects for each shot's cue (a failed one is left out, not fatal).
-  const effects: { file: string; at: number; cue: string }[] = [];
-  if (d.sfx) {
+  if (d.sfx && !physics) {
     for (const [i, s] of t.entries()) {
       const cue = s.sound?.trim();
       if (!cue || /^(none|silence|no sound)\b/i.test(cue)) continue;
@@ -278,13 +295,13 @@ export async function runProduce(d: {
   let boxes: TextBox[] = [];
   const framesDir = join(work, "frames");
   try {
-    const html = composeHtml(t, svgs, motions);
+    const html = composeHtml(t, svgs, motions, physics);
     await writeFile(join(work, "compose.html"), html);
     boxes = (await renderFrames(browser, html, seconds, framesDir, log)).boxes;
   } finally {
     await browser.close().catch(() => {});
   }
-  const audio = await mixAudio(t, voiceFiles, work, effects);
+  const audio = await mixAudio(t, voiceFiles, work, effects, { continuous: Boolean(physics) });
   const video = join(d.outDir, "reel.mp4");
   await mux(framesDir, audio, video);
   const facts = await mediaFacts(video);
@@ -329,7 +346,9 @@ export async function runProduce(d: {
   const cuts = t.length - 1;
   const notes = [
     `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
-    `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
+    physics
+      ? `Our sound: ${effects[0]?.cue ?? "our own notes"}, an original chord loop that climbs as it goes, a chord and a burst on each big moment, over our own low pad and room tone, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns. Our picture: ${look}, one continuous simulated shot like the leading satisfying physics accounts.`
+      : `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
     `Benchmark: the most liked Reels of the leading ${format} accounts from stage 1's list (${format === "explainer" ? "motion-graphics news explainers" : format === "story" ? "stick-figure stories" : format === "satisfying" ? "satisfying loops" : "brand ads"}; cover images only, Instagram gives no audio for other accounts). Judge their voice and sound as what top accounts of that kind use: a clear narrator over trending music with sound effects.`,
   ].join(" ");
   const learned = await learnedChecks(d.vault, 5, { look, shots: t.map((s) => s.visual), notes }, d.ask);
