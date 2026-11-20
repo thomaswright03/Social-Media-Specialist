@@ -18,12 +18,14 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   (size, no scripts or outside files) and asks again when one is broken.
 - **Motion kit (explainers):** instead of drawings, Claude picks one ready-made
   animated piece per shot (title, news card, counter, bars, line, compare,
-  quote, list, icon, timeline) and fills it in as JSON (the "motion" prompt);
+  quote, list, icon, timeline, waffle, people, coin stack, flow, split bar,
+  calendar, stock ticker, meter, phone chat, stamp) and fills it in as JSON
+  (the "motion" prompt);
   the pieces are built once in `pipeline/motion/runtime.js` with proper
   easing, readable by 0.6 s, over a moving background, and shots whip or zoom
   into each other. Code checks the plan (`src/pipeline/motion.ts`): every
-  shot has 1 or 2 valid pieces, and every figure on screen is one the script
-  says.
+  shot has 1 or 2 valid pieces, every figure on screen is one the script
+  says, and no kind of piece is used twice in a Reel (Thomas, 2026-11-20).
 - **Captions and text:** one caption band, like the benchmark: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).
@@ -336,11 +338,21 @@ The pieces (every field not marked optional is required):
 - list: {"kind":"list","title":"…","items":["…","…"]} 2 to 4 items that tick in. Each at most 30 characters.
 - icon: {"kind":"icon","name":"phone","label":"…"} One big icon that draws itself, with a ripple. name is one of: {{ICONS}}. label at most 30 characters.
 - timeline: {"kind":"timeline","items":[{"date":"2023","label":"…"},{"date":"Nov 2026","label":"…"}],"highlight":1} 2 to 4 dates on a line; the highlighted one pulses.
+- waffle: {"kind":"waffle","percent":5,"label":"of shares to the fund"} A 10 by 10 grid of squares that lights up to the percent. For a share or a part of a whole.
+- people: {"kind":"people","count":1,"of":10,"label":"Americans own stock"} A row of people figures, count of them lit. of is 2 to 20. For "1 in 10" and "half of all".
+- stack: {"kind":"stack","to":80,"prefix":"$","suffix":"B","label":"fund value"} Gold coins pile up while the total counts. For an amount of money.
+- flow: {"kind":"flow","from":"Anthropic staff","to":"Charity","value":"$80B"} Money or things pour from one name down into another. value (optional) at most 9 characters, names at most 22. For who gives what to whom.
+- split: {"kind":"split","title":"…","parts":[{"name":"The fund","value":5},{"name":"Everyone else","value":95}],"unit":"%","highlight":0} One long bar that splits into 2 to 4 coloured parts, with a legend. For how something is divided.
+- calendar: {"kind":"calendar","month":"Nov","day":"20","weekday":"Thursday","label":"IPO day"} A desk calendar flips to the date. Give day or weekday (or both). For when something happens.
+- ticker: {"kind":"ticker","name":"ANTHROPIC","value":"$156B","change":"+12%","label":"valuation"} A stock-market card with a chart that draws itself and a scrolling tape; change starting with - turns it red. For a price, a valuation or a market move.
+- meter: {"kind":"meter","value":81.3,"of":156,"prefix":"$","unit":"B","label":"raised so far"} A thermometer that fills toward a goal. For progress toward a target.
+- chat: {"kind":"chat","title":"Messages","messages":["Wait, how much?","$156 billion."]} A phone with 1 to 3 text bubbles popping in (each at most 40 characters). For a question people are asking or a reaction.
+- stamp: {"kind":"stamp","text":"APPROVED","title":"IPO filing","color":"green"} A rubber stamp slams onto a document. text at most 12 characters; color red (default) or green. For a verdict, a ruling or a big yes or no.
 
 How to choose:
 1. The picture proves what the voice says in that shot. A shot that says a number shows that number (counter, bars, line, compare). A shot that says who did what shows the news card or an icon of the thing. A shot that says what changes for the viewer shows a compare or a list.
 2. Every figure on screen comes from that shot's own visual or line, exactly as written there. Never round, never add a number the script doesn't say. Code checks this.
-3. One piece per shot, two only when the shot really needs both (a headline over a counter). Never the same kind three shots in a row, never the same icon twice, and use at least four different kinds across the video. Code checks the first two.
+3. One piece per shot, two only when the shot really needs both (a headline over a counter). Every kind of piece is used at most once in the whole video, so no picture repeats (there are 20 kinds; a video has at most 14 shots). Once a kind is used, pick the next best kind for the next shot: a percent can be a counter, a waffle, a split or people; money can be a counter, a stack, a meter, a ticker or a flow. Code checks this.
 4. The first shot grabs: its piece is the most surprising thing in the video, usually the number.
 5. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
 6. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.

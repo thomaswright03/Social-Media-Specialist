@@ -16,7 +16,11 @@ type Ask = (p: string) => Promise<string>;
 export const MOTION_TRIES = 3;
 /** Formats made of graphics rather than drawn scenes. */
 export const USES_MOTION: Record<Format, boolean> = { explainer: true, story: false, satisfying: false, ad: false };
-export const KINDS = ["title", "headline", "counter", "bars", "line", "compare", "quote", "list", "icon", "timeline"] as const;
+export const KINDS = [
+  "title", "headline", "counter", "bars", "line", "compare", "quote", "list", "icon", "timeline",
+  // Added 2026-11-20 so a Reel never repeats a picture (Thomas: "why is there green circles for nearly every slide").
+  "waffle", "people", "stack", "flow", "split", "calendar", "ticker", "meter", "chat", "stamp",
+] as const;
 export const THEMES = ["navy", "red", "green", "gold", "slate"] as const;
 export const TRANSITIONS = ["cut", "whip", "zoom", "flash"] as const;
 export const ICONS = [
@@ -61,6 +65,42 @@ export function pieceFigures(p: Piece): string[] {
     case "compare":
       add((p.left as { value?: unknown })?.value);
       add((p.right as { value?: unknown })?.value);
+      break;
+    case "waffle":
+      add(p.percent);
+      break;
+    case "people":
+      add(p.count);
+      add(p.of);
+      break;
+    case "stack":
+      add(p.to);
+      break;
+    case "flow":
+      add(p.value);
+      add(p.from);
+      add(p.to);
+      break;
+    case "split":
+      for (const i of (p.parts as { value?: unknown }[]) ?? []) add(i?.value);
+      break;
+    case "calendar":
+      add(p.day);
+      add(p.month);
+      break;
+    case "ticker":
+      add(p.value);
+      add(p.change);
+      break;
+    case "meter":
+      add(p.value);
+      add(p.of);
+      break;
+    case "chat":
+      for (const m of (p.messages as unknown[]) ?? []) add(m);
+      break;
+    case "stamp":
+      add(p.text);
       break;
   }
   // Numbers written inside the words (a title, a label, a headline) count too.
@@ -134,7 +174,60 @@ export function pieceProblems(p: Piece, where: string): string[] {
       need(Array.isArray(items) && items.length >= 2 && items.length <= 4, "a timeline has 2 to 4 items");
       need(Array.isArray(items) && items.every((i) => str(i?.date).trim() && !tooLong(i?.date, 12) && !tooLong(i?.label, 22)), "each item has a date of at most 12 characters and a label of at most 22");
       break;
+    }    case "waffle":
+      need(isNum(p.percent) && num(p.percent) > 0 && num(p.percent) <= 100, "a waffle needs percent, a number above 0 and at most 100");
+      need(!tooLong(p.label, 40), "a waffle's label is at most 40 characters");
+      break;
+    case "people":
+      need(isNum(p.of) && Number.isInteger(num(p.of)) && num(p.of) >= 2 && num(p.of) <= 20, "people needs of, a whole number from 2 to 20");
+      need(isNum(p.count) && Number.isInteger(num(p.count)) && num(p.count) >= 0 && num(p.count) <= num(p.of), "people needs count, a whole number no bigger than of");
+      need(!tooLong(p.label, 40), "people's label is at most 40 characters");
+      break;
+    case "stack":
+      need(isNum(p.to) && num(p.to) > 0, "a stack needs a number above 0 in to");
+      need(!tooLong(`${str(p.prefix)}${str(p.suffix)}`, 8), "prefix and suffix are short, like $ or B");
+      need(!tooLong(p.label, 40), "a stack's label is at most 40 characters");
+      break;
+    case "flow":
+      need(Boolean(str(p.from).trim()) && Boolean(str(p.to).trim()), "a flow needs from and to");
+      need(!tooLong(p.from, 22) && !tooLong(p.to, 22), "from and to are at most 22 characters");
+      need(!tooLong(p.value, 9), "a flow's value is at most 9 characters");
+      break;
+    case "split": {
+      const parts = (p.parts as { name?: unknown; value?: unknown }[]) ?? [];
+      need(Array.isArray(parts) && parts.length >= 2 && parts.length <= 4, "a split has 2 to 4 parts");
+      need(Array.isArray(parts) && parts.every((i) => str(i?.name).trim() && !tooLong(i?.name, 20) && isNum(i?.value) && num(i?.value) >= 0), "each part has a name of at most 20 characters and a value of 0 or more");
+      need(!tooLong(p.title, 40), "a title is at most 40 characters");
+      break;
     }
+    case "calendar":
+      need(Boolean(str(p.month).trim()) && !tooLong(p.month, 10), "a calendar needs month, at most 10 characters");
+      need(Boolean(str(p.day).trim() || str(p.weekday).trim()), "a calendar needs a day or a weekday");
+      need(!tooLong(p.day, 4) && !tooLong(p.weekday, 10), "day is at most 4 characters and weekday at most 10");
+      need(!tooLong(p.label, 30), "a calendar's label is at most 30 characters");
+      break;
+    case "ticker":
+      need(Boolean(str(p.name).trim()) && !tooLong(p.name, 14), "a ticker needs name, at most 14 characters");
+      need(Boolean(str(p.value).trim()) && !tooLong(p.value, 9), "a ticker needs value, at most 9 characters");
+      need(!tooLong(p.change, 8), "a ticker's change is at most 8 characters, like +12%");
+      need(!tooLong(p.label, 24), "a ticker's label is at most 24 characters");
+      break;
+    case "meter":
+      need(isNum(p.value) && isNum(p.of) && num(p.of) > 0 && num(p.value) >= 0, "a meter needs value and of, numbers with of above 0");
+      need(!tooLong(`${str(p.prefix)}${str(p.unit)}`, 8), "prefix and unit are short, like $ or B");
+      need(!tooLong(p.label, 40), "a meter's label is at most 40 characters");
+      break;
+    case "chat": {
+      const m = (p.messages as unknown[]) ?? [];
+      need(Array.isArray(m) && m.length >= 1 && m.length <= 3, "a chat has 1 to 3 messages");
+      need(Array.isArray(m) && m.every((x) => typeof x === "string" && x.trim() && x.length <= 40), "each message is text of at most 40 characters");
+      break;
+    }
+    case "stamp":
+      need(Boolean(str(p.text).trim()) && !tooLong(p.text, 12), "a stamp needs text, at most 12 characters");
+      need(!tooLong(p.title, 30), "a stamp's title is at most 30 characters");
+      need(p.color == null || p.color === "red" || p.color === "green", 'a stamp\'s color is "red" or "green"');
+      break;
   }
   return out;
 }
@@ -161,12 +254,11 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
       if (invented.length) p.push(`Shot ${i + 1}, piece ${k + 1} shows ${[...new Set(invented)].join(", ")}, which the script never says; use the script's figures.`);
     });
   });
-  // Variety: no kind three shots running, no icon twice.
-  const kinds = shots.map((_, i) => byShot.get(i + 1)?.pieces[0]?.kind ?? "");
-  for (let i = 2; i < kinds.length; i++) if (kinds[i] && kinds[i] === kinds[i - 1] && kinds[i] === kinds[i - 2]) p.push(`Shots ${i - 1} to ${i + 1} are all ${kinds[i]}; change one.`);
-  const icons = plan.shots.flatMap((s) => s.pieces.filter((x) => x.kind === "icon").map((x) => ({ shot: s.shot, name: str(x.name) })));
-  const twice = icons.filter((x, k) => icons.findIndex((y) => y.name === x.name) < k);
-  if (twice.length) p.push(`The ${[...new Set(twice.map((x) => x.name))].join(", ")} icon is used more than once (shot ${twice.map((x) => x.shot).join(", ")}); use each icon once.`);
+  // Variety (Thomas, 2026-11-20: "once a slide gets used its theme cannot be
+  // reused for the video"): every kind of piece appears at most once a Reel.
+  const used = new Map<string, number[]>();
+  for (const sh of plan.shots) for (const x of sh.pieces) used.set(x.kind, [...(used.get(x.kind) ?? []), sh.shot]);
+  for (const [kind, at] of used) if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats.`);
   const extra = plan.shots.filter((s) => !(s.shot >= 1 && s.shot <= shots.length));
   if (extra.length) p.push(`There are only ${shots.length} shots; drop ${extra.map((s) => s.shot).join(", ")}.`);
   return p;
