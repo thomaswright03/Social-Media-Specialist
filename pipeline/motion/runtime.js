@@ -32,9 +32,9 @@
     return m ? Math.min(2, m[1].length) : 0;
   };
   /** Decimals to show: money with cents shows two ($4.20), everything else as written. */
-  const decs = (values, prefix) => {
+  const decs = (values, prefix, suffix) => {
     const d = Math.max(0, ...values.map(decimalsOf));
-    return d && String(prefix || "").includes("$") ? 2 : d;
+    return d && String(prefix || "").includes("$") && !String(suffix || "").trim() ? 2 : d;
   };
   const fmt = (v, dec, prefix, suffix) => (prefix || "") + Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + (suffix || "");
 
@@ -127,9 +127,10 @@
 
     counter(p) {
       const to = Number(p.to), from = Number(p.from ?? 0);
-      const dec = p.decimals != null ? clamp(Number(p.decimals), 0, 2) : decs([p.to, p.from ?? 0], p.prefix);
+      const dec = p.decimals != null ? clamp(Number(p.decimals), 0, 2) : decs([p.to, p.from ?? 0], p.prefix, p.suffix);
       const longest = fmt(Math.max(Math.abs(to), Math.abs(from)), dec, p.prefix, p.suffix).length;
-      const size = Math.min(240, Math.floor(1700 / Math.max(4, longest)));
+      // Sized to sit inside the ring (about 560 px across).
+      const size = Math.min(220, Math.floor(880 / Math.max(3, longest)));
       const el = h("div", "width:900px;height:760px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center");
       const ring = s("svg", { width: 760, height: 760, viewBox: "0 0 760 760", style: "position:absolute;left:70px;top:0" });
       ring.appendChild(s("circle", { cx: 380, cy: 380, r: 340, fill: "none", stroke: "rgba(255,255,255,.08)", "stroke-width": 18 }));
@@ -160,7 +161,7 @@
       const items = (p.items || []).slice(0, 5);
       const n = items.length;
       const max = Math.max(...items.map((i) => Number(i.value)), 0.0001);
-      const dec = decs(items.map((i) => i.value), p.prefix);
+      const dec = decs(items.map((i) => i.value), p.prefix, p.unit);
       const bw = Math.min(170, Math.floor(700 / n));
       const gap = (860 - bw * n) / (n + 1);
       const el = h("div", "width:900px;height:860px;position:relative");
@@ -198,7 +199,7 @@
       const pts = (p.points || []).slice(0, 8);
       const vals = pts.map((x) => Number(x.value));
       const lo = Math.min(0, ...vals), hi = Math.max(...vals) * 1.12 || 1;
-      const dec = decs(pts.map((x) => x.value), p.prefix);
+      const dec = decs(pts.map((x) => x.value), p.prefix, p.unit);
       const el = h("div", "width:900px;height:820px;position:relative");
       if (p.title) el.appendChild(h("div", "position:absolute;left:0;right:0;top:0;text-align:center;font:800 52px/1.1 Montserrat,sans-serif;text-transform:uppercase;color:#fff", esc(p.title)));
       const svg = s("svg", { width: 900, height: 820, viewBox: "0 0 900 820", style: "position:absolute;left:0;top:0;overflow:visible" });
@@ -259,7 +260,7 @@
         const it = p[side] || {};
         const win = p.highlight === side;
         const card = h("div", `position:absolute;top:40px;${side}:0;width:420px;height:560px;border-radius:32px;background:${win ? "rgba(163,230,53,.12)" : "rgba(255,255,255,.07)"};border:6px solid ${win ? LIME : "rgba(255,255,255,.25)"};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center`);
-        const dec = decs([it.value], p.prefix ?? it.prefix);
+        const dec = decs([it.value], p.prefix ?? it.prefix, p.unit ?? it.unit);
         const raw = it.value != null && it.value !== "" && Number.isFinite(Number(it.value));
         const val = h("div", `font:900 ${String(it.value ?? "").length > 6 ? 88 : 116}px/1 Montserrat,sans-serif;color:${win ? LIME : "#fff"};font-variant-numeric:tabular-nums`);
         const name = h("div", "margin-top:30px;font:800 44px/1.12 Montserrat,sans-serif;text-transform:uppercase;color:rgba(255,255,255,.88)", esc(it.name));

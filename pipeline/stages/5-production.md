@@ -340,7 +340,7 @@ The pieces (every field not marked optional is required):
 How to choose:
 1. The picture proves what the voice says in that shot. A shot that says a number shows that number (counter, bars, line, compare). A shot that says who did what shows the news card or an icon of the thing. A shot that says what changes for the viewer shows a compare or a list.
 2. Every figure on screen comes from that shot's own visual or line, exactly as written there. Never round, never add a number the script doesn't say. Code checks this.
-3. One piece per shot, two only when the shot really needs both (a headline over a counter). Never the same kind three shots in a row.
+3. One piece per shot, two only when the shot really needs both (a headline over a counter). Never the same kind three shots in a row, never the same icon twice, and use at least four different kinds across the video. Code checks the first two.
 4. The first shot grabs: its piece is the most surprising thing in the video, usually the number.
 5. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
 6. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.
