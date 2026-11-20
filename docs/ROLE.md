@@ -82,7 +82,7 @@ bold graphics) and 20% ads (one product from the website, plus the business
 itself: custom AI agents and software for businesses). Code picks each
 Reel's format and checks the script against it (`src/pipeline/formats.ts`).
 
-How a Reel gets made (stage 5, `social produce`): Thomas's ElevenLabs voice
+How a Reel gets made (stage 5, `social produce`): an upbeat ElevenLabs narrator (Liam, Thomas's pick)
 reads the lines, Claude draws every shot as a flat-vector stick-figure SVG in
 one style, code adds the titles, word-by-word lime captions and our own sound
 (no music anyone else owns), and renders a 1080x1920 mp4. A separate judge

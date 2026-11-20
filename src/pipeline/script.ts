@@ -126,12 +126,49 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
   const lessonText = lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "";
 
-  // Stage 3, on each finalist in turn until one opening passes.
-  let opening: Opening | null = null;
-  let premise: string | null = null;
+  const writeScript = async (opening: Opening, premise: string, brief: string, supplied: SourceText[]): Promise<ScriptResult> => {
+    // Stage 4. A retry revises the last draft (fix the failures, keep the rest),
+    // since a full rewrite brings new mistakes of its own.
+    let lastDraft: ScriptOut | null = null;
+    const r4 = await runStage<ScriptOut>({
+      vault: d.vault,
+      stage: 4,
+      subject: reel.subject,
+      ask: d.ask,
+      prompt: (failures) =>
+        stagePrompt(4, {
+          PREMISE: premise,
+          FORMAT: brief,
+          OPENING: JSON.stringify(opening),
+          PATTERNS: patterns,
+          LESSONS: lessonText,
+          GATE_FAILURES: failures && lastDraft ? `${failures}\n\nRevise your last script below: change only what fixes these, keep everything else as it is.\n${JSON.stringify(lastDraft)}` : failures,
+        }),
+      gate: async (s) => {
+        if (s) lastDraft = s;
+        const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
+        const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+        const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
+        const reads = shots.length ? await retellReads(shots, intended, cold) : null;
+        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
+        const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
+        const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
+        return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
+      },
+      input: { premise, format: reel.format, product: product?.name ?? null },
+      // Each revision fixes what the review found, so the script gets more rounds.
+      tries: SCRIPT_TRIES,
+      log: d.log,
+      now: d.now,
+    });
+    return { subject: reel.subject, premise, opening, script: r4.output, passed: r4.gate.passed, stage: 4, gate: r4.gate, problem: null };
+  };
+
+  // Stages 3 and 4, on each finalist in turn until one passes both. A script
+  // that can't pass with its opening moves on to the next idea, once.
+  let lastScript: ScriptResult | null = null;
+  let scriptFailures = 0;
   let last3: GateResult | null = null;
-  let brief = formatBrief(choice);
-  let supplied: SourceText[] = [];
   const picks = reel.picks?.length ? reel.picks : reel.finalists.map((sentence) => ({ sentence, answer: "", news: [] as number[] }));
   for (const pick of picks) {
     // The premise is the finalist with the ending stage 2 chose for it.
@@ -159,50 +196,13 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       now: d.now,
     });
     last3 = r.gate;
-    if (r.gate.passed) {
-      opening = r.output;
-      premise = p;
-      brief = thisBrief;
-      supplied = sources;
-      break;
+    if (r.gate.passed && r.output) {
+      lastScript = await writeScript(r.output, p, thisBrief, sources);
+      if (lastScript.passed || ++scriptFailures >= 2) return lastScript;
+      d.log?.(`The script for "${p.slice(0, 60)}" didn't pass; trying the next idea.`);
+      continue;
     }
     d.log?.(`The opening for "${p.slice(0, 60)}" didn't pass; trying the next idea.`);
   }
-  if (!opening || !premise) return { subject: reel.subject, premise: null, opening: null, script: null, passed: false, stage: 3, gate: last3 ?? gate([check("An idea to open", false)]), problem: null };
-
-  // Stage 4. A retry revises the last draft (fix the failures, keep the rest),
-  // since a full rewrite brings new mistakes of its own.
-  let lastDraft: ScriptOut | null = null;
-  const r4 = await runStage<ScriptOut>({
-    vault: d.vault,
-    stage: 4,
-    subject: reel.subject,
-    ask: d.ask,
-    prompt: (failures) =>
-      stagePrompt(4, {
-        PREMISE: premise!,
-        FORMAT: brief,
-        OPENING: JSON.stringify(opening),
-        PATTERNS: patterns,
-        LESSONS: lessonText,
-        GATE_FAILURES: failures && lastDraft ? `${failures}\n\nRevise your last script below: change only what fixes these, keep everything else as it is.\n${JSON.stringify(lastDraft)}` : failures,
-      }),
-    gate: async (s) => {
-      if (s) lastDraft = s;
-      const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
-      const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
-      const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
-      const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-      const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
-      const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
-      const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
-      return gate([...base.checks, ...clarity, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
-    },
-    input: { premise, format: reel.format, product: product?.name ?? null },
-    // Each revision fixes what the review found, so the script gets more rounds.
-    tries: SCRIPT_TRIES,
-    log: d.log,
-    now: d.now,
-  });
-  return { subject: reel.subject, premise, opening, script: r4.output, passed: r4.gate.passed, stage: 4, gate: r4.gate, problem: null };
+  return lastScript ?? { subject: reel.subject, premise: null, opening: null, script: null, passed: false, stage: 3, gate: last3 ?? gate([check("An idea to open", false)]), problem: null };
 }

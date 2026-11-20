@@ -55,7 +55,7 @@ describe("one expressive take (Thomas, 2026-11-19)", async () => {
     }) as unknown as typeof fetch;
     const s = await speak("[excited] Hi there", { fetchImpl: f, apiKey: "k", voiceId: "v" });
     const body = JSON.parse(String(calls[0]!.body));
-    expect(body).toMatchObject({ model_id: "eleven_v3", voice_settings: { stability: 0.5 } });
+    expect(body).toMatchObject({ model_id: "eleven_v3", voice_settings: { stability: 0 } });
     expect(body.previous_text).toBeUndefined();
     expect(calls[1]!.url).toContain("forced-alignment");
     expect((calls[1]!.body as FormData).get("text")).toBe("Hi there");
