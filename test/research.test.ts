@@ -78,6 +78,19 @@ describe("discoverAccount", () => {
     expect(a.media[0]).toMatchObject({ views: 1001, audioType: null });
   });
 
+  it("falls back to the plain fields when Instagram refuses without naming one", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      if (/view_count|media_audio_type/.test(urls.at(-1)!)) return new Response(JSON.stringify({ error: { message: "(#100) Please read documentation for supported fields.", code: 100 } }), { status: 400 });
+      return page([{ ...row(1), view_count: undefined, media_audio_type: undefined }]);
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22");
+    expect(urls).toHaveLength(3);
+    expect(a.gave).toEqual({ views: false, audioType: false });
+    expect(a.media[0]).toMatchObject({ likes: 10, views: null, audioType: null });
+  });
+
   it("refuses something that isn't a username", async () => {
     await expect(discoverAccount(fetch, "EAAx", "ig1", "not a name!")).rejects.toThrow("isn't an Instagram username");
   });

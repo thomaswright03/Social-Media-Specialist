@@ -315,10 +315,12 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
 
   // 1. Read the accounts and score every Reel against its own account.
   const studies: AccountStudy[] = [];
+  const noSoundKind: string[] = [];
   for (const a of d.accounts) {
     try {
       const acc = await (d.discover ?? discoverAccount)(fetchImpl, d.token, d.igUserId, a, POSTS_PER_ACCOUNT);
       const s = studyAccount(acc, now());
+      if (acc.gave && !acc.gave.audioType) noSoundKind.push(s.username);
       log(s.problem ? `@${s.username}: can't be used, ${s.problem}.` : `@${s.username}: ${s.followers ?? "?"} followers, ${s.settled} Reels scored by ${s.scoredBy} (median ${s.median}): ${count(s.winners, "winner")}, ${s.average} average.`);
       studies.push(s);
     } catch (err) {
@@ -327,6 +329,7 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
       studies.push({ username: a, followers: null, reels: 0, settled: 0, scoredBy: null, median: null, postsPerWeek: null, winners: 0, average: 0, problem, candidates: [] });
     }
   }
+  if (noSoundKind.length) notes.push(`Instagram wouldn't say what kind of sound ${handles(noSoundKind.map((username) => ({ username })))} used, so "its own sound" couldn't be measured for them.`);
   if (studies.some((s) => s.scoredBy === "likes and comments")) notes.push(`Instagram gave no views for ${handles(studies.filter((s) => s.scoredBy === "likes and comments"))}, so those Reels are scored by likes plus comments.`);
 
   // 2. The winners and the average Reels to look at, in an order that doesn't give the groups away.

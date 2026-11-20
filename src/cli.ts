@@ -324,11 +324,11 @@ async function main() {
         });
         log(result.message);
       }
-      for (const r of failed) {
-        console.error(`\nThe ${r.format} research didn't pass its gate:`);
-        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+      // Each report above lists its failed checks.
+      if (failed.length) {
+        console.error(`The research didn't pass its gate for: ${failed.map((r) => r.format).join(", ")}.`);
+        process.exitCode = 1;
       }
-      if (failed.length) process.exitCode = 1;
     } finally {
       vault.close();
     }

@@ -324,8 +324,10 @@ const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,perm
 // Newer fields are asked for first and dropped a set at a time when Instagram
 // refuses one: view_count (other accounts' Reels, since 2025-06-16) and
 // media_audio_type (since 2026-06-01; the docs don't say it works here).
+// A refusal doesn't name the field: the first real run got only
+// "(#100) Please read documentation for supported fields."
 const DISCOVERY_FIELD_SETS = [`${DISCOVERY_MEDIA},view_count,media_audio_type`, `${DISCOVERY_MEDIA},view_count`, DISCOVERY_MEDIA] as const;
-const refusedField = (err: unknown) => err instanceof InstagramError && /nonexisting field|unknown field|invalid field|field[^.]{0,40}(does not exist|isn't available|is not available|not supported)/i.test(err.message);
+const refusedField = (err: unknown) => err instanceof InstagramError && /nonexisting field|unknown field|invalid field|supported fields|field[^.]{0,40}(does not exist|isn't available|is not available|not supported)/i.test(err.message);
 const DISCOVERY_PAGE = 50;
 
 /**
