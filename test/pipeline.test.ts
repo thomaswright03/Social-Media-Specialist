@@ -16,9 +16,15 @@ import {
   gateScript,
   gateTest,
   isOneSentence,
+  labelProblems,
   mayAutoPost,
+  patternHolds,
+  patternProblem,
   sameNumber,
   scoreVariants,
+  type Looked,
+  type ReelLabels,
+  type ResearchGateInput,
   type Shot,
 } from "../src/pipeline/gates.ts";
 import { parseJson, STAGES, stagePrompt } from "../src/pipeline/stages.ts";
@@ -197,15 +203,94 @@ describe("stage 0, diagnose", () => {
 // --- Stages 1 to 8 ---------------------------------------------------------------
 
 describe("stage 1, research", () => {
-  const reel = (i: number) => ({ url: `https://instagram.com/reel/${i}`, views: 100_000 + i, likes: 1, comments: 1, lengthSeconds: 40, first2s: "mid-fall", cutsPerTenSeconds: 5, voice: "human", art: "clean", onScreenText: "hook", postsPerWeek: 4, commentThemes: "relatable" });
-  it("needs 15-20 reels with every field and 3+ examples per pattern", () => {
-    const reels = Array.from({ length: 15 }, (_, i) => reel(i));
-    const ok = { reels, patterns: [{ pattern: "Start mid-fall", examples: reels.slice(0, 3).map((r) => r.url) }] };
-    expect(gateResearch(ok).passed).toBe(true);
-    expect(gateResearch({ ...ok, patterns: [{ pattern: "x", examples: [reels[0]!.url, reels[0]!.url, "https://made-up"] }] }).passed).toBe(false);
-    expect(gateResearch({ ...ok, reels: reels.slice(0, 10) }).passed).toBe(false);
-    const missing = { ...ok, reels: [...reels.slice(1), { ...reel(0), voice: "" }] };
-    expect(gateResearch(missing).checks.find((c) => !c.passed)?.detail).toContain("voice");
+  const looked = (n: number, group: "winner" | "average", sight: Looked["sight"] = "frames"): Looked[] => Array.from({ length: n }, (_, i) => ({ id: `${group[0]}${i}`, group, sight, shotFrames: sight === "frames" ? 2 : 0, heard: sight === "frames" }));
+  const label = (l: Looked): ReelLabels => ({
+    id: l.id,
+    onFormat: "yes",
+    series: "stands-alone",
+    premise: "A night cleaner hears a knock.",
+    ...(l.sight !== "none" ? { art: "stick-figures", lighting: "dark" } : {}),
+    ...(l.sight === "cover" ? { coverText: "" } : {}),
+    ...(l.sight === "frames" ? { opening: "action", hookText: "", captions: "word-by-word", captionPosition: "lower", shots: [{ camera: "wide", people: "1", place: "office" }, { camera: "unclear", people: "unclear", place: "office" }] } : {}),
+    ...(l.heard ? { narrator: "first-person", firstLineSaysWhoAndWhere: "unclear", question: "", answered: "no-question" } : {}),
+  });
+  const reels = [...looked(6, "winner"), ...looked(6, "average")];
+  const ok: ResearchGateInput = {
+    format: "story",
+    accounts: [{ username: "a", problem: null }, { username: "b", problem: null }, { username: "c", problem: "only 3 Reels old enough to score (needs 8)" }],
+    looked: reels,
+    labels: reels.map(label),
+    videosGiven: 12,
+    videosMeasured: 12,
+    verdicts: 5,
+    patterns: [{ pattern: "Open on the problem", question: "Is the problem on screen in the first frame?", winnersYes: 3, winnersAsked: 5, averageYes: 0, averageAsked: 5, winnerAccounts: 2 }],
+  };
+  const failed = (x: ResearchGateInput) => gateResearch(x).checks.filter((c) => !c.passed).map((c) => `${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+
+  it("passes with two accounts, six Reels a side, measured videos, clean labels, five verdicts and a pattern that holds", () => {
+    const g = gateResearch(ok);
+    expect(g.passed).toBe(true);
+    expect(g.checks).toHaveLength(7);
+    expect(g.checks[0]).toMatchObject({ name: "Story: at least 2 accounts could be studied", detail: "2 of 3. @c: only 3 Reels old enough to score (needs 8)" });
+    expect(gateResearch({ ...ok, patterns: [] }).passed).toBe(true);
+  });
+
+  it("needs two accounts and six Reels on each side", () => {
+    expect(failed({ ...ok, accounts: ok.accounts.slice(1) })).toEqual(["Story: at least 2 accounts could be studied: 1 of 2. @c: only 3 Reels old enough to score (needs 8)"]);
+    const few = [...looked(6, "winner"), ...looked(5, "average")];
+    expect(failed({ ...ok, looked: few, labels: few.map(label) })).toEqual(["Story: at least 6 winners and 6 average Reels to compare: 6 winners, 5 average"]);
+  });
+
+  it("needs the videos Instagram gave to be measured, and is fine when it gave none", () => {
+    expect(failed({ ...ok, videosMeasured: 5 })).toEqual(["Story: the videos Instagram gave were measured: 5 of 12"]);
+    expect(gateResearch({ ...ok, videosMeasured: 6 }).passed).toBe(true);
+    const covers = [...looked(6, "winner", "cover"), ...looked(6, "average", "cover")];
+    expect(gateResearch({ ...ok, looked: covers, labels: covers.map(label), videosGiven: 0, videosMeasured: 0 }).passed).toBe(true);
+  });
+
+  it("needs every Reel labelled from the choices, and no Reel of Claude's own", () => {
+    expect(failed({ ...ok, labels: ok.labels!.slice(1) })).toEqual(["Story: every Reel was labelled, and none was added: not labelled: w0"]);
+    expect(failed({ ...ok, labels: [...ok.labels!, { ...label(reels[0]!), id: "made-up" }] })).toEqual(["Story: every Reel was labelled, and none was added: not among the Reels given: made-up"]);
+    expect(failed({ ...ok, labels: ok.labels!.map((l, i) => (i === 0 ? { ...l, art: "gorgeous", shots: l.shots!.slice(1) } : l)) })).toEqual([
+      "Story: every label is one of its choices: w0: art must be one of stick-figures, other-drawn, 3d-render, live-action, screen-recording, graphics, unclear; w0: shots has 1 entries, the picture has 2 frames",
+    ]);
+    expect(failed({ ...ok, labels: null })).toEqual(["Story: every Reel was labelled, and none was added: Claude wasn't asked: the checks above come first", "Story: every label is one of its choices: Claude wasn't asked: the checks above come first"]);
+  });
+
+  it("asks only for the labels a Reel could give", () => {
+    const cover: Looked = { id: "c1", group: "winner", sight: "cover", shotFrames: 0, heard: false };
+    expect(labelProblems({ onFormat: "yes", series: "part-of-a-series", premise: "p", art: "3d-render", lighting: "bright", coverText: "WAIT FOR IT" }, cover)).toEqual([]);
+    expect(labelProblems({ onFormat: "yes", series: "unclear", premise: "p", art: "3d-render", lighting: "bright" }, cover)).toEqual([`coverText must be the cover's words or ""`]);
+    const caption: Looked = { id: "n1", group: "average", sight: "none", shotFrames: 0, heard: false };
+    expect(labelProblems({ onFormat: "no", series: "stands-alone", premise: "A giveaway announcement." }, caption)).toEqual([]);
+    expect(labelProblems({ onFormat: "maybe", premise: " " }, caption)).toEqual(["onFormat must be one of yes, no, unclear", "series must be one of part-of-a-series, stands-alone, unclear", "premise is empty"]);
+    const heard: Looked = { id: "h1", group: "winner", sight: "none", shotFrames: 0, heard: true };
+    expect(labelProblems({ onFormat: "yes", series: "stands-alone", premise: "p", narrator: "me", firstLineSaysWhoAndWhere: "yes", question: "Why?", answered: "at-the-end" }, heard)).toEqual(["narrator must be one of first-person, second-person, named-character, third-person, several-voices, none, unclear"]);
+  });
+
+  it("needs five rules with a verdict, and keeps no pattern the blind check didn't back", () => {
+    expect(failed({ ...ok, verdicts: 4 })).toEqual(["Story: at least 5 of our rules have enough Reels behind them for a verdict: 4 rules"]);
+    const weak = { ...ok.patterns[0]!, winnersYes: 2 };
+    expect(failed({ ...ok, patterns: [weak] })).toEqual([
+      `Story: every pattern kept is shown by 3+ winners it wasn't drawn from, at least half of them, in 2+ accounts, and clearly more often than by average Reels: "Open on the problem": 2 of 5 winners, 0 of 5 average, only 2 of those winners show it (needs 3)`,
+    ]);
+  });
+
+  it("keeps a pattern only when the Reels it wasn't drawn from back it", () => {
+    const p = { pattern: "Open on the problem", question: "Is the problem on screen in the first frame?", winnersYes: 5, winnersAsked: 10, averageYes: 2, averageAsked: 10, winnerAccounts: 2 };
+    expect(patternProblem(p)).toBeNull();
+    expect(patternHolds(p)).toBe(true);
+    // 50% against 30% is under the 25 points; 50% against 25% is exactly on it.
+    expect(patternProblem({ ...p, averageYes: 3 })).toBe("average Reels show it nearly as often");
+    expect(patternHolds({ ...p, winnersYes: 4, winnersAsked: 8, averageYes: 2, averageAsked: 8 })).toBe(true);
+    // One creator's habit isn't a pattern.
+    expect(patternProblem({ ...p, winnerAccounts: 1 })).toBe("the winners that show it are all from one account");
+    // The first real run kept a pattern on 3 of 5 winners against 1 of 4 average Reels.
+    expect(patternProblem({ ...p, winnersYes: 3, winnersAsked: 5, averageYes: 1, averageAsked: 4 })).toBe("it could be told for only 5 winners and 4 average Reels (needs 5 of each)");
+    expect(patternProblem({ ...p, winnersYes: 2, winnersAsked: 5, averageYes: 0, averageAsked: 5 })).toBe("only 2 of those winners show it (needs 3)");
+    // The first real story run kept one on 3 of 7 winners against 1 of 6 average Reels: what under half of the winners do isn't what winners do.
+    expect(patternProblem({ ...p, winnersYes: 3, winnersAsked: 7, averageYes: 1, averageAsked: 6 })).toBe("fewer than half of those winners show it");
+    expect(patternProblem({ ...p, winnersYes: 4, winnersAsked: 7, averageYes: 1, averageAsked: 6 })).toBeNull();
   });
 });
 

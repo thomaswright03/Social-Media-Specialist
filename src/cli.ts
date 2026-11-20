@@ -17,26 +17,32 @@
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
 //                   everything posted and names the top 3 reasons it underperformed
-//   research        stage 1: studies the Reels of the accounts Thomas admires
-//                   (RESEARCH_ACCOUNTS, or usernames after the command) and saves what works
+//   research        stage 1: for each format (or the one named after the command, or REEL_FORMAT),
+//                   compares the winning Reels of the accounts in pipeline/research/accounts.json
+//                   with the same accounts' average Reels; "story: name1, name2" after the command
+//                   (or RESEARCH_RUN_ACCOUNTS) studies other accounts for one run; posts nothing
+//   accounts-test   reads the same accounts the way stage 1 does and says which it could use (how
+//                   many winners and average Reels, how many come with a video file); takes the same
+//                   formats and accounts as research; asks Claude nothing, saves nothing, posts nothing
 import "dotenv/config";
 import { mkdir, writeFile } from "node:fs/promises";
 import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "./draft.ts";
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
-import { currentToken, instagramClient } from "./instagram.ts";
+import { DISCOVERY_USAGE_STOP, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
 import { publishDue, runDaily } from "./social.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
-import { runResearch } from "./pipeline/research.ts";
+import { askClaudeWithFiles, runResearch, studyAccounts, summaryText, type ResearchResult } from "./pipeline/research.ts";
+import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
+import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
 import { benchmarkCovers, runProduce } from "./pipeline/produce.ts";
-import { askClaudeWithFiles } from "./pipeline/research.ts";
-import { ENTERTAINMENT, type Format } from "./pipeline/formats.ts";
+import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
 import { soundEffect, speak } from "./voice.ts";
 
@@ -66,6 +72,26 @@ async function runNow(): Promise<{ ok: boolean; message: string }> {
     signal: AbortSignal.timeout(15_000),
   }).catch(() => null);
   return res && (res.status === 204 || res.ok) ? { ok: true, message: "started" } : { ok: false, message: `GitHub wouldn't start the run (${res?.status ?? "no answer"})` };
+}
+
+/**
+ * What `research` and `accounts-test` were asked to look at:
+ * `[format … | all] [accounts]`. A format's name picks it, anything else is
+ * accounts ("story: name1, name2; ad: name3", or a plain list for one format).
+ */
+function researchTargets(args: string[]): { formats: Format[]; typed: string } {
+  const isName = (a: string) => a.toLowerCase() === "all" || isFormat(a.toLowerCase());
+  const named = [...args.filter(isName), ...(args.some(isName) ? [] : [process.env.REEL_FORMAT?.trim() ?? ""].filter(isName))].map((a) => a.toLowerCase());
+  const typed = [args.filter((a) => !isName(a)).join(" "), process.env.RESEARCH_RUN_ACCOUNTS ?? ""].filter((t) => t.trim()).join("; ");
+  const typedFor = Object.keys(parseAccounts(typed)) as Format[];
+  const plain = Boolean(typed.trim()) && Object.keys(parseAccounts(typed, "story")).length > typedFor.length;
+  const formats: Format[] = named.includes("all") ? [...RESEARCH_FORMATS] : named.length ? [...new Set(named as Format[])] : typedFor.length ? typedFor : plain ? ["story"] : [...RESEARCH_FORMATS];
+  if (plain && formats.length > 1) {
+    console.error(`Say which format those accounts are for, like "story: name1, name2; ad: name3".`);
+    process.exit(2);
+  }
+  if (plain && !named.length) log("No format was named, so these accounts are taken as story accounts.");
+  return { formats, typed };
 }
 
 async function main() {
@@ -280,15 +306,8 @@ async function main() {
     return;
   }
 
-  if (command === "research") {
-    const fromArgs = process.argv.slice(3);
-    const accounts = (fromArgs.length ? fromArgs : (process.env.RESEARCH_ACCOUNTS ?? "").split(/[\s,]+/))
-      .map((a) => a.trim().replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/.*$/, ""))
-      .filter(Boolean);
-    if (!accounts.length) {
-      console.error("No accounts to study. Set RESEARCH_ACCOUNTS (comma separated) or name them after the command.");
-      process.exit(2);
-    }
+  if (command === "accounts-test") {
+    const { formats, typed } = researchTargets(process.argv.slice(3));
     const vault = connect();
     try {
       const token = await currentToken(vault, { log });
@@ -297,21 +316,67 @@ async function main() {
         process.exit(2);
       }
       const me = await instagramClient(token.token).account();
-      const r = await runResearch({ vault, token: token.token, igUserId: me.id, accounts, log });
-      if (r.passed) {
-        const patterns = r.research?.patterns ?? [];
-        console.log(`\nStudied ${r.measured.length} Reels from ${accounts.map((a) => `@${a}`).join(", ")}.\n`);
-        for (const [i, p] of patterns.entries()) console.log(`${i + 1}. ${p.pattern}`);
+      const short: string[] = [];
+      const discovery: DiscoveryState = { set: 0 };
+      let requests = 0;
+      for (const format of formats) {
+        const accounts = accountsFor(format, typed);
+        console.log(`\n${format}: ${accounts.length ? "" : "no accounts are listed for it."}`);
+        const { studies } = await studyAccounts({ token: token.token, igUserId: me.id, accounts, discovery, log: (m) => console.log(`- ${m}`) });
+        requests += studies.reduce((total, x) => total + (x.requests ?? 0), 0);
+        const usable = studies.filter((x) => !x.problem);
+        const sum = (pick: (x: (typeof studies)[number]) => number | undefined) => usable.reduce((total, x) => total + (pick(x) ?? 0), 0);
+        const winners = sum((x) => x.winners);
+        const average = sum((x) => x.average);
+        const enough = usable.length >= MIN_ACCOUNTS && winners >= MIN_LOOKED_PER_GROUP && average >= MIN_LOOKED_PER_GROUP;
+        console.log(`  ${enough ? "Stage 1 can study this format" : "Stage 1 can't study this format yet"}: ${usable.length} of ${studies.length} accounts can be used (it needs ${MIN_ACCOUNTS}), with ${winners} winners and ${average} average Reels between them (it needs ${MIN_LOOKED_PER_GROUP} of each). Instagram gives the video file for ${sum((x) => x.winnersWithVideo)} of those winners and ${sum((x) => x.averageWithVideo)} of those average Reels.`);
+        if (!enough) short.push(format);
+      }
+      console.log(`\nReading them took ${requests} requests to Instagram.${typeof discovery.usage === "number" ? ` Its hourly allowance for reading other accounts is now ${Math.round(discovery.usage)}% used; stage 1 stops reading at ${DISCOVERY_USAGE_STOP}%.` : ""}`);
+      if (short.length) {
+        console.error(`\nNot enough to study: ${short.join(", ")}.`);
+        process.exitCode = 1;
+      }
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
+  if (command === "research") {
+    const { formats, typed } = researchTargets(process.argv.slice(3));
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log });
+      if (!token) {
+        console.error("INSTAGRAM_ACCESS_TOKEN isn't set.");
+        process.exit(2);
+      }
+      const me = await instagramClient(token.token).account();
+      const results: ResearchResult[] = [];
+      const discovery: DiscoveryState = { set: 0 };
+      for (const format of formats) {
+        const accounts = accountsFor(format, typed);
+        log(`Research, ${format}: studying ${accounts.map((a) => `@${a}`).join(", ") || "no accounts (none are listed for it)"}.`);
+        const r = await runResearch({ vault, token: token.token, igUserId: me.id, format, accounts, discovery, log });
+        results.push(r);
+        console.log(`\n${r.report}\n`);
+        if (r.reportFile) log(`The ${format} report is saved as ${r.reportFile}.`);
+      }
+      const passed = results.filter((r) => r.passed);
+      const failed = results.filter((r) => !r.passed);
+      if (passed.length) {
         const result = await sendHittaReport({
           project: HITTA_PROJECT,
           title: "Your Instagram research is ready",
-          summary: `The Social Media Specialist studied ${r.measured.length} Reels from ${accounts.join(", ")}. ${patterns.slice(0, 3).map((p, i) => `${i + 1}: ${p.pattern}`).join(" ")} The details are on its Vault page.`.slice(0, 900),
+          summary: `The Social Media Specialist compared other accounts' winning Reels with their average ones. ${results.map((r) => summaryText(r.findings, r.passed)).join(" ")} The full report is on its Vault page's History and in the run's files.`.slice(0, 900),
           urgency: "low",
         });
         log(result.message);
-      } else {
-        console.error(`\nThe research didn't pass its gate${r.tries ? ` after ${r.tries} tries` : ""}:`);
-        for (const c of r.gate.checks.filter((x) => !x.passed)) console.error(`- ${c.name}${c.detail ? `: ${c.detail}` : ""}`);
+      }
+      // Each report above lists its failed checks.
+      if (failed.length) {
+        console.error(`The research didn't pass its gate for: ${failed.map((r) => r.format).join(", ")}.`);
         process.exitCode = 1;
       }
     } finally {
@@ -333,7 +398,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, ideas, script, voice-test, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, preview, diagnose, research, accounts-test, ideas, script, voice-test, instagram-test or hitta-test.`);
     process.exit(2);
   }
 

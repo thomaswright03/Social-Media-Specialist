@@ -592,6 +592,17 @@ export class Vault {
     return true;
   }
 
+  /**
+   * Retires the active lessons of one kind that came from the given sources
+   * (they stay in the table, switched off). Returns how many.
+   */
+  async retireLessons(kind: LessonKind, sources: string[]): Promise<number> {
+    await this.ensureTables();
+    if (!sources.length) return 0;
+    const rs = await this.db.execute({ sql: `UPDATE "SocialLesson" SET "active" = 0 WHERE "active" = 1 AND "kind" = ? AND "source" IN (${sources.map(() => "?").join(",")})`, args: [kind, ...sources] });
+    return rs.rowsAffected;
+  }
+
   // --- The Instagram token ---------------------------------------------------
 
   async storedToken(): Promise<{ token: string; seed: string; expiresAt: string | null; refreshedAt: string } | null> {

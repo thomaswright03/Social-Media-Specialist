@@ -26,13 +26,13 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, ideas, script, produce, requests, instagram-test, hitta-test, voice-test]
+        options: [run, publish, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, hitta-test, voice-test]
       format:
-        description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix
+        description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research and accounts-test, the format to study; empty takes all four
         type: string
         required: false
       accounts:
-        description: For research, the Instagram usernames to study (comma separated)
+        description: 'For research and accounts-test, other accounts for this run, like "story: name1, name2; ad: name3"; empty uses pipeline/research/accounts.json'
         type: string
         required: false
 
@@ -48,7 +48,8 @@ permissions:
 jobs:
   social:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Research looks at up to 40 Reels a format with Claude: over an hour for all four.
+    timeout-minutes: ${{ inputs.command == 'research' && 150 || 45 }}
     env:
       # The Vault's Turso database (the same values as the other employees').
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
@@ -84,8 +85,14 @@ jobs:
       # Image (feed) posts: off since Thomas said "everything should be reels"
       # (2026-11-18); set this variable to "on" to draft them again.
       FEED_IMAGE_POSTS: ${{ vars.FEED_IMAGE_POSTS }}
-      # Stage 1 research: the accounts Thomas admires (the run's input wins).
+      # Stage 5's benchmark accounts (the run's input wins).
       RESEARCH_ACCOUNTS: ${{ inputs.accounts || vars.RESEARCH_ACCOUNTS }}
+      # Stage 1 research: accounts typed for this run; empty studies the ones
+      # in pipeline/research/accounts.json. "off" in RESEARCH_TRANSCRIBE skips
+      # the transcripts (ElevenLabs speech to text). accounts-test reads the
+      # same accounts and only says which of them stage 1 could use.
+      RESEARCH_RUN_ACCOUNTS: ${{ inputs.accounts }}
+      RESEARCH_TRANSCRIBE: ${{ vars.RESEARCH_TRANSCRIBE }}
       REEL_FORMAT: ${{ inputs.format }}
       # Scheduled runs start as the hourly check; the "due" step below turns
       # one into the morning run. A run by hand does what it was asked.
@@ -213,6 +220,15 @@ jobs:
         with:
           name: preview
           path: preview.jpg
+
+      # Stage 1's report for each format studied, even when a gate failed.
+      - name: Keep the research
+        if: always() && env.COMMAND == 'research' && steps.social.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: research
+          path: research/
+          if-no-files-found: ignore
 
       # The Reel, its drawings and the judge's frames, even when the gate
       # failed, so Thomas can watch it either way.

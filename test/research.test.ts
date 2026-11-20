@@ -1,10 +1,20 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
-import { discoverAccount, type DiscoveredAccount, type Media } from "../src/instagram.ts";
-import { cutsFrom, gateResearchMeasured, pickReels, postsPerWeek, runResearch, soundShareFrom, withMeasured, type MeasuredReel } from "../src/pipeline/research.ts";
+import { DISCOVERY_USAGE_STOP, discoverAccount, usageFrom, type DiscoveredAccount, type DiscoveryState, type Media } from "../src/instagram.ts";
+import { CAMERAS, LABELS, gateResearch, MAX_SHOTS, MIN_SHOTS, UNCLEAR, type ReelLabels } from "../src/pipeline/gates.ts";
+import { LEGACY_SOURCE, PER_GROUP, soundSigns, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, studyAccounts, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
+import { RESEARCH_FORMATS, accountsFor, cleanHandle, fileAccounts, parseAccounts } from "../src/pipeline/research-accounts.ts";
+import { captionFacts, cutTimes, lufsFrom, sampleShots, shotBounds, shotStats, soundShareFrom, speechFacts, type MeasureFile, type VideoFacts } from "../src/pipeline/research-measure.ts";
+import { NOT_MEASURED, RULES, fisher, rowText, rulesTable, tableText, verdictOf, type StudiedReel } from "../src/pipeline/research-rules.ts";
+import { AVERAGE_LIFT, ENOUGH_SCORED, MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, readEnough, studyAccount } from "../src/pipeline/research-sample.ts";
+import { stagePrompt } from "../src/pipeline/stages.ts";
+import { heardFrom, transcribe, type Heard } from "../src/transcribe.ts";
 import { Vault } from "../src/vault.ts";
 
-const NOW = new Date("2026-11-11T20:00:00Z");
+const NOW = new Date("2026-11-19T20:00:00Z");
 
 async function memoryVault(): Promise<Vault> {
   const vault = new Vault(createClient({ url: ":memory:" }));
@@ -12,7 +22,7 @@ async function memoryVault(): Promise<Vault> {
   return vault;
 }
 
-const reel = (acc: string, i: number, likes: number, daysAgo = i): Media => ({
+const reel = (acc: string, i: number, views: number | null, extra: Partial<Media> = {}, daysAgo = 10 + i): Media => ({
   id: `${acc}-${i}`,
   caption: `${acc} reel ${i}`,
   mediaType: "VIDEO",
@@ -20,96 +30,148 @@ const reel = (acc: string, i: number, likes: number, daysAgo = i): Media => ({
   timestamp: new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString(),
   permalink: `https://www.instagram.com/reel/${acc}${i}/`,
   mediaUrl: `https://cdn.example/${acc}${i}.mp4`,
-  thumbnailUrl: null,
-  likes,
+  thumbnailUrl: `https://cdn.example/${acc}${i}.jpg`,
+  likes: 10,
   comments: 1,
+  views,
+  ...extra,
 });
 
-const account = (username: string, count: number): DiscoveredAccount => ({ username, followers: 1000, posts: count, media: Array.from({ length: count }, (_, i) => reel(username, i, 100 - i)) });
+const account = (username: string, views: (number | null)[], extra: (i: number) => Partial<Media> = () => ({})): DiscoveredAccount => ({ username, followers: 1000, posts: views.length, media: views.map((v, i) => reel(username, i, v, extra(i))) });
 
-describe("stage 1 helpers", () => {
-  it("counts posts a week over what was fetched", () => {
-    expect(postsPerWeek([reel("a", 0, 1, 0), reel("a", 1, 1, 14)], NOW)).toBe(1);
-    expect(postsPerWeek([reel("a", 0, 1, 0)], NOW)).toBeNull();
-  });
+// 16 Reels, median 100: the top 4 are 5, 4, 3 and 2 times the median.
+const SIXTEEN = [500, 400, 300, 200, 100, 100, 100, 100, 100, 100, 100, 100, 90, 80, 70, 60];
 
-  it("picks each account's best Reels in turns, at most 20", () => {
-    const picked = pickReels([account("a", 30), account("b", 3)]);
-    expect(picked).toHaveLength(20);
-    expect(picked.slice(0, 2).map((p) => p.media.id)).toEqual(["a-0", "b-0"]);
-    expect(picked.filter((p) => p.account.username === "b")).toHaveLength(3);
-  });
-
-  it("reads cuts and sound from ffmpeg's output", () => {
-    expect(cutsFrom("pts_time:1.0\npts_time:2.0\npts_time:3.0\npts_time:4.0", 20)).toBe(2);
-    expect(soundShareFrom("silence_start: 0\nsilence_end: 2 | silence_duration: 2", 10)).toBe(0.8);
-    expect(soundShareFrom("silence_start: 5", 10)).toBe(0.5);
-    expect(soundShareFrom("", 10)).toBe(1);
-  });
-
-  const measured: MeasuredReel[] = Array.from({ length: 15 }, (_, i) => ({ url: `https://x/${i}`, account: "a", postedAt: "2026-11-01", caption: "", views: null, likes: 50 + i, comments: 2, lengthSeconds: 30, cutsPerTenSeconds: 3, soundShare: 0.9, postsPerWeek: 4, frames: `reel-${i}.jpg` }));
-
-  it("puts the measured numbers back over Claude's copies", () => {
-    const r = withMeasured({ reels: [{ url: "https://x/0", likes: 9999, lengthSeconds: 1, first2s: "f", art: "a", onScreenText: "t" }] }, measured)!;
-    expect(r.reels![0]).toMatchObject({ likes: 50, lengthSeconds: 30, cutsPerTenSeconds: 3, postsPerWeek: 4, voice: "sound for 90% of it" });
-    expect(r.reels![0]!.commentThemes).toContain("2 comments");
-  });
-
-  it("fails a Reel that wasn't looked up, passes a full answer", () => {
-    const full = measured.map((m) => ({ url: m.url, first2s: "a stick figure falls", art: "stick figures", onScreenText: "big caption" }));
-    const ok = gateResearchMeasured({ reels: full, patterns: [{ pattern: "falls in the first second", examples: full.slice(0, 3).map((x) => x.url) }] }, measured);
-    expect(ok.passed).toBe(true);
-    const bad = gateResearchMeasured({ reels: [...full.slice(1), { ...full[0]!, url: "https://made/up" }], patterns: [{ pattern: "p", examples: full.slice(1, 4).map((x) => x.url) }] }, measured);
-    expect(bad.passed).toBe(false);
-    expect(bad.checks[0]).toMatchObject({ passed: false, detail: expect.stringContaining("https://made/up") });
-  });
-});
-
-describe("Reels with no video file", () => {
-  const measured: MeasuredReel[] = Array.from({ length: 15 }, (_, i) => ({ url: `https://x/${i}`, account: "a", postedAt: "2026-11-01", caption: "", views: null, likes: 5, comments: 1, lengthSeconds: null, cutsPerTenSeconds: null, soundShare: null, postsPerWeek: 4, frames: `reel-${i}-cover.jpg`, framesAreCover: true }));
-  const full = measured.map((m) => ({ url: m.url, first2s: "cover: a stick figure mid-fall", art: "stick figures", onScreenText: "none", voice: "caption suggests a voiceover" }));
-
-  it("excuses only the numbers code couldn't read", () => {
-    expect(gateResearchMeasured({ reels: full, patterns: [{ pattern: "p", examples: full.slice(0, 3).map((x) => x.url) }] }, measured).passed).toBe(true);
-    // Claude can't excuse what code didn't: art is still required.
-    const noArt = gateResearchMeasured({ reels: full.map((x) => ({ ...x, art: "" })), patterns: [{ pattern: "p", examples: full.slice(0, 3).map((x) => x.url) }] }, measured);
-    expect(noArt.passed).toBe(false);
-    expect(noArt.checks.find((c) => !c.passed)?.detail).toBe("missing art");
-  });
-
-  it("saves the cover image when Instagram gives no video", async () => {
-    const vault = await memoryVault();
-    const acc = (name: string): DiscoveredAccount => ({ ...account(name, 10), media: account(name, 10).media.map((m) => ({ ...m, mediaUrl: null, thumbnailUrl: `https://cdn.example/${m.id}.jpg` })) });
-    let probed = 0;
-    let prompt = "";
-    const r = await runResearch({
-      vault,
-      token: "EAAx",
-      igUserId: "ig1",
-      accounts: ["a", "b"],
-      discover: async (_f, _t, _ig, name) => acc(name),
-      probe: async () => (probed++, 30),
-      fetchImpl: (async () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200 })) as typeof fetch,
-      ask: async (p) => ((prompt = p), "{}"),
-      now: () => NOW,
-    });
-    expect(probed).toBe(0);
-    expect(r.measured.every((m) => m.framesAreCover && m.frames?.endsWith("-cover.jpg") && m.lengthSeconds === null)).toBe(true);
-    expect(prompt).toContain("framesAreCover");
-  });
-});
+// --- Reading another account ----------------------------------------------------------
 
 describe("discoverAccount", () => {
-  it("reads another account through Business Discovery", async () => {
+  const row = (i: number) => ({ id: String(i), media_type: "VIDEO", media_product_type: "REELS", timestamp: "2026-11-01T00:00:00+0000", permalink: `https://www.instagram.com/reel/${i}/`, media_url: `https://cdn/${i}.mp4`, like_count: 10, comments_count: 2, view_count: 1000 + i, media_audio_type: "ORIGINAL_SOUND" });
+  const page = (rows: unknown[], after?: string) => new Response(JSON.stringify({ business_discovery: { username: "stickmanstorys22", followers_count: 5000, media_count: 70, media: { data: rows, ...(after ? { paging: { cursors: { after } } } : {}) } } }), { status: 200 });
+
+  it("reads views and the sound's kind, and follows the cursor past the first 50 posts", async () => {
     const urls: string[] = [];
     const fetchImpl = (async (url: string) => {
-      urls.push(url);
-      return new Response(JSON.stringify({ business_discovery: { username: "stickmanstorys22", followers_count: 5000, media_count: 2, media: { data: [{ id: "1", media_type: "VIDEO", media_product_type: "REELS", timestamp: "2026-11-01T00:00:00+0000", permalink: "https://www.instagram.com/reel/1/", media_url: "https://cdn/1.mp4", like_count: 10, comments_count: 2 }] } } }), { status: 200 });
+      urls.push(decodeURIComponent(url));
+      return urls.length === 1 ? page(Array.from({ length: 50 }, (_, i) => row(i)), "CURSOR1") : page(Array.from({ length: 20 }, (_, i) => row(50 + i)), "CURSOR2");
     }) as typeof fetch;
-    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "https://www.instagram.com/stickmanstorys22/");
-    expect(a).toMatchObject({ username: "stickmanstorys22", followers: 5000, media: [{ id: "1", likes: 10, comments: 2, productType: "REELS" }] });
-    expect(decodeURIComponent(urls[0]!)).toContain("business_discovery.username(stickmanstorys22)");
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "https://www.instagram.com/stickmanstorys22/", 200);
+    expect(a).toMatchObject({ username: "stickmanstorys22", followers: 5000, gave: { views: true, audioType: true } });
+    expect(a.media).toHaveLength(70);
+    expect(a.media[0]).toMatchObject({ id: "0", likes: 10, comments: 2, views: 1000, audioType: "ORIGINAL_SOUND", productType: "REELS" });
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain("business_discovery.username(stickmanstorys22)");
+    expect(urls[0]).toContain("view_count");
     expect(urls[0]).toContain("graph.facebook.com");
+    expect(urls[1]).toContain("media.after(CURSOR1).limit(50)");
+  });
+
+  it("keeps paging after a short page, and stops at an empty one", async () => {
+    // Instagram may answer with fewer posts than asked for while more remain: the first real run read 61 Reels of an account with over a thousand posts.
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return urls.length <= 2 ? page(Array.from({ length: 30 }, (_, i) => row(urls.length * 100 + i)), `CURSOR${urls.length}`) : page([], "CURSOR3");
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200);
+    expect(a.media).toHaveLength(60);
+    expect(urls).toHaveLength(3);
+    expect(urls[2]).toContain("media.after(CURSOR2).limit(50)");
+  });
+
+  it("drops a field Instagram refuses and asks again", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      if (urls.at(-1)!.includes("media_audio_type")) return new Response(JSON.stringify({ error: { message: "(#100) Tried accessing nonexisting field (media_audio_type) on node type (Media)", code: 100 } }), { status: 400 });
+      return page([{ ...row(1), media_audio_type: undefined }]);
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22");
+    expect(urls).toHaveLength(2);
+    expect(a.gave).toEqual({ views: true, audioType: false });
+    expect(a.media[0]).toMatchObject({ views: 1001, audioType: null });
+  });
+
+  it("falls back to the plain fields when Instagram refuses without naming one", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      if (/view_count|media_audio_type/.test(urls.at(-1)!)) return new Response(JSON.stringify({ error: { message: "(#100) Please read documentation for supported fields.", code: 100 } }), { status: 400 });
+      return page([{ ...row(1), view_count: undefined, media_audio_type: undefined }]);
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22");
+    expect(urls).toHaveLength(3);
+    expect(a.gave).toEqual({ views: false, audioType: false });
+    expect(a.media[0]).toMatchObject({ likes: 10, views: null, audioType: null });
+  });
+
+  it("doesn't ask the next account for a field Instagram just refused, and counts its requests", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      if (urls.at(-1)!.includes("media_audio_type")) return new Response(JSON.stringify({ error: { message: "(#100) Please read documentation for supported fields.", code: 100 } }), { status: 400 });
+      return page([{ ...row(1), media_audio_type: undefined }]);
+    }) as typeof fetch;
+    const state = { set: 0 };
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200, state);
+    const second = await discoverAccount(fetchImpl, "EAAx", "ig1", "thestorystix", 200, state);
+    expect([first.requests, second.requests]).toEqual([2, 1]);
+    expect(urls.filter((u) => u.includes("media_audio_type"))).toHaveLength(1);
+    expect(second.gave).toEqual({ views: true, audioType: false });
+  });
+
+  it("reads how much of the hourly allowance Meta says is used", () => {
+    expect(usageFrom(new Headers({ "x-app-usage": JSON.stringify({ call_count: 12, total_time: 61, total_cputime: 40 }) }))).toBe(61);
+    expect(usageFrom(new Headers({ "x-business-use-case-usage": JSON.stringify({ "178": [{ type: "instagram", call_count: 3, total_cputime: 9, total_time: 2, estimated_time_to_regain_access: 0 }] }) }))).toBe(9);
+    expect(usageFrom(new Headers({ "x-app-usage": "not json" }))).toBeNull();
+    expect(usageFrom(new Headers())).toBeNull();
+  });
+
+  it("stops reading before the hourly allowance is gone, and keeps what it has", async () => {
+    // Each answer says more of the allowance is used: 40%, then 80%.
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      const res = page(Array.from({ length: 50 }, (_, i) => row(urls.length * 100 + i)), `CURSOR${urls.length}`);
+      res.headers.set("x-app-usage", JSON.stringify({ call_count: 5, total_time: urls.length * 40, total_cputime: 10 }));
+      return res;
+    }) as typeof fetch;
+    const state: DiscoveryState = { set: 0 };
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200, state);
+    // media_count is 70 in these answers, so the first account is done after two pages anyway; the allowance is then 80% used.
+    expect(first.media).toHaveLength(100);
+    expect(state.usage).toBe(80);
+    expect(DISCOVERY_USAGE_STOP).toBeLessThanOrEqual(80);
+    await expect(discoverAccount(fetchImpl, "EAAx", "ig1", "thestorystix", 200, state)).rejects.toThrow("Instagram's hourly allowance for reading other accounts is 80% used");
+    expect(urls).toHaveLength(2);
+  });
+
+  it("asks no more once Instagram says the allowance is used up", async () => {
+    const urls: string[] = [];
+    const limit = () => new Response(JSON.stringify({ error: { message: "(#4) Application request limit reached", code: 4 } }), { status: 400 });
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return urls.length === 1 ? new Response(JSON.stringify({ business_discovery: { username: "a", followers_count: 1, media_count: 500, media: { data: Array.from({ length: 50 }, (_, i) => row(i)), paging: { cursors: { after: "C1" } } } } }), { status: 200 }) : limit();
+    }) as typeof fetch;
+    const state: DiscoveryState = { set: 0 };
+    // The refusal came on the second page: the first 50 posts are kept.
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "a", 200, state);
+    expect(first.media).toHaveLength(50);
+    expect(state.limited).toBe(true);
+    await expect(discoverAccount(fetchImpl, "EAAx", "ig1", "b", 200, state)).rejects.toThrow("Instagram's hourly allowance for reading other accounts is used up. It frees up again within the hour.");
+    expect(urls).toHaveLength(2);
+    // On an account's first page, the refusal is the account's problem, in plain words.
+    await expect(discoverAccount((async () => limit()) as unknown as typeof fetch, "EAAx", "ig1", "c", 200, { set: 0 })).rejects.toThrow("used up. It frees up again within the hour ((#4) Application request limit reached).");
+  });
+
+  it("stops paging when the run says it has enough", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return new Response(JSON.stringify({ business_discovery: { username: "a", followers_count: 1, media_count: 900, media: { data: Array.from({ length: 50 }, (_, i) => row(urls.length * 100 + i)), paging: { cursors: { after: `C${urls.length}` } } } } }), { status: 200 });
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "a", 200, { set: 0, enough: (media) => media.length >= 100 });
+    expect(a.media).toHaveLength(100);
+    expect(a.requests).toBe(2);
   });
 
   it("refuses something that isn't a username", async () => {
@@ -117,39 +179,832 @@ describe("discoverAccount", () => {
   });
 });
 
-describe("runResearch", () => {
-  const discover = async (_f: typeof fetch, _t: string, _ig: string, name: string) => account(name, 10);
+// --- Which accounts -------------------------------------------------------------------
 
-  it("needs 15 Reels before asking Claude", async () => {
-    const vault = await memoryVault();
-    let asked = false;
-    const r = await runResearch({ vault, token: "EAAx", igUserId: "ig1", accounts: ["a"], discover, ask: async () => ((asked = true), "{}"), now: () => NOW });
-    expect(r.passed).toBe(false);
-    expect(r.problem).toContain("Only 10 Reels");
-    expect(asked).toBe(false);
+describe("the accounts to study", () => {
+  it("lists two or three accounts for every format, each a valid username", () => {
+    const file = fileAccounts();
+    for (const f of RESEARCH_FORMATS) {
+      expect(file[f].length, f).toBeGreaterThanOrEqual(2);
+      expect(file[f].length, f).toBeLessThanOrEqual(3);
+      for (const a of file[f]) expect(cleanHandle(a)).toBe(a);
+    }
+    expect(RESEARCH_FORMATS).toEqual(["story", "satisfying", "explainer", "ad"]);
   });
 
-  it("measures each Reel, passes the gate, and saves the patterns as lessons", async () => {
-    const vault = await memoryVault();
-    const answer = (prompt: string) => {
-      const urls = [...prompt.matchAll(/"url": "([^"]+)"/g)].map((m) => m[1]!);
-      return JSON.stringify({ reels: urls.map((url) => ({ url, likes: 1, first2s: "falls", art: "stick", onScreenText: "caption" })), patterns: [{ pattern: "Something goes wrong in the first second", examples: urls.slice(0, 3) }] });
+  it("reads accounts typed for one run", () => {
+    expect(parseAccounts("story: @a, https://www.instagram.com/b/ ; ad: c")).toEqual({ story: ["a", "b"], ad: ["c"] });
+    expect(parseAccounts("a, b", "explainer")).toEqual({ explainer: ["a", "b"] });
+    expect(parseAccounts("a, b")).toEqual({});
+    expect(parseAccounts("https://www.instagram.com/a/", "story")).toEqual({ story: ["a"] });
+    expect(cleanHandle("not a name!")).toBeNull();
+  });
+
+  it("uses the run's accounts for a format, else the file's", () => {
+    const json = JSON.stringify({ story: [{ account: "one" }, "two"], ad: ["three"] });
+    expect(accountsFor("story", "", json)).toEqual(["one", "two"]);
+    expect(accountsFor("story", "ad: x", json)).toEqual(["one", "two"]);
+    expect(accountsFor("ad", "ad: x, y", json)).toEqual(["x", "y"]);
+    expect(accountsFor("satisfying", "", json)).toEqual([]);
+  });
+});
+
+// --- Winners and average Reels ------------------------------------------------------------
+
+describe("scoring an account's Reels against the account itself", () => {
+  it("calls a Reel a winner when it's in the top quarter and well above the median", () => {
+    const s = studyAccount(account("a", SIXTEEN), NOW);
+    expect(s).toMatchObject({ scoredBy: "views", median: 100, winners: 4, average: 8, problem: null, settled: 16 });
+    expect(s.candidates.filter((c) => c.group === "winner").map((c) => c.lift)).toEqual([5, 4, 3, 2]);
+    expect(s.candidates.filter((c) => c.group === "average").every((c) => c.lift === 1)).toBe(true);
+    expect(s.candidates.filter((c) => c.group === "other")).toHaveLength(4);
+  });
+
+  it("has no winners in an account whose best Reels are barely above its median", () => {
+    const s = studyAccount(account("flat", [120, 115, 110, 105, 100, 100, 100, 100, 100, 100, 100, 100, 95, 90, 85, 80]), NOW);
+    expect(s.winners).toBe(0);
+    expect(s.average).toBe(8);
+  });
+
+  it("leaves out Reels still collecting views and Reels over a year old", () => {
+    const acc = account("a", SIXTEEN);
+    acc.media.push(reel("a", 100, 999_999, {}, 2), reel("a", 101, 999_999, {}, 400));
+    const s = studyAccount(acc, NOW);
+    expect(s.reels).toBe(18);
+    expect(s.settled).toBe(16);
+    expect(s.candidates.some((c) => c.views === 999_999)).toBe(false);
+  });
+
+  it("scores by likes and comments when Instagram gives no views, and says so", () => {
+    const s = studyAccount(account("a", SIXTEEN.map(() => null), (i) => ({ likes: SIXTEEN[i]!, comments: 0 })), NOW);
+    expect(s).toMatchObject({ scoredBy: "likes and comments", median: 100, winners: 4 });
+  });
+
+  it("can't use an account with too few scored Reels", () => {
+    const s = studyAccount(account("small", [300, 200, 100, 100, 50]), NOW);
+    expect(s.problem).toBe(`only 5 Reels old enough to score (needs ${MIN_SCORED})`);
+    expect(s.candidates).toEqual([]);
+    expect(studyAccount(account("new", SIXTEEN, () => ({ timestamp: NOW.toISOString() })), NOW).problem).toContain("between 7 and 365 days old");
+  });
+
+  it("scores a Reel against what the account's Reels were getting around the same time", () => {
+    // 60 Reels, newest first. The account grew tenfold: its 30 newer Reels got about 1,000 views, its 30 older ones about 100.
+    // One new Reel got 4,000 and one old Reel got 400: each four times its neighbours.
+    const views: number[] = Array.from({ length: 60 }, (_, i) => (i < 30 ? 1000 : 100));
+    views[5] = 4000;
+    views[50] = 400;
+    const s = studyAccount(account("grew", views), NOW);
+    expect(WINDOW).toBeLessThan(30);
+    // Against the whole account's median (700), every newer Reel would have won and the old hit would be below average.
+    expect(s.median).toBe(700);
+    expect(s.candidates.filter((c) => c.group === "winner").map((c) => [c.views, c.lift])).toEqual([[4000, 4], [400, 4]]);
+    expect(s.candidates.filter((c) => c.group === "average").every((c) => c.lift === 1)).toBe(true);
+    expect(new Set(s.candidates.filter((c) => c.group === "average").map((c) => c.views))).toEqual(new Set([1000, 100]));
+  });
+
+  it("calls no Reel average that got as much as a winner, or far less than usual", () => {
+    // A few Reels run far ahead, so the middle half by rank reaches past 1.5 times the usual
+    // (the first real run had "average" Reels at 1.68 next to another account's winner at 1.79).
+    const s = studyAccount(account("skewed", [900, 800, 700, 600, 170, 160, 140, 100, 100, 100, 100, 100, 60, 50, 40, 30]), NOW);
+    expect(s.median).toBe(100);
+    expect(s.candidates.filter((c) => c.group === "winner").map((c) => c.lift)).toEqual([9, 8, 7, 6]);
+    // 1.7 and 1.6 are in the middle half by rank, and so is 1.4: only that one and the five at 1 are average.
+    expect(s.candidates.filter((c) => c.group === "average").map((c) => c.lift)).toEqual([1.4, 1, 1, 1, 1, 1]);
+    expect(AVERAGE_LIFT).toEqual({ min: 0.67, max: 1.5 });
+    const low = studyAccount(account("low", [900, 800, 700, 600, 100, 100, 100, 100, 100, 70, 60, 50, 40, 30, 20, 10]), NOW);
+    expect(low.candidates.filter((c) => c.group === "average").map((c) => c.lift)).toEqual([1, 1, 1, 1, 1, 0.7]);
+  });
+
+  it("takes Reels that come with a video file first, so there is something to measure", () => {
+    // Instagram gives a video for only two of the four winners (not the biggest) and one of the eight average Reels.
+    const s = studyAccount(account("a", SIXTEEN, (i) => ({ mediaUrl: i === 2 || i === 3 || i === 9 ? `https://cdn.example/a${i}.mp4` : null })), NOW);
+    expect(s).toMatchObject({ winners: 4, winnersWithVideo: 2, average: 8, averageWithVideo: 1, postsRead: 16, postsInAll: 16 });
+    const sample = pickSample([s], 3);
+    expect(sample.winners.map((c) => [c.lift, Boolean(c.mediaUrl)])).toEqual([[3, true], [2, true], [5, false]]);
+    expect(sample.average.map((c) => Boolean(c.mediaUrl))).toEqual([true, false, false]);
+  });
+
+  it("says in one line what an account gave, or why it can't be used", () => {
+    expect(accountLine(studyAccount(account("a", SIXTEEN), NOW))).toBe("@a: 1,000 followers, 16 of its 16 posts read, 16 Reels scored by views, median 100, 4.5 posts a week. 4 winners (4 with a video file), 8 average (8 with a video file).");
+    expect(accountLine(studyAccount(account("small", [300, 200, 100, 100, 50]), NOW))).toBe("@small: not used. only 5 Reels old enough to score (needs 8) (5 of its 5 posts read).");
+  });
+
+  it("knows when reading further back in an account adds nothing", () => {
+    const recent = (count: number) => Array.from({ length: count }, (_, i) => reel("a", i, 100, {}, 10 + i));
+    expect(readEnough(recent(ENOUGH_SCORED - 1), NOW)).toBe(false);
+    expect(readEnough(recent(ENOUGH_SCORED), NOW)).toBe(true);
+    // Posts still collecting views don't count, nor do pictures.
+    expect(readEnough([...Array.from({ length: 30 }, (_, i) => reel("a", 500 + i, 100, {}, 1)), ...recent(ENOUGH_SCORED - 1)], NOW)).toBe(false);
+    expect(readEnough(recent(ENOUGH_SCORED).map((m) => ({ ...m, productType: "FEED", mediaType: "IMAGE" })), NOW)).toBe(false);
+    // The posts have reached the ones over a year old: older ones can't be scored either.
+    expect(readEnough([...recent(5), reel("a", 99, 100, {}, 400)], NOW)).toBe(true);
+    expect(readEnough([], NOW)).toBe(false);
+  });
+
+  it("takes winners and average Reels from the accounts in turns", () => {
+    const sample = pickSample([studyAccount(account("a", SIXTEEN), NOW), studyAccount(account("b", SIXTEEN), NOW), { ...studyAccount(account("c", SIXTEEN), NOW), problem: "unreadable" }], 6);
+    expect(sample.winners.map((c) => `${c.account}:${c.lift}`)).toEqual(["a:5", "b:5", "a:4", "b:4", "a:3", "b:3"]);
+    expect(sample.average).toHaveLength(6);
+    expect(new Set(sample.average.map((c) => c.account))).toEqual(new Set(["a", "b"]));
+  });
+
+  it("counts posts a week over what was fetched", () => {
+    expect(postsPerWeek([reel("a", 0, 1, {}, 0), reel("a", 1, 1, {}, 14)], NOW)).toBe(1);
+    expect(postsPerWeek([reel("a", 0, 1, {}, 0)], NOW)).toBeNull();
+  });
+});
+
+// --- What code measures -----------------------------------------------------------------
+
+describe("measuring a Reel", () => {
+  it("reads the caption with the same tests the gates use", () => {
+    const f = captionFacts("He found a door in his kitchen. Would you open it?\nFollow for part 2! #stickman #story #fyp");
+    expect(f).toMatchObject({ firstLine: "He found a door in his kitchen. Would you open it?", firstLineChars: 50, hasQuestion: true, callToAction: true, hashtags: 3, leansOnEpisodes: true, sells: false, saysAI: false });
+    expect(captionFacts("Episode 4: the night shift #12")).toMatchObject({ leansOnEpisodes: true, hashtags: 0 });
+    expect(captionFacts("So satisfying. Made with AI #oddlysatisfying").saysAI).toBe(true);
+    expect(captionFacts("Sign up today, link in bio").sells).toBe(true);
+    expect(captionFacts("A quiet day #part2goals")).toMatchObject({ leansOnEpisodes: false, hashtags: 1 });
+    expect(captionFacts("")).toMatchObject({ chars: 0, hashtags: 0, hasQuestion: false });
+  });
+
+  it("turns ffmpeg's scene changes into cuts and shots", () => {
+    const showinfo = "pts_time:0.1\npts_time:3.0\npts_time:3.1\npts_time:6.02\npts_time:9\npts_time:11.9";
+    const cuts = cutTimes(showinfo, 12);
+    // 0.1 and 11.9 are too close to the ends, 3.1 too close to 3.0.
+    expect(cuts).toEqual([3, 6.02, 9]);
+    expect(shotBounds(cuts, 12)).toHaveLength(4);
+    expect(shotStats(cuts, 12)).toEqual({ shots: 4, medianShot: 3, longestShot: 3, firstCutAt: 3 });
+    expect(shotStats([], 20)).toEqual({ shots: 1, medianShot: 20, longestShot: 20, firstCutAt: null });
+  });
+
+  it("reads loudness and silence from ffmpeg's output", () => {
+    expect(lufsFrom("[Parsed_ebur128_1 @ 0x1] t: 1 M: -20.0\n[Parsed_ebur128_1 @ 0x1] Summary:\n\n  Integrated loudness:\n    I:         -14.2 LUFS\n    Threshold: -24.2 LUFS")).toBe(-14.2);
+    expect(lufsFrom("Summary:\n  Integrated loudness:\n    I:         -70.0 LUFS")).toBeNull();
+    expect(lufsFrom("nothing")).toBeNull();
+    expect(soundShareFrom("silence_start: 0\nsilence_end: 2 | silence_duration: 2", 10)).toBe(0.8);
+    expect(soundShareFrom("silence_start: 5", 10)).toBe(0.5);
+    expect(soundShareFrom("", 10)).toBe(1);
+  });
+
+  it("measures the voice from a transcript with times", () => {
+    const heard: Heard = {
+      text: "",
+      language: "en",
+      // Ten words in the first shot (0.5 s to 3 s), none in the second, two in the third.
+      words: [...Array.from({ length: 10 }, (_, i) => ({ word: i === 9 ? "night." : `w${i}`, start: 0.5 + i * 0.25, end: 0.7 + i * 0.25 })), { word: "Then", start: 9, end: 9.2 }, { word: "silence.", start: 9.3, end: 9.6 }],
+      events: [{ what: "music", at: 0 }, { what: "laughter", at: 4 }],
     };
-    const r = await runResearch({
-      vault,
+    const s = speechFacts(heard, 12, [4, 8]);
+    expect(s).toMatchObject({ words: 12, firstWordAt: 0.5, speechShotShare: 0.67, music: true, sounds: ["laughter"] });
+    // 12 words in about 3.05 s of speaking; pauses aren't counted.
+    expect(s.wordsPerSecond).toBeCloseTo(3.9, 1);
+    // Between the cuts at 4 s and 8 s nobody speaks and nothing cuts.
+    expect(s.longestStill).toBe(4);
+    expect(s.text).toBe("0.5 s: w0 w1 w2 w3 w4 w5 w6 w7 w8 night.\n9 s: Then silence.");
+    expect(speechFacts({ text: "", language: null, words: [], events: [] }, 10, [])).toMatchObject({ words: 0, firstWordAt: null, wordsPerSecond: null, longestStill: 10 });
+  });
+
+  it("spreads the frames Claude sees over the Reel, first and last shot included", () => {
+    const shots = Array.from({ length: 30 }, (_, i) => i);
+    const picked = sampleShots(shots, 12);
+    expect(picked).toHaveLength(12);
+    expect(picked[0]).toBe(0);
+    expect(picked.at(-1)).toBe(29);
+    expect(sampleShots([1, 2, 3], 12)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("speech to text", () => {
+  const answer = { language_code: "en", text: "Hello there.", words: [{ text: "(music)", type: "audio_event", start: 0, end: 1 }, { text: "Hello", type: "word", start: 0.4, end: 0.7 }, { text: " ", type: "spacing", start: 0.7, end: 0.8 }, { text: "there.", type: "word", start: 0.8, end: 1.1 }] };
+
+  it("keeps words with their times and sound tags, and drops spacing", () => {
+    expect(heardFrom(answer)).toEqual({ text: "Hello there.", language: "en", words: [{ word: "Hello", start: 0.4, end: 0.7 }, { word: "there.", start: 0.8, end: 1.1 }], events: [{ what: "music", at: 0 }] });
+    expect(heardFrom(null)).toEqual({ text: "", language: null, words: [], events: [] });
+  });
+
+  it("sends the sound to ElevenLabs with word times and sound tags on", async () => {
+    let sent: { url: string; key: string | null; form: FormData } | null = null;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      sent = { url, key: new Headers(init.headers).get("xi-api-key"), form: init.body as FormData };
+      return new Response(JSON.stringify(answer), { status: 200 });
+    }) as unknown as typeof fetch;
+    const heard = await transcribe(Buffer.from("mp3"), { fetchImpl, apiKey: "key" });
+    expect(heard.words).toHaveLength(2);
+    expect(sent!.url).toBe("https://api.elevenlabs.io/v1/speech-to-text");
+    expect(sent!.key).toBe("key");
+    expect(sent!.form.get("model_id")).toBe("scribe_v2");
+    expect(sent!.form.get("tag_audio_events")).toBe("true");
+    expect(sent!.form.get("timestamps_granularity")).toBe("word");
+    expect(sent!.form.get("file")).toBeInstanceOf(Blob);
+  });
+
+  it("fails with ElevenLabs' own words when the key may not transcribe", async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ detail: { status: "missing_permissions", message: "The API key you used is missing the permission speech_to_text to execute this operation." } }), { status: 401 })) as unknown as typeof fetch;
+    await expect(transcribe(Buffer.from("mp3"), { fetchImpl, apiKey: "key" })).rejects.toThrow("ElevenLabs speech to text said: The API key you used is missing the permission");
+    await expect(transcribe(Buffer.from("mp3"), { apiKey: "" })).rejects.toThrow("ELEVENLABS_API_KEY isn't set");
+  });
+});
+
+// --- Our rules, measured ------------------------------------------------------------------
+
+const video = (seconds: number, shotSeconds = 2.5): VideoFacts => {
+  const cuts = Array.from({ length: Math.max(0, Math.ceil(seconds / shotSeconds) - 1) }, (_, i) => Math.round((i + 1) * shotSeconds * 100) / 100);
+  return { seconds, cuts, ...shotStats(cuts, seconds), lufs: -14, soundShare: 1 };
+};
+
+const studied = (group: "winner" | "average", i: number, over: Partial<StudiedReel> = {}): StudiedReel => ({
+  url: `https://www.instagram.com/reel/${group}${i}/`,
+  account: "a",
+  postedAt: "2026-10-01",
+  ageDays: 40,
+  caption: "",
+  views: 1000,
+  likes: 10,
+  comments: 1,
+  audioType: null,
+  mediaUrl: null,
+  thumbnailUrl: null,
+  score: 1000,
+  lift: group === "winner" ? 3 : 1,
+  group,
+  id: `${group[0]}${i}`,
+  facts: captionFacts("A night cleaner hears a knock. Who is it?\n#stickman #story #fyp"),
+  video: null,
+  speech: null,
+  labels: null,
+  ...over,
+});
+
+describe("our rules, counted on winners and on average Reels", () => {
+  it("has one row a rule, each from stages 3 to 6, with gate numbers read from the gates", () => {
+    expect(new Set(RULES.map((r) => r.id)).size).toBe(RULES.length);
+    expect(RULES.every((r) => r.stage >= 3 && r.stage <= 6)).toBe(true);
+    expect(RULES.find((r) => r.id === "shots")!.rule).toBe(`${MIN_SHOTS} to ${MAX_SHOTS} shots`);
+    expect(NOT_MEASURED.length).toBeGreaterThan(0);
+    expect(NOT_MEASURED.every((n) => n.check && n.why)).toBe(true);
+  });
+
+  it("knows Fisher's exact test", () => {
+    expect(fisher(3, 1, 1, 3)).toBeCloseTo(0.4857, 3);
+    expect(fisher(5, 5, 5, 5)).toBe(1);
+    expect(fisher(10, 0, 0, 10)).toBeCloseTo(0.0000108, 6);
+    expect(fisher(0, 0, 0, 0)).toBe(1);
+  });
+
+  it("gives a verdict only with enough Reels on both sides", () => {
+    expect(verdictOf({ n: 4, follow: 4, median: null }, { n: 10, follow: 0, median: null })).toBe("not enough data");
+    expect(verdictOf({ n: 10, follow: 8, median: null }, { n: 10, follow: 5, median: null })).toBe("backed");
+    expect(verdictOf({ n: 10, follow: 8, median: null }, { n: 10, follow: 7, median: null })).toBe("no difference");
+    // Most winners don't follow it, and nor do average Reels: winning doesn't need it.
+    expect(verdictOf({ n: 10, follow: 3, median: null }, { n: 10, follow: 2, median: null })).toBe("winners break it");
+  });
+
+  it("says when winners follow a rule less often than average Reels", () => {
+    expect(verdictOf({ n: 10, follow: 4, median: null }, { n: 10, follow: 9, median: null })).toBe("against");
+    // The first real run: 6 of 12 winners stood alone, 8 of 11 average Reels did. It was filed under "no difference".
+    expect(verdictOf({ n: 12, follow: 6, median: null }, { n: 11, follow: 8, median: null })).toBe("against");
+    // A gap of exactly 20 points counts, either way (0.6 - 0.4 is a hair under 0.2 in floating point).
+    expect(verdictOf({ n: 5, follow: 3, median: null }, { n: 5, follow: 2, median: null })).toBe("backed");
+    expect(verdictOf({ n: 5, follow: 2, median: null }, { n: 5, follow: 3, median: null })).toBe("against");
+    // Few winners follow it, but clearly more than average Reels do: that backs it.
+    expect(verdictOf({ n: 10, follow: 4, median: null }, { n: 10, follow: 0, median: null })).toBe("backed");
+  });
+
+  it("backs a rule winners follow and average Reels don't, with both medians", () => {
+    const reels = [...Array.from({ length: 8 }, (_, i) => studied("winner", i, { video: video(40) })), ...Array.from({ length: 8 }, (_, i) => studied("average", i, { video: video(20) }))];
+    const table = rulesTable("story", reels);
+    const length = table.find((r) => r.id === "length")!;
+    expect(length).toMatchObject({ verdict: "backed", winners: { n: 8, follow: 8, median: 40 }, average: { n: 8, follow: 0, median: 20 }, clear: true });
+    // Every Reel here is the same account's, and the row says so.
+    expect(length.accounts).toBe(1);
+    expect(rowText(length)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance. All of these Reels are one account's, so this may be that creator's habit.");
+    const two = rulesTable("story", reels.map((r, i) => ({ ...r, account: i % 2 ? "a" : "b" }))).find((r) => r.id === "length")!;
+    expect(two.accounts).toBe(2);
+    expect(rowText(two)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance.");
+    // 40 s in 2.5 s shots is 16 shots: over our 14.
+    const shots = table.find((r) => r.id === "shots")!;
+    expect(shots).toMatchObject({ verdict: "against", winners: { follow: 0, median: 16 }, average: { follow: 8 } });
+    // Nobody was labelled or transcribed, so those rules have nothing to count.
+    expect(table.find((r) => r.id === "mid-action")).toMatchObject({ verdict: "not enough data", winners: { n: 0 } });
+    expect(table.find((r) => r.id === "pace")!.verdict).toBe("not enough data");
+    const text = tableText(table);
+    expect(text.indexOf("Against our rule")).toBeLessThan(text.indexOf("Backed"));
+    expect(text).toContain("Not enough Reels to tell");
+  });
+
+  it("leaves out Reels that aren't the format, and rules that aren't the format's", () => {
+    const reels = [...Array.from({ length: 6 }, (_, i) => studied("winner", i, { video: video(40) })), studied("winner", 9, { video: video(5), labels: { onFormat: "no" } }), ...Array.from({ length: 6 }, (_, i) => studied("average", i, { video: video(40) }))];
+    expect(rulesTable("story", reels).find((r) => r.id === "length")!.winners).toMatchObject({ n: 6, follow: 6 });
+    const satisfying = rulesTable("satisfying", reels).map((r) => r.id);
+    expect(satisfying).toContain("made-with-ai");
+    expect(satisfying).not.toContain("pace");
+    expect(satisfying).not.toContain("stick-figures");
+    expect(rulesTable("story", reels).map((r) => r.id)).not.toContain("made-with-ai");
+  });
+
+  it("takes the reader's word that a Reel is one part of a series, not just the caption's", () => {
+    // The first real story run counted 19 of 19 average Reels as standing alone from their captions,
+    // while its reader described several of them as "part 12 of a serialized story".
+    const quiet = captionFacts("She opens the door.\n#stickman #story #fyp");
+    const said = (series: string | undefined, facts = quiet) => RULES.find((r) => r.id === "standalone")!.follows(studied("winner", 0, { facts, labels: { onFormat: "yes", ...(series ? { series } : {}) } }));
+    expect(said("stands-alone")).toBe(true);
+    expect(said("part-of-a-series")).toBe(false);
+    expect(said(UNCLEAR)).toBeNull();
+    expect(said(undefined)).toBeNull();
+    // The caption or the words on screen settle it whatever the reader said.
+    expect(said("stands-alone", captionFacts("Part 7. She opens the door."))).toBe(false);
+    expect(RULES.find((r) => r.id === "standalone")!.follows(studied("winner", 0, { facts: quiet, labels: { onFormat: "yes", series: "stands-alone", coverText: "EPISODE 3" } }))).toBe(false);
+    const reels = [...Array.from({ length: 6 }, (_, i) => studied("winner", i, { facts: quiet, labels: { onFormat: "yes", series: "part-of-a-series" } })), ...Array.from({ length: 6 }, (_, i) => studied("average", i, { facts: quiet, labels: { onFormat: "yes", series: i < 5 ? "part-of-a-series" : "stands-alone" } }))];
+    expect(rulesTable("story", reels).find((r) => r.id === "standalone")).toMatchObject({ verdict: "winners break it", winners: { n: 6, follow: 0 }, average: { n: 6, follow: 1 } });
+  });
+
+  it("counts labels and never counts \"unclear\"", () => {
+    const labels = (opening: string): ReelLabels => ({ onFormat: "yes", opening, hookText: "He never came back", shots: [{ camera: "wide", people: "1", place: "The kitchen" }, { camera: "close-up", people: "3+", place: "kitchen" }, { camera: "insert", people: "1", place: "a street" }] });
+    const reels = [...Array.from({ length: 5 }, (_, i) => studied("winner", i, { labels: labels("action") })), studied("winner", 8, { labels: labels(UNCLEAR) }), ...Array.from({ length: 5 }, (_, i) => studied("average", i, { labels: labels("title-card") }))];
+    const table = rulesTable("story", reels);
+    expect(table.find((r) => r.id === "mid-action")).toMatchObject({ verdict: "backed", winners: { n: 5, follow: 5 }, average: { n: 5, follow: 0 } });
+    expect(table.find((r) => r.id === "hook-short")).toMatchObject({ winners: { n: 6, follow: 6, median: 4 } });
+    // "The kitchen" and "kitchen" are one place; with the street that's two.
+    expect(table.find((r) => r.id === "two-places")).toMatchObject({ winners: { follow: 6, median: 2 } });
+    expect(table.find((r) => r.id === "two-people")).toMatchObject({ winners: { n: 6, follow: 0 }, verdict: "winners break it" });
+    expect(table.find((r) => r.id === "cameras")).toMatchObject({ winners: { follow: 6, median: 3 } });
+  });
+});
+
+// --- The prompts -----------------------------------------------------------------------
+
+describe("stage 1's prompts", () => {
+  it("offers Claude exactly the choices code counts", () => {
+    const prompt = stagePrompt(1, { FORMAT: "story", NICHE: "x", REELS: "[]" });
+    for (const choice of [...Object.values(LABELS).flat(), ...CAMERAS, UNCLEAR]) expect(prompt, choice).toContain(choice);
+    for (const field of Object.keys(LABELS)) expect(prompt, field).toContain(`\`${field}\``);
+    expect(prompt).not.toContain("{{");
+  });
+
+  it("has a niche line for every format, and stories keep theirs", () => {
+    for (const f of RESEARCH_FORMATS) expect(nicheFor(f)).toContain("our account is Wright AI Solutions");
+    expect(nicheFor("story")).toBe("short story Reels, stick-figure animation and comedy channels; our account is Wright AI Solutions (AI tools for small businesses), and its Reels should bring profile visits that lead to the website");
+    expect(nicheFor("satisfying")).not.toContain("stick-figure");
+  });
+
+  it("fills the pattern and check prompts", () => {
+    const p = stagePrompt(1, { COUNT: "12", FORMAT: "ad", NICHE: "n", WINNER_LIFT: "1.5", AVERAGE_FROM: "0.67", REELS: "[]", TABLE: "t" }, "patterns");
+    expect(p).toContain("12 ad Reels");
+    expect(p).toContain("with a lift of at least 1.5");
+    expect(p).toContain("with a lift from 0.67 to under 1.5");
+    expect(p).toContain("at least half of those winners");
+    expect(p).toContain("more than one account");
+    expect(p).not.toContain("{{");
+    expect(stagePrompt(1, { QUESTIONS: "1. Is it?", REELS: "[]" }, "check")).toContain("1. Is it?");
+  });
+});
+
+// --- The whole stage --------------------------------------------------------------------
+
+/** 40 Reels: the first 10 win big (their captions name an amount of money), 20 sit on the median, 10 are below. */
+const bigAccount = (name: string, extra: (i: number) => Partial<Media> = () => ({})): DiscoveredAccount =>
+  account(name, [...Array.from({ length: 10 }, (_, i) => 1000 - i * 10), ...Array.from({ length: 20 }, () => 100), ...Array.from({ length: 10 }, () => 50)], (i) => ({
+    caption: i < 10 ? `He lost $${i + 1}00 in one day. Would you risk it?\nFollow for more #stickman #story #fyp` : `A quiet day at the office. What would you do?\nFollow for more #stickman #story #fyp`,
+    mediaUrl: `https://cdn.example/${name}${i}-${i < 10 ? "win" : "avg"}.mp4`,
+    ...extra(i),
+  }));
+
+type Shown = { id: string; caption: string; open?: string; shots?: string; shotFrames?: number; cover?: string; transcript?: string };
+const reelsIn = (prompt: string): Record<string, unknown>[] => JSON.parse(prompt.slice(prompt.indexOf("<reels>") + 7, prompt.indexOf("</reels>")));
+
+const labelFor = (r: Shown): ReelLabels => ({
+  id: r.id,
+  onFormat: "yes",
+  series: "stands-alone",
+  premise: `A man and his money: ${r.caption.slice(0, 20)}`,
+  ...(r.open || r.cover ? { art: "stick-figures", lighting: "dark" } : {}),
+  ...(r.cover ? { coverText: "" } : {}),
+  ...(r.open ? { opening: "action", hookText: "He lost it all", captions: "word-by-word", captionPosition: "lower", shots: Array.from({ length: r.shotFrames ?? 0 }, (_, i) => ({ camera: CAMERAS[i % 3]!, people: "1", place: "office" })) } : {}),
+  ...(r.transcript ? { narrator: "third-person", firstLineSaysWhoAndWhere: "yes", question: "Will he get it back?", answered: "at-the-end" } : {}),
+});
+
+/** A Claude that labels what it's shown, proposes two patterns, and answers them from the caption. */
+function fakeClaude(over: { label?: (r: Shown, round: number) => ReelLabels; patterns?: { pattern: string; question: string }[] } = {}) {
+  const prompts: { step: 1 | 2 | 3; prompt: string; reels: Record<string, unknown>[] }[] = [];
+  const rounds = new Map<string, number>();
+  const ask = async (prompt: string) => {
+    const reels = reelsIn(prompt);
+    if (prompt.includes("step 1 of 3")) {
+      prompts.push({ step: 1, prompt, reels });
+      return JSON.stringify({
+        reels: (reels as Shown[]).map((r) => {
+          rounds.set(r.id, (rounds.get(r.id) ?? 0) + 1);
+          return (over.label ?? labelFor)(r, rounds.get(r.id)!);
+        }),
+      });
+    }
+    if (prompt.includes("step 2 of 3")) {
+      prompts.push({ step: 2, prompt, reels });
+      return JSON.stringify({ patterns: over.patterns ?? [{ pattern: "Name an exact amount of money in the first line.", question: "Does the caption's first line name an amount of money?" }, { pattern: "End the caption on a follow.", question: "Does the caption ask for a follow?" }, { pattern: "no question mark", question: "not a question" }] });
+    }
+    prompts.push({ step: 3, prompt, reels });
+    return JSON.stringify({ reels: (reels as Shown[]).map((r) => ({ id: r.id, answers: [/\$\d/.test(r.caption) ? "yes" : "no", "yes"] })) });
+  };
+  return { ask, prompts };
+}
+
+const heardWords: Heard = { text: "", language: "en", events: [], words: Array.from({ length: 20 }, (_, i) => ({ word: `w${i}`, start: 0.2 + i * 0.4, end: 0.5 + i * 0.4 })) };
+
+function fakes() {
+  const urlOf = new Map<string, string>();
+  const measured: string[] = [];
+  const download: ResearchDeps["download"] = async (_f, url, file) => (urlOf.set(file, url), true);
+  const measure: MeasureFile = async (file, _dir, name, want) => {
+    measured.push(name);
+    return { video: video(urlOf.get(file)!.includes("win") ? 40 : 20), open: `${name}-open.jpg`, shotsSheet: `${name}-shots.jpg`, shotFrames: 3, audio: want.audio ? Buffer.from("mp3") : null };
+  };
+  return { download, measure, measured };
+}
+
+const base = (vault: Vault, over: Partial<ResearchDeps> = {}): ResearchDeps => ({
+  vault,
+  token: "EAAx",
+  igUserId: "ig1",
+  format: "story",
+  accounts: ["a", "b", "c"],
+  discover: async (_f, _t, _ig, name) => bigAccount(name),
+  ffmpeg: true,
+  transcribe: async () => heardWords,
+  outDir: null,
+  now: () => NOW,
+  ...over,
+});
+
+describe("runResearch", () => {
+  it("compares winners with average Reels, keeps only the pattern the blind check backs, and replaces the old patterns", async () => {
+    const vault = await memoryVault();
+    await vault.addLesson({ kind: "pattern", stage: 1, text: "Use a numbered, serialized story.", source: LEGACY_SOURCE }, NOW);
+    await vault.addLesson({ kind: "avoid", text: "Slow openings.", source: "stage 0" }, NOW);
+    expect(await researchBrief(vault, "story")).toBe("- Use a numbered, serialized story.");
+    expect(await researchBrief(vault, "ad")).toBe("(none yet)");
+
+    const claude = fakeClaude();
+    const f = fakes();
+    const out = await mkdtemp(join(tmpdir(), "research-test-"));
+    const logs: string[] = [];
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, outDir: out, log: (m) => logs.push(m) }));
+
+    expect(r.gate.checks.filter((c) => !c.passed)).toEqual([]);
+    expect(r.passed).toBe(true);
+    expect(r.gate.checks.every((c) => c.name.startsWith("Story: "))).toBe(true);
+    const found = r.findings;
+    expect(found.accounts.map((a) => [a.username, a.winners, a.average])).toEqual([["a", 10, 20], ["b", 10, 20], ["c", 10, 20]]);
+    expect(found.accounts[0]).toMatchObject({ postsRead: 40, postsInAll: 40, winnersWithVideo: 10, averageWithVideo: 20 });
+    expect(found.reels.filter((x) => x.group === "winner")).toHaveLength(PER_GROUP);
+    expect(found.reels.filter((x) => x.group === "average")).toHaveLength(PER_GROUP);
+    expect(new Set(found.reels.filter((x) => x.group === "winner").map((x) => x.account))).toEqual(new Set(["a", "b", "c"]));
+    expect(found).toMatchObject({ videosGiven: 40, videosMeasured: 40, transcripts: 40, labelRounds: 1, asked: true });
+    expect(f.measured).toHaveLength(40);
+
+    // Code measured the difference; Claude never supplied a number.
+    expect(found.table.find((x) => x.id === "length")).toMatchObject({ verdict: "backed", winners: { n: 20, follow: 20, median: 40 }, average: { n: 20, follow: 0, median: 20 } });
+    expect(found.table.find((x) => x.id === "standalone")).toMatchObject({ verdict: "no difference", winners: { follow: 20 } });
+    expect(found.table.find((x) => x.id === "pace")!.winners.n).toBe(20);
+
+    // Labelling and checking are blind: no results, no group, no account.
+    const blind = claude.prompts.filter((p) => p.step !== 2);
+    expect(blind.length).toBeGreaterThanOrEqual(5);
+    for (const p of blind) for (const shown of p.reels) expect(Object.keys(shown).sort()).toEqual(["caption", "id", "open", "seconds", "shotFrames", "shots", "transcript"]);
+    // The ids don't give the groups away: winners aren't simply the first twenty.
+    const ids = found.reels.filter((x) => x.group === "winner").map((x) => x.id).sort();
+    expect(ids).not.toEqual(Array.from({ length: PER_GROUP }, (_, i) => `r${String(i + 1).padStart(2, "0")}`));
+
+    // Patterns are drawn from one half and checked on the other.
+    const proposedFrom = claude.prompts.find((p) => p.step === 2)!.reels.map((x) => x.id);
+    const checkedOn = claude.prompts.filter((p) => p.step === 3).flatMap((p) => p.reels.map((x) => x.id));
+    expect(proposedFrom).toHaveLength(20);
+    expect(checkedOn).toHaveLength(20);
+    expect(proposedFrom.filter((id) => checkedOn.includes(id))).toEqual([]);
+    expect(found.reels.filter((x) => x.heldOut).map((x) => x.id).sort()).toEqual([...checkedOn].sort());
+    expect(claude.prompts.find((p) => p.step === 2)!.reels[0]).toHaveProperty("lift");
+    expect(found.patterns).toEqual([
+      { pattern: "Name an exact amount of money in the first line.", question: "Does the caption's first line name an amount of money?", winnersYes: 10, winnersAsked: 10, averageYes: 0, averageAsked: 10, winnerAccounts: 3, kept: true },
+      { pattern: "End the caption on a follow.", question: "Does the caption ask for a follow?", winnersYes: 10, winnersAsked: 10, averageYes: 10, averageAsked: 10, winnerAccounts: 3, kept: false },
+    ]);
+
+    // The Vault: the new pattern in, the old one retired, other lessons untouched, all of it in the History.
+    const lessons = await vault.lessons();
+    expect(lessons.map((l) => [l.kind, l.source, l.text])).toEqual([["avoid", "stage 0", "Slow openings."], ["pattern", patternSource("story"), "Name an exact amount of money in the first line."]]);
+    expect(lessons[1]!.evidence).toBe("Does the caption's first line name an amount of money? Yes for 10 of 10 winners (in 3 accounts) and 0 of 10 average Reels it wasn't drawn from");
+    const row = await vault.latestStage(1, { subject: "research:story", passedOnly: true });
+    expect(row).toMatchObject({ passed: true, attempt: 1 });
+    const actions = await vault.actions();
+    expect(actions.map((a) => a.kind).sort()).toEqual(["lesson", "stage"]);
+    const lesson = actions.find((a) => a.kind === "lesson")!;
+    expect(lesson.summary).toBe("Research, story: 20 winners compared with 20 average Reels from @a, @b, @c. Of our rules, 2 backed, 1 the winners follow less often than average Reels, 2 most winners break. 1 pattern kept, 1 earlier pattern retired.");
+    expect(lesson.detail).toContain("Against our rule: winners follow it clearly less often than average Reels:\n- 8 to 14 shots (stage 4): 0 of 20 winners, 20 of 20 average Reels.");
+    expect(lesson.detail).toContain("Winners break our rule");
+    expect(actions.every((a) => !a.onInstagram)).toBe(true);
+
+    // What later stages are told, per format.
+    const brief = await researchBrief(vault, "story");
+    expect(brief).toContain("Stage 1 compared 20 winning Reels with 20 average Reels from @a, @b, @c (2026-11-19)");
+    expect(brief).toContain("- 30 to 60 seconds long (stage 4): 20 of 20 winners, 0 of 20 average Reels.");
+    expect(brief).toContain("- Name an exact amount of money in the first line. (Does the caption's first line name an amount of money? Yes for 10 of 10 winners");
+    expect(brief).toContain("A man and his money");
+    expect(brief).not.toContain("serialized");
+    expect(brief).not.toContain("Winners break");
+    expect(brief).not.toContain("Against our rule");
+    expect(await researchBrief(vault, "ad")).toBe("(none yet)");
+
+    // The report and the spoken summary.
+    expect(r.reportFile).toBe(join(out, "story.md"));
+    const report = await readFile(r.reportFile!, "utf8");
+    expect(report).toContain("# Stage 1 research: story");
+    expect(report).toContain("Passed its gate.");
+    expect(report).toContain("- Kept: Name an exact amount of money in the first line.");
+    expect(report).toContain("- Dropped: End the caption on a follow. (Does the caption ask for a follow? Yes for 10 of 10 winners (in 3 accounts) and 10 of 10 average Reels it wasn't drawn from: average Reels show it nearly as often.)");
+    expect(report).toContain("- @a: 1,000 followers, 40 of its 40 posts read, 40 Reels scored by views, median 100, 5.7 posts a week. 10 winners (10 with a video file), 20 average (20 with a video file).");
+    expect(report).toContain("What can't be measured on someone else's Reel");
+    expect(report).toBe(`${reportText(found, r.gate)}\n`);
+    expect(summaryText(found, true)).toContain("story: 20 winners and 20 average Reels from @a, @b, @c. Winners follow 1 rule of ours less often than average Reels: 8 to 14 shots. Most winners don't follow 2 rules of ours:");
+    expect(logs.some((l) => l.includes("40 transcripts (20 min of sound, about $0.07"))).toBe(true);
+    await rm(out, { recursive: true, force: true });
+    vault.close();
+  });
+
+  it("looks at the next Reels in line when some turn out not to be the format", async () => {
+    // The first real explainer run lost 12 of its 40 Reels this way (one account posts mostly skits)
+    // and was left with a video for 4 winners and 3 average Reels.
+    const vault = await memoryVault();
+    const off = new Set(["r03", "r07", "r11", "r41"]);
+    const claude = fakeClaude({ label: (r) => ({ ...labelFor(r), onFormat: off.has(r.id) ? "no" : "yes" }), patterns: [] });
+    const f = fakes();
+    const logs: string[] = [];
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, log: (m) => logs.push(m) }));
+    expect(r.passed).toBe(true);
+    const found = r.findings;
+    // Three were replaced, from the same groups; a replacement that isn't the format either isn't replaced again.
+    expect(found.reels.map((x) => x.id)).toHaveLength(43);
+    expect(found.reels.slice(40).map((x) => x.id)).toEqual(["r41", "r42", "r43"]);
+    expect(found.replaced).toBe(3);
+    expect(found.reels.slice(40).map((x) => x.group).sort()).toEqual(found.reels.filter((x) => ["r03", "r07", "r11"].includes(x.id)).map((x) => x.group).sort());
+    expect(new Set(found.reels.map((x) => x.url)).size).toBe(43);
+    expect(found.reels.every((x) => x.labels)).toBe(true);
+    expect(found).toMatchObject({ videosGiven: 43, videosMeasured: 43, labelRounds: 1 });
+    // Only Reels of the format are compared, and counted.
+    const compared = found.reels.filter((x) => x.labels?.onFormat !== "no");
+    expect(compared).toHaveLength(39);
+    expect(found.table.find((x) => x.id === "length")!.winners.n + found.table.find((x) => x.id === "length")!.average.n).toBe(39);
+    expect(r.gate.checks[1]!.detail).toMatch(/^(19|20) winners, (19|20) average; 4 more weren't story Reels$/);
+    expect(logs.some((l) => l.startsWith("3 Reels weren't story Reels, so the next 3 in line are looked at too. Measured 3 more Reels: 3 of 3 videos"))).toBe(true);
+    expect(r.report).toContain("4 more Reels weren't story Reels (these accounts post other things too) and were left out; the next 3 in line were looked at in their place. Instagram gave the video for 43 of the 43 Reels looked at; 43 were measured and 43 transcribed.");
+    expect((await vault.actions()).find((a) => a.kind === "lesson")!.summary).toMatch(/^Research, story: (19|20) winners compared with (19|20) average Reels from @a, @b, @c\./);
+    vault.close();
+  });
+
+  it("says when an account mostly posts something other than the format", async () => {
+    // The first real ad run looked at 20 of Duolingo's Reels, and the reader marked none of them as an ad.
+    const vault = await memoryVault();
+    const claude = fakeClaude({ label: (r) => ({ ...labelFor(r), onFormat: r.caption.includes("@c") ? "no" : "yes" }), patterns: [] });
+    const f = fakes();
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, discover: async (_f, _t, _ig, name) => bigAccount(name, (i) => ({ caption: `${i < 10 ? "He lost $100 in one day." : "A quiet day at the office."} By @${name}` })) }));
+    expect(r.passed).toBe(true);
+    const fromC = r.findings.reels.filter((x) => x.account === "c");
+    expect(fromC.length).toBeGreaterThanOrEqual(12);
+    expect(fromC.every((x) => x.labels?.onFormat === "no")).toBe(true);
+    expect(r.findings.notes).toContain(`Only 0 of the ${fromC.length} Reels looked at from @c were story Reels. It mostly posts other things, so another account would tell more about this format.`);
+    expect(r.findings.notes.join(" ")).not.toContain("from @a");
+    // The Reels left out were replaced by the next in line, from the three accounts in turns.
+    expect(r.findings.replaced).toBeGreaterThan(0);
+    expect(r.report).toContain("Only 0 of the");
+    vault.close();
+  });
+
+  it("counts only Reels of the format toward the six a side", () => {
+    const looked = (n: number, group: "winner" | "average") => Array.from({ length: n }, (_, i) => ({ id: `${group[0]}${i}`, group, sight: "none" as const, shotFrames: 0, heard: false }));
+    const reels = [...looked(6, "winner"), ...looked(7, "average")];
+    const labels = reels.map((l, i) => ({ id: l.id, onFormat: i === 0 || i === 12 ? "no" : "yes", series: "stands-alone", premise: "p" }));
+    const g = gateResearch({ format: "explainer", accounts: [{ username: "a", problem: null }, { username: "b", problem: null }], looked: reels, labels, videosGiven: 0, videosMeasured: 0, verdicts: 5, patterns: [] });
+    expect(g.checks.filter((c) => !c.passed).map((c) => `${c.name}: ${c.detail}`)).toEqual(["Explainer: at least 6 winners and 6 average Reels to compare: 5 winners, 6 average; 2 more weren't explainer Reels"]);
+  });
+
+  it("studies covers and captions when Instagram gives no video", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude({ patterns: [] });
+    const f = fakes();
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure, discover: async (_f, _t, _ig, name) => bigAccount(name, () => ({ mediaUrl: null })) }));
+    expect(r.passed).toBe(true);
+    expect(f.measured).toEqual([]);
+    expect(r.findings).toMatchObject({ videosGiven: 0, videosMeasured: 0, transcripts: 0 });
+    expect(r.findings.reels.every((x) => x.sight === "cover" && x.video === null && x.labels?.art === "stick-figures")).toBe(true);
+    expect(Object.keys(claude.prompts[0]!.reels[0]!).sort()).toEqual(["caption", "cover", "id"]);
+    expect(r.findings.notes.join(" ")).toContain("Instagram gave no video for 40 of the 40 Reels");
+    expect(r.gate.checks.find((c) => c.name.includes("videos Instagram gave"))!.detail).toContain("only covers and captions");
+    expect(r.findings.table.find((x) => x.id === "length")!.verdict).toBe("not enough data");
+    expect(r.findings.table.find((x) => x.id === "stick-figures")).toMatchObject({ verdict: "no difference", winners: { n: 20, follow: 20 } });
+    // No patterns proposed, so nothing to check, and the report says none were proposed.
+    expect(claude.prompts.filter((p) => p.step === 3)).toEqual([]);
+    expect(r.findings.patterns).toEqual([]);
+    expect(r.findings.proposed).toBe(0);
+    expect(r.report).toContain("None proposed.");
+    vault.close();
+  });
+
+  it("says so when the answer that should propose patterns can't be read", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude();
+    const f = fakes();
+    const logs: string[] = [];
+    const ask = async (prompt: string) => (prompt.includes("step 2 of 3") ? "I couldn't find anything worth proposing." : claude.ask(prompt));
+    const r = await runResearch(base(vault, { ask, download: f.download, measure: f.measure, discover: async (_f, _t, _ig, name) => bigAccount(name), log: (m) => logs.push(m) }));
+    // It still passes (patterns are optional), but an unread answer isn't reported as "there are none".
+    expect(r.passed).toBe(true);
+    expect(r.findings.patterns).toEqual([]);
+    expect(r.findings.proposed).toBeUndefined();
+    expect(r.findings.notes.join(" ")).toContain("gave no answer that could be read");
+    expect(logs.join("\n")).toContain("The pattern turn's answer couldn't be read.");
+    expect(r.report).toContain("None kept.");
+    expect(r.report).not.toContain("None proposed.");
+    vault.close();
+  });
+
+  it("stops at the gate with one account, without asking Claude or touching the saved patterns", async () => {
+    const vault = await memoryVault();
+    await vault.addLesson({ kind: "pattern", stage: 1, text: "An old pattern.", source: LEGACY_SOURCE }, NOW);
+    const claude = fakeClaude();
+    const f = fakes();
+    const r = await runResearch(
+      base(vault, {
+        accounts: ["a", "private"],
+        ask: claude.ask,
+        download: f.download,
+        measure: f.measure,
+        discover: async (_f, _t, _ig, name) => {
+          if (name === "private") throw new Error("@private can't be read: Instagram only shows business and creator accounts to other apps.");
+          return bigAccount(name);
+        },
+      }),
+    );
+    expect(r.passed).toBe(false);
+    expect(claude.prompts).toEqual([]);
+    const failed = r.gate.checks.filter((c) => !c.passed);
+    expect(failed[0]).toMatchObject({ name: "Story: at least 2 accounts could be studied", detail: "1 of 2. @private: @private can't be read: Instagram only shows business and creator accounts to other apps" });
+    expect(failed.map((c) => c.detail).filter((x) => x?.includes("Claude wasn't asked"))).toHaveLength(2);
+    expect((await vault.lessons("pattern")).map((l) => l.text)).toEqual(["An old pattern."]);
+    expect(await vault.latestStage(1, { subject: "research:story" })).toMatchObject({ passed: false });
+    expect(await vault.latestStage(1, { subject: "research:story", passedOnly: true })).toBeNull();
+    expect((await vault.actions()).map((a) => [a.kind, a.ok])).toEqual([["stage", false]]);
+    expect(reportText(r.findings, r.gate)).toContain("Did not pass its gate");
+    expect(summaryText(r.findings, false)).toContain("It didn't pass its gate, so nothing was saved.");
+    vault.close();
+  });
+
+  it("doesn't ask Claude when there are too few Reels to compare", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude();
+    // 8 Reels an account: 2 winners each, so 4 in all.
+    const r = await runResearch(base(vault, { accounts: ["a", "b"], ask: claude.ask, discover: async (_f, _t, _ig, name) => account(name, [500, 400, 100, 100, 100, 100, 90, 80], () => ({ mediaUrl: null, thumbnailUrl: null })) }));
+    expect(r.passed).toBe(false);
+    expect(claude.prompts).toEqual([]);
+    const failed = r.gate.checks.filter((c) => !c.passed).map((c) => `${c.name}: ${c.detail}`);
+    expect(failed).toContain("Story: at least 6 winners and 6 average Reels to compare: 4 winners, 8 average");
+    expect(failed).toContain("Story: every Reel was labelled, and none was added: Claude wasn't asked: the checks above come first");
+    vault.close();
+  });
+
+  it("sends back labels that aren't among the choices, with what was wrong", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude({ patterns: [], label: (r, round) => (r.id === "r03" && round === 1 ? { ...labelFor(r), art: "pretty" } : labelFor(r)) });
+    const f = fakes();
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure }));
+    expect(r.passed).toBe(true);
+    expect(r.findings.labelRounds).toBe(2);
+    const again = claude.prompts.filter((p) => p.step === 1).at(-1)!;
+    expect(again.reels.map((x) => x.id)).toEqual(["r03"]);
+    expect(again.prompt).toContain("- r03: art must be one of stick-figures, other-drawn, 3d-render, live-action, screen-recording, graphics, unclear");
+    vault.close();
+  });
+
+  it("fails the gate when Claude keeps answering outside the choices", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude({ label: (r) => ({ ...labelFor(r), opening: "explosive" }) });
+    const f = fakes();
+    const r = await runResearch(base(vault, { ask: claude.ask, download: f.download, measure: f.measure }));
+    expect(r.passed).toBe(false);
+    expect(r.findings.labelRounds).toBe(3);
+    expect(r.gate.checks.find((c) => !c.passed)).toMatchObject({ name: "Story: every label is one of its choices" });
+    // No patterns are proposed from labels that failed.
+    expect(claude.prompts.filter((p) => p.step !== 1)).toEqual([]);
+    expect(await vault.lessons("pattern")).toEqual([]);
+    vault.close();
+  });
+
+  it("carries on without transcripts when ElevenLabs refuses, and says why", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude({ patterns: [] });
+    const f = fakes();
+    let calls = 0;
+    const r = await runResearch(
+      base(vault, {
+        ask: claude.ask,
+        download: f.download,
+        measure: f.measure,
+        transcribe: async () => {
+          calls++;
+          throw new Error("ElevenLabs speech to text said: The API key you used is missing the permission speech_to_text");
+        },
+      }),
+    );
+    expect(r.passed).toBe(true);
+    // The pool had at most 3 Reels in flight when the first refusal came back.
+    expect(calls).toBeLessThanOrEqual(3);
+    expect(r.findings.transcripts).toBe(0);
+    expect(r.findings.notes.join(" ")).toContain("missing the permission speech_to_text");
+    expect(r.findings.table.find((x) => x.id === "pace")!.verdict).toBe("not enough data");
+    expect(Object.keys(claude.prompts[0]!.reels[0]!)).not.toContain("transcript");
+    vault.close();
+  });
+
+  it("fails the gate when the videos couldn't be measured, the way the first run went unnoticed", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude();
+    const r = await runResearch(base(vault, { ask: claude.ask, ffmpeg: false, fetchImpl: (async () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200 })) as unknown as typeof fetch }));
+    expect(r.passed).toBe(false);
+    expect(r.gate.checks.find((c) => !c.passed)).toMatchObject({ name: "Story: the videos Instagram gave were measured", detail: "0 of 40" });
+    expect(r.findings.notes[0]).toContain("ffmpeg isn't installed");
+    expect(claude.prompts).toEqual([]);
+    vault.close();
+  });
+
+  it("keeps each format's findings apart", async () => {
+    const vault = await memoryVault();
+    const f = fakes();
+    await runResearch(base(vault, { ask: fakeClaude().ask, download: f.download, measure: f.measure }));
+    const ad = await runResearch(base(vault, { format: "ad", ask: fakeClaude({ patterns: [{ pattern: "Show the product by second two.", question: "Does the caption's first line name an amount of money?" }] }).ask, download: f.download, measure: f.measure }));
+    expect(ad.passed).toBe(true);
+    expect(ad.gate.checks[0]!.name).toBe("Ad: at least 2 accounts could be studied");
+    const patterns = await vault.lessons("pattern");
+    expect(patterns.map((l) => [l.source, l.text])).toEqual([["stage 1 (story)", "Name an exact amount of money in the first line."], ["stage 1 (ad)", "Show the product by second two."]]);
+    expect(await researchBrief(vault, "ad")).toContain("Show the product by second two.");
+    expect(await researchBrief(vault, "ad")).not.toContain("Name an exact amount");
+    expect(await researchBrief(vault, "story")).not.toContain("Show the product");
+    expect(await researchBrief(vault, "explainer")).toBe("(none yet)");
+    vault.close();
+  });
+});
+
+describe("reading the accounts", () => {
+  it("keeps an account that can't be read, with why, and says what each gave", async () => {
+    const logs: string[] = [];
+    const { studies, noSoundKind } = await studyAccounts({
       token: "EAAx",
       igUserId: "ig1",
-      accounts: ["a", "b"],
-      discover,
-      probe: async () => 30,
-      measure: async (_u, _s, _d, name) => ({ cutsPerTenSeconds: 2, soundShare: 1, frames: `${name}.jpg` }),
-      ask: async (p) => answer(p),
+      accounts: ["a", "private"],
+      discover: async (_f, _t, _ig, name, max, state) => {
+        if (name === "private") throw new Error("@private can't be read: Instagram only shows business and creator accounts to other apps.");
+        // The run tells the reader when to stop paging, and what it learned about the allowance is passed on.
+        expect(max).toBe(200);
+        expect(state!.enough!(Array.from({ length: ENOUGH_SCORED }, (_, i) => reel(name, i, 100)))).toBe(true);
+        state!.usage = 31.4;
+        return { ...account(name, SIXTEEN), gave: { views: true, audioType: false } };
+      },
       now: () => NOW,
+      log: (m) => logs.push(m),
     });
-    expect(r.passed).toBe(true);
-    expect(r.measured).toHaveLength(20);
-    expect(r.research!.reels![0]!.likes).toBe(100);
-    const lessons = await vault.lessons("pattern");
-    expect(lessons.map((l) => l.text)).toEqual(["Something goes wrong in the first second"]);
+    expect(studies.map((x) => [x.username, x.problem])).toEqual([["a", null], ["private", "@private can't be read: Instagram only shows business and creator accounts to other apps"]]);
+    expect(noSoundKind).toEqual(["a"]);
+    expect(logs).toEqual([accountLine(studies[0]!), "@private: not used. @private can't be read: Instagram only shows business and creator accounts to other apps.", "Instagram's hourly allowance for reading other accounts is 31% used."]);
+  });
+});
+
+describe("what the video files say about the sound", () => {
+  const study = (username: string, winners: number, winnersWithVideo: number, average: number, averageWithVideo: number) => ({ ...studyAccount(account(username, SIXTEEN), NOW), winners, winnersWithVideo, average, averageWithVideo });
+
+  it("says when an account's winners come without a video file far more often than its average Reels", () => {
+    // The accounts test of 2026-11-20: @stickmanstorys22 gave 2 of 8 winners and 28 of 31 average Reels.
+    expect(soundSigns([study("stickmanstorys22", 8, 2, 31, 28)])).toEqual([
+      "Instagram gives the video file for 2 of @stickmanstorys22's 8 winners and 28 of its 31 average Reels. It withholds the file when a Reel carries copyrighted sound, most often music from its library, so this account's winners probably use library music more often than its average Reels. That is a guess from which files came, not a measurement.",
+    ]);
+    expect(soundSigns([study("own", 10, 9, 20, 4)])[0]).toContain("winners probably use their own sound more often");
+  });
+
+  it("says nothing without a clear gap, enough Reels, or a readable account", () => {
+    expect(soundSigns([study("none", 43, 0, 87, 0), study("all", 12, 12, 25, 25), study("close", 47, 2, 96, 5)])).toEqual([]);
+    expect(soundSigns([study("few", 4, 0, 8, 8)])).toEqual([]);
+    expect(soundSigns([{ ...study("broken", 8, 2, 31, 28), problem: "unreadable" }])).toEqual([]);
+  });
+});
+
+describe("what Claude is shown", () => {
+  it("counts a blind reader's answers only on the Reels it was asked about", () => {
+    // Winners w0 to w5 and average Reels a0 to a5, from two accounts in turns. w5 got "unclear", a5 no answer at all.
+    const held = [...Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, group: "winner" as const, account: i % 2 ? "one" : "two" })), ...Array.from({ length: 6 }, (_, i) => ({ id: `a${i}`, group: "average" as const, account: i % 2 ? "one" : "two" }))];
+    const answers = new Map<string, string[]>([["w0", ["yes", "yes"]], ["w1", ["yes", "no"]], ["w2", ["yes", "yes"]], ["w3", ["no", "no"]], ["w4", ["no", "yes"]], ["w5", ["unclear", "no"]], ["a0", ["no", "no"]], ["a1", ["yes", "no"]], ["a2", ["no", "no"]], ["a3", ["no", "no"]], ["a4", ["no", "no"]]]);
+    expect(tallyPatterns([{ pattern: "p", question: "q?" }, { pattern: "one creator's habit", question: "r?" }], answers, held)).toEqual([
+      { pattern: "p", question: "q?", winnersYes: 3, winnersAsked: 5, averageYes: 1, averageAsked: 5, winnerAccounts: 2, kept: true },
+      // Three winners show it and no average Reel does, but all three are the same account's.
+      { pattern: "one creator's habit", question: "r?", winnersYes: 3, winnersAsked: 6, averageYes: 0, averageAsked: 5, winnerAccounts: 1, kept: false },
+    ]);
+  });
+
+  it("never shows a result in the blind view", () => {
+    const shown = blindView({ ...studied("winner", 1, { caption: "c" }), id: "r01", group: "winner", videoGiven: false, sight: "none", shotFrames: 0, heard: false, heldOut: false, files: { open: null, shots: null, cover: null } });
+    expect(shown).toEqual({ id: "r01", caption: "c" });
   });
 });

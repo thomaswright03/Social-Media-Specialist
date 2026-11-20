@@ -127,11 +127,26 @@ Then, from the Actions tab → Social Media Specialist → Run workflow:
 5. `diagnose`: stage 0 of the content pipeline (`pipeline/README.md`). Reads
    Insights for everything posted and names the top 3 reasons it
    underperformed, each with a number; the result is on the Vault page.
-6. `research`: stage 1. Type the Instagram usernames to learn from in the
-   run's **accounts** box (or save them as the `RESEARCH_ACCOUNTS` variable).
-   It reads their Reels through Business Discovery (business and creator
-   accounts only), measures each one with ffmpeg, and saves the winning
-   patterns as lessons for the later stages.
+6. `research`: stage 1 (`pipeline/stages/1-research.md`). For each format
+   (or the one typed in the run's **format** box) it reads the accounts in
+   `pipeline/research/accounts.json` through Business Discovery (business
+   and creator accounts only), compares each account's winning Reels with
+   its average ones, and tests our own rules on them. To study other
+   accounts for one run, type them in the **accounts** box, like
+   `story: name1, name2; ad: name3`. The report is the run's **research**
+   artifact, and a summary goes into the History. It posts nothing. One
+   format takes about 20 minutes, all four over an hour.
+   `accounts-test` takes the same two boxes and only says which accounts
+   stage 1 could use (how many winners and average Reels each has, and how
+   many come with a video file). It takes a minute, asks Claude nothing and
+   saves nothing: try an account with it before adding it to the file.
+   Instagram allows only a few dozen such reads an hour for the whole app,
+   so test a handful of accounts at a time; both commands say how much of
+   the hour's allowance is used and stop reading at 75%.
+   With `ELEVENLABS_API_KEY` set it also transcribes each Reel (ElevenLabs
+   speech to text, about $0.20 an hour of sound, so a few cents a run); a
+   key limited to some features needs Speech to Text turned on. Set the
+   variable `RESEARCH_TRANSCRIBE` to `off` to skip it.
 
 For the Vault page's **Draft now** button, the Vault needs a GitHub token
 with Actions read and write on this repo, as `SOCIAL_DISPATCH_TOKEN` on
@@ -145,7 +160,9 @@ npx social run             the morning run: token, stats, drafts, Hitta
 npx social publish         post every approved post that's due
 npx social preview         draft one post into preview.jpg; saves nothing, posts nothing
 npx social diagnose        content pipeline stage 0: Insights diagnosis (pipeline/README.md)
-npx social research a b    content pipeline stage 1: study the Reels of accounts a and b
+npx social research        content pipeline stage 1, every format: winners against average Reels
+npx social research story  the same for one format; add "story: a, b" to study other accounts
+npx social accounts-test   which of those accounts stage 1 could use; saves nothing, posts nothing
 npx social instagram-test  read the Instagram account; posts nothing
 npx social hitta-test      send Hitta a test report
 npm test                   the tests

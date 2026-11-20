@@ -1,0 +1,31 @@
+{
+  "story": [
+    { "account": "stickmanstorys22", "why": "Thomas's pick: stick-figure survival stories with a narrator", "tested": "2026-11-20: 441,250 followers, 61 Reels to score, 8 winners (2 with a video file), 31 average (28 with a video file)" },
+    { "account": "thestorystix", "why": "Story Stix: stick-figure stories with voice acting", "tested": "2026-11-20: 531,891 followers, 173 Reels to score, 43 winners, 87 average, no video files" },
+    { "account": "alanbecker", "why": "Alan Becker (Animator vs. Animation): stick-figure animation with no narrator. Replaces stickman_animation_007, which has posted no Reel in the last year", "tested": "2026-11-20: 1,251,967 followers, 190 Reels to score, 47 winners (2 with a video file), 96 average (5 with a video file)" }
+  ],
+  "satisfying": [
+    { "account": "satisfy_ai_reels", "why": "Satisfying Reels made with AI (its bio says Veo 3 clips)", "tested": "2026-11-20: 162,110 followers, 59 Reels to score, 14 winners, 31 average, no video files; nothing posted in the last 90 days" },
+    { "account": "oddlysatisfying", "why": "A page of oddly satisfying clips of every kind, posting about 6 a week. Replaces wannerstedt (9 Reels in a year, no winners) and glasmr_ (Instagram doesn't show it to other apps)", "tested": "2026-11-20: 229,076 followers, 71 Reels to score, 17 winners, 37 average, no video files" }
+  ],
+  "explainer": [
+    { "account": "cleoabram", "why": "Cleo Abram, video journalist: explainers about technology", "tested": "2026-11-20: 3,279,941 followers, 195 Reels to score, 48 winners, 99 average, no video files" },
+    { "account": "morningbrew", "why": "Morning Brew: business news made short", "tested": "2026-11-20: 2,293,774 followers, 49 Reels to score, 12 winners, 25 average, a video file for every one" },
+    { "account": "voxdotcom", "why": "Vox: explainers on the news", "tested": "2026-11-20: 1,026,179 followers, 98 Reels to score, 24 winners (2 with a video file), 50 average (none with one)" }
+  ],
+  "ad": [
+    { "account": "clickup", "why": "ClickUp: office comedy skits that sell work software", "tested": "2026-11-20: 430,934 followers, 100 Reels to score, 15 winners (12 with a video file), 50 average (38 with a video file)" },
+    { "account": "notionhq", "why": "Notion: product Reels for a work app. Replaces duolingo: the first real ad run looked at 20 of its Reels and the reader marked none of them as an ad", "tested": "2026-11-20: 497,033 followers, 40 Reels to score, 6 winners (2 with a video file), 20 average (14 with a video file)" },
+    { "account": "shopify", "why": "Shopify: stories about small business owners", "tested": "2026-11-20: 2,839,180 followers, 68 Reels to score, 5 winners (5 with a video file), 34 average (28 with a video file)" }
+  ],
+  "also tested": [
+    { "account": "canva", "for": "ad", "tested": "2026-11-20: usable. 2,652,406 followers, 68 Reels to score, 17 winners (6 with a video file), 34 average (3 with a video file)" },
+    { "account": "duolingo", "for": "ad", "tested": "2026-11-20: readable (5,428,026 followers, 63 Reels to score, a video file for every one), but a poor fit: in the first real ad run the reader marked all 20 of its Reels looked at as not ads" },
+    { "account": "theodd1sout", "for": "story", "tested": "2026-11-20: usable but thin. 3,425,856 followers, 16 Reels to score, 4 winners, 8 average" },
+    { "account": "stickman_animation_007", "for": "story", "tested": "2026-11-20: not usable. None of its 80 Reels is under a year old" },
+    { "account": "brewstewfilms", "for": "story", "tested": "2026-11-20: not usable. Instagram doesn't show it to other apps" },
+    { "account": "wannerstedt", "for": "satisfying", "tested": "2026-11-20: not usable. 9 Reels to score in a year and no winners" },
+    { "account": "glasmr_", "for": "satisfying", "tested": "2026-11-20: not usable. Instagram doesn't show it to other apps" },
+    { "account": "extraweg", "for": "satisfying", "tested": "2026-11-20: not usable. None of its 60 Reels is under a year old" }
+  ]
+}

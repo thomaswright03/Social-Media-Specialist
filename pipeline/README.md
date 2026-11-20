@@ -14,7 +14,7 @@ series. Those videos are the examples of what to avoid (`avoid.md`).
 | # | Stage | Gate (all must pass) | Built |
 |---|-------|----------------------|-------|
 | 0 | Diagnose: pull Insights for everything posted | 3 reasons it underperformed, each backed by a number that matches the Insights data | yes (`social diagnose`) |
-| 1 | Research what wins: 15 to 20 top Reels in the niche | every winning pattern has 3+ real examples, each with a link and its numbers | yes (`social research`) |
+| 1 | Research what wins, for each format: winners compared with the same accounts' average Reels | 2+ accounts, 6+ winners and 6+ average Reels, the videos measured, every label from its fixed choices, 5+ of our rules with a verdict, and every pattern kept is backed by a blind check on Reels it wasn't drawn from (3+ winners, at least half of them, in 2+ accounts, 25+ points more often than average Reels) | yes (`social research`; `social accounts-test` tries the accounts first) |
 | 2 | Ideas: pitch 20 in the format code picked (80/20 mix), score, keep 3 | 20 scored pitches, the top 3 kept, each finalist fits the format and passes the cold one-sentence test (3 separate cold reads, 2 must say yes) | yes (`social ideas`) |
 | 3 | The first 3 seconds | no title card, starts mid-action, on-screen hook by 0.5 s and readable by 1.5 s, cold sound-off viewers know why to keep watching | yes (`social script`) |
 | 4 | Script, 30 to 60 s, standalone | no 3-second slice without something new; every spoken claim on screen; clean grammar, plausible physics and timing, no contradictions; own payoff; a reason to watch the next; the format's checks | yes (`social script`) |
@@ -108,7 +108,28 @@ need his approval on the Vault page.
   highlights, pin a post, or read the retention graph or per-Reel follows.
   The retention graph is only in the app (an Insights screenshot works).
 - Others' Reels can't be read with Instagram Login (Business Discovery and
-  hashtag search need Facebook Login), so stage 1 needs links to the Reels
-  to study, or a Facebook Page.
+  hashtag search need Facebook Login). We use Facebook Login now, so stage 1
+  reads other business and creator accounts through Business Discovery.
+- What Business Discovery gives for another account's Reel (Meta's docs, read
+  2026-11-19, and the real runs of 2026-11-20): views (`view_count`, since
+  2025-06-16), likes (unless the owner hid them), the comment count, the
+  caption, the date and the cover. The video file (`media_url`) comes too,
+  except when the Reel's sound is from Instagram's music library or the owner
+  turned downloads off; for the story accounts that left 3 videos in the
+  first 24 Reels taken, which is why stage 1 takes Reels with a video first.
+  The kind of sound (`media_audio_type`) is refused here, with no field named
+  in the error. Not readable: saves, shares, reach, watch time and the
+  comments' text. Pages are followed by cursor, and a page can hold fewer
+  posts than asked for while more remain; the first version of stage 1
+  looked for a "next" link that these answers never carry, so it only ever
+  saw an account's last 50 posts.
+- Reading other accounts has its own hourly allowance for the whole app, and
+  it counts time as well as requests. On 2026-11-20 it ran out after about
+  48 requests of 50 posts each within 20 minutes ("(#4) Application request
+  limit reached"), well short of the 200 an hour Meta's docs name; an hour
+  later, 13 requests used 15% of it. Each answer's `X-App-Usage` header
+  says how much is used; stage 1 reads it,
+  stops paging an account once it has enough Reels, and reads no new account
+  past 75%.
 - Videos are fetched by Instagram from a public URL; with Instagram Login
   there's no direct upload.

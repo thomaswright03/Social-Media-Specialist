@@ -29,6 +29,10 @@ export class InstagramError extends Error {
   get tokenProblem(): boolean {
     return this.code === 190 || this.status === 401;
   }
+  /** Meta's hourly allowance for this app (4), this user (17) or this Page or account (32, 613, 80002) is used up. */
+  get rateLimited(): boolean {
+    return this.code === 4 || this.code === 17 || this.code === 32 || this.code === 613 || this.code === 80002;
+  }
 }
 
 export type Account = { id: string; username: string; followers: number | null; posts: number | null };
@@ -46,6 +50,10 @@ export type Media = {
   thumbnailUrl: string | null;
   likes: number | null;
   comments: number | null;
+  /** Plays of a Reel. Instagram gives it only for other accounts' Reels (Business Discovery's view_count). */
+  views?: number | null;
+  /** MUSIC (from Instagram's library) or ORIGINAL_SOUND, when Instagram says. */
+  audioType?: string | null;
 };
 
 /** Reel metrics from Instagram's insights (null when Instagram doesn't give one). */
@@ -128,7 +136,31 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export let RETRY_MS = 2_000;
 export const setRetryMs = (ms: number) => (RETRY_MS = ms);
 
-export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}, host = graphHost(token)): Promise<Record<string, unknown>> {
+/**
+ * How much of the app's hourly allowance Meta says is used, 0 to 100: the
+ * highest number in the answer's X-App-Usage (or X-Business-Use-Case-Usage)
+ * header, which counts requests, time and processing. Null when there is none.
+ */
+export function usageFrom(headers: Headers | undefined): number | null {
+  const numbers: number[] = [];
+  const collect = (v: unknown, depth = 0) => {
+    if (depth > 4 || !v || typeof v !== "object") return;
+    for (const [key, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === "number" && Number.isFinite(x) && /^(call_count|total_time|total_cputime)$/.test(key)) numbers.push(x);
+      else collect(x, depth + 1);
+    }
+  };
+  for (const name of ["x-app-usage", "x-business-use-case-usage"]) {
+    try {
+      collect(JSON.parse(headers?.get?.(name) ?? "null"));
+    } catch {
+      // Not JSON: nothing to read.
+    }
+  }
+  return numbers.length ? Math.max(...numbers) : null;
+}
+
+export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: string, token: string, params: Record<string, string> = {}, host = graphHost(token), seen?: { usage?: number | null }): Promise<Record<string, unknown>> {
   const url = new URL(`https://${host}/${GRAPH_VERSION}/${path.replace(/^\//, "")}`);
   const body = new URLSearchParams({ ...params, access_token: token });
   let res: Response | null = null;
@@ -148,6 +180,7 @@ export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: strin
       throw new InstagramError(`Instagram couldn't be reached: ${err instanceof Error ? err.message : String(err)}`, null, null);
     }
   }
+  if (seen) seen.usage = usageFrom(res.headers) ?? seen.usage ?? null;
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string; code?: number; error_user_msg?: string } };
   if (!res.ok || json.error) {
     const e = json.error ?? {};
@@ -307,32 +340,99 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
 }
 
 /** Another business or creator account, seen through Business Discovery (Facebook login only). */
-export type DiscoveredAccount = { username: string; followers: number | null; posts: number | null; media: Media[] };
-
-const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count,media_url,thumbnail_url";
+export type DiscoveredAccount = {
+  username: string;
+  followers: number | null;
+  posts: number | null;
+  media: Media[];
+  /** Which of the newer fields Instagram answered with (left out by callers that build one by hand). */
+  gave?: { views: boolean; audioType: boolean };
+  /** How many requests reading it took. Business Discovery allows an app about 200 an hour. */
+  requests?: number;
+};
 
 /**
- * Up to `max` recent posts of another professional account, with their likes
- * and comments. Only Business Discovery reaches other accounts, and only with
- * a Facebook-login token; a personal account can't be read at all.
+ * Carried from one account to the next in a run.
+ *
+ * Reading other accounts has its own hourly allowance, shared by the whole
+ * app, and it counts time as well as requests: the first test of 21 accounts
+ * was refused after about 48 requests of 50 posts each ("(#4) Application
+ * request limit reached"), far short of the 200 an hour Meta's docs name.
+ * So a run asks for no more than it needs, and stops before the allowance is
+ * gone, which would leave nothing for the rest of the hour.
  */
-export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId: string, username: string, max = 100): Promise<DiscoveredAccount> {
+export type DiscoveryState = {
+  /** Which field set Instagram accepts, so a field refused once isn't asked for again. */
+  set: number;
+  /** How much of the hourly allowance Meta last said was used (0 to 100), when it says. */
+  usage?: number | null;
+  /** Instagram refused a request because the allowance is used up: no account is asked after that. */
+  limited?: boolean;
+  /** Called after each page with the posts read so far: true stops the paging early. */
+  enough?: (media: Media[]) => boolean;
+};
+
+/** No new request for another account is made once this much of the hourly allowance is used. */
+export const DISCOVERY_USAGE_STOP = 75;
+const ALLOWANCE_USED = "Instagram's hourly allowance for reading other accounts is used up. It frees up again within the hour";
+
+const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count,media_url,thumbnail_url";
+// Newer fields are asked for first and dropped a set at a time when Instagram
+// refuses one: view_count (other accounts' Reels, since 2025-06-16) and
+// media_audio_type (since 2026-06-01; the docs don't say it works here).
+// A refusal doesn't name the field: the first real run got only
+// "(#100) Please read documentation for supported fields."
+const DISCOVERY_FIELD_SETS = [`${DISCOVERY_MEDIA},view_count,media_audio_type`, `${DISCOVERY_MEDIA},view_count`, DISCOVERY_MEDIA] as const;
+const refusedField = (err: unknown) => err instanceof InstagramError && /nonexisting field|unknown field|invalid field|supported fields|field[^.]{0,40}(does not exist|isn't available|is not available|not supported)/i.test(err.message);
+const DISCOVERY_PAGE = 50;
+const DISCOVERY_MAX_PAGES = 10;
+
+/**
+ * Up to `max` recent posts of another professional account, with their
+ * views (Reels), likes and comments. Only Business Discovery reaches other
+ * accounts, and only with a Facebook-login token; a personal account can't be
+ * read at all. A Reel comes without `mediaUrl` when its sound is from
+ * Instagram's music library or its owner turned downloads off.
+ */
+export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId: string, username: string, max = 100, state: DiscoveryState = { set: 0 }): Promise<DiscoveredAccount> {
   const handle = username.replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/[/?#].*$/, "").trim();
   if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) throw new InstagramError(`"${username}" isn't an Instagram username.`, null, null);
   const media: Media[] = [];
   let after: string | null = null;
   let head: Record<string, unknown> = {};
-  for (let page = 0; page < 4 && media.length < max; page++) {
-    const edge = `media${after ? `.after(${after})` : ""}.limit(50){${DISCOVERY_MEDIA}}`;
-    const r = await call(fetchImpl, "GET", igUserId, token, { fields: `business_discovery.username(${handle}){username,followers_count,media_count,${edge}}` }, FB_HOST).catch((err) => {
-      if (err instanceof InstagramError && /cannot be found|does not exist|not.*business/i.test(err.message)) {
-        throw new InstagramError(`@${handle} can't be read: Instagram only shows business and creator accounts to other apps.`, err.status, err.code);
+  let requests = 0;
+  const nearlyUsed = () => state.limited || (state.usage ?? 0) >= DISCOVERY_USAGE_STOP;
+  if (nearlyUsed()) throw new InstagramError(state.limited ? `${ALLOWANCE_USED}.` : `Instagram's hourly allowance for reading other accounts is ${Math.round(state.usage!)}% used, so no more are read this hour.`, 429, 4);
+  for (let page = 0; page < DISCOVERY_MAX_PAGES && media.length < max; page++) {
+    let r: Record<string, unknown> | null = null;
+    // Part of an account is better than none: what was read before the allowance ran low is kept.
+    if (page > 0 && nearlyUsed()) break;
+    while (!r) {
+      const edge = `media${after ? `.after(${after})` : ""}.limit(${DISCOVERY_PAGE}){${DISCOVERY_FIELD_SETS[state.set]}}`;
+      requests++;
+      try {
+        r = await call(fetchImpl, "GET", igUserId, token, { fields: `business_discovery.username(${handle}){username,followers_count,media_count,${edge}}` }, FB_HOST, state);
+      } catch (err) {
+        if (refusedField(err) && state.set < DISCOVERY_FIELD_SETS.length - 1) {
+          state.set++;
+          continue;
+        }
+        if (err instanceof InstagramError && err.rateLimited) {
+          state.limited = true;
+          if (page > 0) break;
+          throw new InstagramError(`${ALLOWANCE_USED} (${err.message.replace(/^Instagram said: /, "").replace(/\.$/, "")}).`, err.status, err.code);
+        }
+        if (err instanceof InstagramError && /cannot be found|does not exist|not.*business/i.test(err.message)) {
+          throw new InstagramError(`@${handle} can't be read: Instagram only shows business and creator accounts to other apps.`, err.status, err.code);
+        }
+        throw err;
       }
-      throw err;
-    });
+    }
+    if (!r) break;
     head = (r.business_discovery as Record<string, unknown> | undefined) ?? {};
-    const edgeData = head.media as { data?: Record<string, unknown>[]; paging?: { cursors?: { after?: string }; next?: string } } | undefined;
-    for (const m of edgeData?.data ?? []) {
+    const edgeData = head.media as { data?: Record<string, unknown>[]; paging?: { cursors?: { after?: string } } } | undefined;
+    const rows = edgeData?.data ?? [];
+    for (const m of rows) {
       media.push({
         id: String(m.id),
         caption: typeof m.caption === "string" ? m.caption : null,
@@ -344,12 +444,18 @@ export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId:
         thumbnailUrl: typeof m.thumbnail_url === "string" ? m.thumbnail_url : null,
         likes: n(m.like_count),
         comments: n(m.comments_count),
+        views: n(m.view_count),
+        audioType: typeof m.media_audio_type === "string" ? m.media_audio_type : null,
       });
     }
-    after = edgeData?.paging?.next ? (edgeData.paging.cursors?.after ?? null) : null;
-    if (!after) break;
+    // Business Discovery pages with cursors only: its answers carry no "next"
+    // link. A page may hold fewer rows than asked for, so only an empty page,
+    // a missing cursor or the account's own post count ends it.
+    after = edgeData?.paging?.cursors?.after ?? null;
+    if (!after || !rows.length || media.length >= (n(head.media_count) ?? Infinity)) break;
+    if (state.enough?.(media)) break;
   }
-  return { username: String(head.username ?? handle), followers: n(head.followers_count), posts: n(head.media_count), media: media.slice(0, max) };
+  return { username: String(head.username ?? handle), followers: n(head.followers_count), posts: n(head.media_count), media: media.slice(0, max), gave: { views: state.set <= 1, audioType: state.set === 0 }, requests };
 }
 
 export type PageRef = { id: string; name: string; instagramId: string | null; accessToken: string | null };
