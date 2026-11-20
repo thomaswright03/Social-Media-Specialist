@@ -148,7 +148,7 @@ export const withCast = (svg: string, cast: Cast) => (cast.defs ? svg.replace(/<
 export type Scene = { svg: string | null; tries: number; problems: string[] };
 
 /** One shot's drawing, asked again (with what was wrong) up to SCENE_TRIES times. */
-export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask, cast: Cast = NO_CAST, style = DEFAULT_STYLE()): Promise<Scene> {
+export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask, cast: Cast = NO_CAST, style = DEFAULT_STYLE(), note = ""): Promise<Scene> {
   const s = shots[i]!;
   const seconds = Math.max(0, (s.end ?? 0) - (s.start ?? 0)).toFixed(1);
   const context = shots
@@ -172,7 +172,7 @@ export async function drawScene(shots: Shot[], i: number, look: string, ask: Ask
         PLACE: s.place ?? "",
         CAST: castNote(cast),
         CONTEXT: context,
-        PROBLEMS: problems.length ? `Your last drawing for this shot was refused: ${problems.join(" ")} Fix that.` : "",
+        PROBLEMS: [note, problems.length ? `Your last drawing for this shot was refused: ${problems.join(" ")} Fix that.` : ""].filter(Boolean).join("\n"),
       },
       "art",
     );
