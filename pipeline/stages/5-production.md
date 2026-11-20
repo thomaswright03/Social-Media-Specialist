@@ -30,6 +30,10 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   on 2.2 s of the company's card after its last shot: the logo (the
   website's bolt tile), "Wright AI Solutions" and wright-ai-solutions.com
   (`END_CARD` in `src/pipeline/gates.ts`, drawn in `compose.ts`).
+  An explainer's last line is a question (stage 4 checks it); the card comes
+  up as that last shot starts, with the question in big type above the logo,
+  so the narrator asks it over the card. Stories, satisfying videos and ads
+  get the card with no question.
 - **Captions and text:** one caption band, like the benchmark: the spoken
   words in big bold chunks of up to 3 below the action (y 1290), the current
   word in lime (a shot with no voice shows its on-screen text there instead).

@@ -319,7 +319,9 @@ export async function runProduce(d: {
   let boxes: TextBox[] = [];
   const framesDir = join(work, "frames");
   try {
-    const html = composeHtml(t, svgs, motions, physics);
+    // Explainers ask their closing question over the end card (Thomas, 2026-11-20).
+    const lastLine = t.at(-1)?.line?.trim() ?? "";
+    const html = composeHtml(t, svgs, motions, physics, { endQuestion: format === "explainer" && /\?["'”’)]*$/.test(lastLine) ? lastLine : undefined });
     await writeFile(join(work, "compose.html"), html);
     // Every Reel ends on the end card (logo, name, website) after its last shot.
     boxes = (await renderFrames(browser, html, seconds + END_CARD, framesDir, log)).boxes;

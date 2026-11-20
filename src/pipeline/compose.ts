@@ -163,7 +163,13 @@ export const FLY_AFTER = 0.34;
  * code (pipeline/physics.ts): it fills the frame behind the words, its counter
  * shows near the top, and each shot's on-screen text shows as the label.
  */
-export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion | null)[] = [], physics = ""): string {
+/**
+ * endQuestion (explainers, Thomas 2026-11-20: "require an outro question over
+ * the card"): the closing question, shown on the end card, which then comes up
+ * as the last shot starts so the narrator asks it over the card.
+ */
+export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion | null)[] = [], physics = "", opts: { endQuestion?: string } = {}): string {
+  const endQuestion = opts.endQuestion?.trim() ?? "";
   const shots = t.map((s, i) => {
     const cam = cameraFor(`${s.camera ?? ""} ${s.visual ?? ""}`);
     const m = motions[i] ?? null;
@@ -199,6 +205,11 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
 #endcard{position:absolute;inset:0;z-index:20;opacity:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:260px;background:radial-gradient(circle at 30% 25%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 75% 70%,rgba(255,92,173,.28),transparent 55%),radial-gradient(circle at 50% 50%,rgba(92,225,255,.12),transparent 70%),#07070a;font-family:Montserrat,sans-serif;color:#f4f2ed;text-align:center}
 #endcard .mark{width:300px;height:300px}
+#endcard p{max-width:780px;margin-bottom:90px;font-weight:900;font-size:84px;line-height:1.06;letter-spacing:-.01em;text-transform:uppercase;color:#fff}
+#endcard p em{font-style:normal;color:${LIME}}
+#endcard.q .mark{width:220px;height:220px}
+#endcard.q b{margin-top:40px;font-size:72px}
+#endcard.q i{font-size:46px}
 #endcard b{display:block;margin-top:56px;font-weight:900;font-size:86px;line-height:1.02;letter-spacing:-.02em}
 #endcard i{display:inline-block;margin-top:30px;font-style:normal;font-weight:800;font-size:54px;letter-spacing:.01em;background:linear-gradient(90deg,#7c5cff,#ff5cad 55%,#5ce1ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 </style></head><body>
@@ -208,7 +219,7 @@ ${t.map((_, i) => `<div class="scene" id="s${i}">${motions[i] ? "" : (svgs[i] ??
 <div id="vignette"></div><div id="flash"></div>
 <div id="label"></div><div id="cap"></div>
 <div id="brand"><b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>
-<div id="endcard">${LOGO_SVG}<b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
+<div id="endcard"${endQuestion ? ' class="q"' : ""}>${endQuestion ? `<p>${esc(endQuestion).replace(/\?+$/, "<em>?</em>")}</p>` : ""}${LOGO_SVG}<b>${esc(BRAND.name)}</b><i>${esc(BRAND.site)}</i></div>${physics ? `<canvas id="phys" width="${W}" height="${H}"></canvas><div id="pcount"></div>` : ""}
 <script>${motions.some(Boolean) ? motionRuntime() : ""}</script>
 ${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
 <script>
@@ -290,11 +301,12 @@ window.render=(t)=>{
   else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
   const pc=document.getElementById('pcount'); if(pc&&window.physRender){ const ct=window.physRender(t); if(pc.dataset.k!==ct){ pc.innerHTML=ct?'<span>'+esc(ct)+'</span>':''; pc.dataset.k=ct; } }
-  const END_AT=SHOTS.length?SHOTS[SHOTS.length-1].at+SHOTS[SHOTS.length-1].dur:0, ec=document.getElementById('endcard');
+  const END_AT=SHOTS.length?SHOTS[SHOTS.length-1].at+(${endQuestion ? "0" : "SHOTS[SHOTS.length-1].dur"}):0, ec=document.getElementById('endcard');
   if(t>=END_AT){ const q=Math.min(1,(t-END_AT)/.3), m=Math.min(1,(t-END_AT)/.55), back=1+2.70158*Math.pow(m-1,3)+1.70158*Math.pow(m-1,2);
     ec.style.opacity=String(q); ec.querySelector('.mark').style.transform='scale('+(0.4+0.6*back)+') rotate('+((1-m)*-25)+'deg)';
     const w=Math.min(1,Math.max(0,(t-END_AT-.25)/.35)); for(const e of ec.querySelectorAll('b,i')){ e.style.opacity=String(w); e.style.transform='translateY('+((1-w)*30)+'px)'; }
-    const bx=[]; for(const e of ec.querySelectorAll('b,i')) for(const r of e.getClientRects()) bx.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); return bx; }
+    const qe=ec.querySelector('p'); if(qe){ const qq=Math.min(1,Math.max(0,(t-END_AT-.1)/.4)), qb=1+2.70158*Math.pow(qq-1,3)+1.70158*Math.pow(qq-1,2); qe.style.opacity=String(Math.min(1,qq*3)); qe.style.transform='scale('+(0.7+0.3*qb)+')'; }
+    const bx=[]; for(const e of ec.querySelectorAll('p,b,i')) for(const r of e.getClientRects()) bx.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); return bx; }
   ec.style.opacity='0';
   const boxes=[]; for(const e of [s.label?label.firstElementChild:null, cap.textContent.trim()?cap:null, pc&&pc.textContent.trim()?pc.firstElementChild:null, document.querySelector('#brand b'), document.querySelector('#brand i')]){ if(!e) continue; for(const r of e.getClientRects()) boxes.push({text:e.textContent.trim(),x:r.x,y:r.y,w:r.width,h:r.height}); }
   return boxes;
