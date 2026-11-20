@@ -77,3 +77,20 @@ describe("variety", () => {
     expect(p).toMatch(/The heart icon is used more than once \(shot 2, 3\)/);
   });
 });
+
+describe("one take", () => {
+  it("times a voiced shot by its words, not the script's guess", () => {
+    const w = [{ word: "hi", start: 0.06, end: 1.4 }];
+    const [a, b] = timeline([{ start: 0, end: 5, line: "hi" }, { start: 5, end: 10, line: "hi" }], [{ seconds: 1.4, words: w }, { seconds: 0.5, words: w }], { oneTake: true });
+    expect(a!.dur).toBeCloseTo(1.58);
+    expect(a!.voiceAt).toBe(0);
+    expect(b!.dur).toBe(1.2);
+    expect(timeline([{ start: 0, end: 5, line: "hi" }], [{ seconds: 1.4, words: w }])[0]!.dur).toBe(5);
+  });
+
+  it("puts no label over a motion shot", () => {
+    const t = timeline([{ start: 0, end: 2, line: "Prices rose", onScreenText: "WHO PAYS?" }], [{ seconds: 1, words: [{ word: "Prices", start: 0, end: 0.4 }] }]);
+    expect(composeHtml(t, [""], [{ shot: 1, pieces: [{ kind: "title", text: "x" }] }])).toContain('"label":""');
+    expect(composeHtml(t, [""])).toContain('"label":"WHO PAYS?"');
+  });
+});
