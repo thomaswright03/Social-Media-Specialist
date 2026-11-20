@@ -147,16 +147,42 @@ export function labelProblems(l: ReelLabels, looked: Looked): string[] {
  * reader answered its yes/no question for the other half, Reel by Reel,
  * without being told which were winners.
  */
-export type PatternTally = { pattern: string; question: string; winnersYes: number; winnersAsked: number; averageYes: number; averageAsked: number };
+export type PatternTally = {
+  pattern: string;
+  question: string;
+  /** Yes answers, and Reels with a yes or a no, among the Reels the pattern wasn't drawn from. */
+  winnersYes: number;
+  winnersAsked: number;
+  averageYes: number;
+  averageAsked: number;
+  /** How many accounts the winners that show it come from. */
+  winnerAccounts: number;
+};
 
 export const PATTERN_MIN_WINNERS = 3;
+/** A yes or a no is needed for this many Reels in each group. */
+export const PATTERN_MIN_ASKED = 5;
+/** One creator's habit isn't a pattern: the winners that show it come from at least this many accounts. */
+export const PATTERN_MIN_ACCOUNTS = 2;
 /** Winners must show a pattern this much more often than average Reels (as a share, 0 to 1). */
 export const PATTERN_MIN_GAP = 0.25;
 
-/** A pattern is kept only when 3+ of the winners it wasn't drawn from show it, and winners show it clearly more often than average Reels. */
+/** Why a pattern isn't kept, or null when the Reels it wasn't drawn from back it. */
+export function patternProblem(p: PatternTally): string | null {
+  if (p.winnersAsked < PATTERN_MIN_ASKED || p.averageAsked < PATTERN_MIN_ASKED) return `it could be told for only ${p.winnersAsked} winners and ${p.averageAsked} average Reels (needs ${PATTERN_MIN_ASKED} of each)`;
+  if (p.winnersYes < PATTERN_MIN_WINNERS) return `only ${p.winnersYes} of those winners show it (needs ${PATTERN_MIN_WINNERS})`;
+  if ((p.winnerAccounts ?? 0) < PATTERN_MIN_ACCOUNTS) return "the winners that show it are all from one account";
+  if (p.winnersYes / p.winnersAsked - p.averageYes / p.averageAsked < PATTERN_MIN_GAP - 1e-9) return "average Reels show it nearly as often";
+  return null;
+}
+
+/**
+ * A pattern is kept only when the Reels it wasn't drawn from back it: a yes
+ * or no for 5+ Reels in each group, 3+ winners from 2+ accounts show it, and
+ * winners show it at least 25 points more often than average Reels.
+ */
 export function patternHolds(p: PatternTally): boolean {
-  if (p.winnersYes < PATTERN_MIN_WINNERS || !p.winnersAsked || !p.averageAsked) return false;
-  return p.winnersYes / p.winnersAsked - p.averageYes / p.averageAsked >= PATTERN_MIN_GAP;
+  return patternProblem(p) === null;
 }
 
 export type ResearchGateInput = {
@@ -202,9 +228,9 @@ export function gateResearch(x: ResearchGateInput): GateResult {
     check(`${name}: every label is one of its choices`, x.labels !== null && x.looked.length > 0 && problems.length === 0, notAsked ?? (problems.length ? problems.slice(0, 8).join("; ") : undefined)),
     check(`${name}: at least ${MIN_VERDICTS} of our rules have enough Reels behind them for a verdict`, x.verdicts >= MIN_VERDICTS, `${x.verdicts} rules`),
     check(
-      `${name}: every pattern kept is shown by ${PATTERN_MIN_WINNERS}+ winners it wasn't drawn from, and more often than by average Reels`,
+      `${name}: every pattern kept is shown by ${PATTERN_MIN_WINNERS}+ winners it wasn't drawn from, in ${PATTERN_MIN_ACCOUNTS}+ accounts, and clearly more often than by average Reels`,
       weak.length === 0,
-      weak.length ? weak.map((p) => `"${p.pattern.slice(0, 50)}": ${p.winnersYes} of ${p.winnersAsked} winners, ${p.averageYes} of ${p.averageAsked} average`).join("; ") : `${x.patterns.length} kept`,
+      weak.length ? weak.map((p) => `"${p.pattern.slice(0, 50)}": ${p.winnersYes} of ${p.winnersAsked} winners, ${p.averageYes} of ${p.averageAsked} average, ${patternProblem(p)}`).join("; ") : `${x.patterns.length} kept`,
     ),
   ]);
 }

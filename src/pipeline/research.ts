@@ -16,20 +16,25 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverAccount } from "../instagram.ts";
+import { discoverAccount, type DiscoveryState } from "../instagram.ts";
 import { STT_USD_PER_HOUR, transcribe as elevenLabs, type Transcribe } from "../transcribe.ts";
 import type { Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
-import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP, UNCLEAR, gateResearch, labelProblems, patternHolds, type GateResult, type Looked, type PatternTally, type ReelLabels } from "./gates.ts";
+import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP, UNCLEAR, gateResearch, labelProblems, patternProblem, type GateResult, type Looked, type PatternTally, type ReelLabels } from "./gates.ts";
 import { captionFacts, download as downloadFile, hasFfmpeg, measureFile, speechFacts, type MeasureFile, type SpeechFacts, type VideoFacts } from "./research-measure.ts";
-import { NOT_MEASURED, rowText, rulesTable, tableText, type RuleRow, type StudiedReel } from "./research-rules.ts";
-import { MAX_AGE_DAYS, MIN_AGE_DAYS, WINNER_LIFT, pickSample, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
+import { FOR_THOMAS, NOT_MEASURED, rowText, rulesTable, tableText, type RuleRow, type StudiedReel } from "./research-rules.ts";
+import { MAX_AGE_DAYS, MIN_AGE_DAYS, WINDOW, WINNER_LIFT, accountLine, pickSample, studyAccount, type AccountStudy, type Candidate } from "./research-sample.ts";
 import { parseJson, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (prompt: string) => Promise<string>;
 
-/** Winners and average Reels looked at for a format, each (RESEARCH_PER_GROUP changes it, 6 to 20). */
-export const PER_GROUP = 12;
+/**
+ * Winners and average Reels looked at for a format, each (RESEARCH_PER_GROUP
+ * changes it, 6 to 30). Half of them are held back to check the patterns on,
+ * and 10 a group is the least that lets a pattern be told from chance at all.
+ */
+export const PER_GROUP = 20;
+export const PER_GROUP_MAX = 30;
 /** Posts read from each account. */
 export const POSTS_PER_ACCOUNT = 200;
 /** Reels in one Claude turn: each has up to two pictures to open. */
@@ -180,22 +185,23 @@ function knownView(r: Working): Record<string, unknown> {
 const lookedOf = (r: FoundReel): Looked => ({ id: r.id, group: r.group, sight: r.sight, shotFrames: r.shotFrames, heard: r.heard });
 
 /** Counts a blind reader's answers on the Reels the patterns weren't drawn from. */
-export function tallyPatterns(patterns: { pattern: string; question: string }[], answers: Map<string, string[]>, heldOut: { id: string; group: "winner" | "average" }[]): FoundPattern[] {
+export function tallyPatterns(patterns: { pattern: string; question: string }[], answers: Map<string, string[]>, heldOut: { id: string; group: "winner" | "average"; account: string }[]): FoundPattern[] {
   return patterns.map((p, i) => {
     const side = (group: "winner" | "average") => {
-      const given = heldOut.filter((r) => r.group === group).map((r) => answers.get(r.id)?.[i]);
-      return { yes: given.filter((a) => a === "yes").length, asked: given.filter((a) => a === "yes" || a === "no").length };
+      const given = heldOut.filter((r) => r.group === group).map((r) => ({ account: r.account, answer: answers.get(r.id)?.[i] }));
+      const yes = given.filter((g) => g.answer === "yes");
+      return { yes: yes.length, asked: given.filter((g) => g.answer === "yes" || g.answer === "no").length, accounts: new Set(yes.map((g) => g.account)).size };
     };
     const w = side("winner");
     const a = side("average");
-    const t: PatternTally = { pattern: p.pattern, question: p.question, winnersYes: w.yes, winnersAsked: w.asked, averageYes: a.yes, averageAsked: a.asked };
-    return { ...t, kept: patternHolds(t) };
+    const t: PatternTally = { pattern: p.pattern, question: p.question, winnersYes: w.yes, winnersAsked: w.asked, averageYes: a.yes, averageAsked: a.asked, winnerAccounts: w.accounts };
+    return { ...t, kept: patternProblem(t) === null };
   });
 }
 
 // --- The report ------------------------------------------------------------------
 
-const tallyText = (p: PatternTally) => `${p.winnersYes} of ${p.winnersAsked} winners and ${p.averageYes} of ${p.averageAsked} average Reels it wasn't drawn from`;
+const tallyText = (p: PatternTally) => `${p.winnersYes} of ${p.winnersAsked} winners${p.winnerAccounts > 1 ? ` (in ${p.winnerAccounts} accounts)` : ""} and ${p.averageYes} of ${p.averageAsked} average Reels it wasn't drawn from`;
 const verdictRows = (f: Findings, v: RuleRow["verdict"]) => f.table.filter((r) => r.verdict === v);
 const winnersOf = (f: Findings) => f.reels.filter((r) => r.group === "winner");
 const averageOf = (f: Findings) => f.reels.filter((r) => r.group === "average");
@@ -203,6 +209,7 @@ const usableOf = (f: Findings) => f.accounts.filter((a) => !a.problem);
 
 /** A few spoken sentences for Hitta and the log: what was studied and what stood out. */
 export function summaryText(f: Findings, passed: boolean): string {
+  const against = verdictRows(f, "against");
   const breaks = verdictRows(f, "winners break it");
   const backed = verdictRows(f, "backed");
   const kept = f.patterns.filter((p) => p.kept);
@@ -211,7 +218,9 @@ export function summaryText(f: Findings, passed: boolean): string {
   const short = (r: RuleRow) => r.rule.replace(/\s*\(.*\)$/, "").toLowerCase();
   return [
     `${studied}.`,
-    breaks.length ? `Winners break ${count(breaks.length, "rule")} of ours: ${breaks.slice(0, 4).map(short).join("; ")}.` : "Winners break none of our rules.",
+    against.length ? `Winners follow ${count(against.length, "rule")} of ours less often than average Reels: ${against.slice(0, 4).map(short).join("; ")}.` : "",
+    breaks.length ? `Most winners don't follow ${count(breaks.length, "rule")} of ours: ${breaks.slice(0, 4).map(short).join("; ")}.` : "",
+    !against.length && !breaks.length ? "Winners break none of our rules." : "",
     backed.length ? `${count(backed.length, "rule")} backed: ${backed.slice(0, 4).map(short).join("; ")}.` : "",
     kept.length ? `${count(kept.length, "new pattern")}: ${kept.map((p) => p.pattern).join(" ")}` : "No new pattern held up.",
   ]
@@ -233,12 +242,10 @@ export function reportText(f: Findings, gate: GateResult): string {
     `# Stage 1 research: ${f.format}`,
     `Studied ${f.studiedAt.slice(0, 10)}. ${gate.passed ? "Passed its gate." : "Did not pass its gate, so nothing was saved for later stages."}`,
     failed.length ? `## Checks that failed\n${failed.map((c) => `- ${c.name}${c.detail ? `: ${c.detail}` : ""}`).join("\n")}` : "",
-    `## What was compared\nA winner is a Reel in its own account's top quarter with at least ${WINNER_LIFT} times that account's median. It is compared with the same account's average Reels (the middle half). Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts
-      .map((a) => (a.problem ? `- @${a.username}: not used. ${a.problem}.` : `- @${a.username}: ${a.followers ?? "?"} followers, ${a.settled} Reels scored by ${a.scoredBy}, median ${a.median}, ${a.postsPerWeek ?? "?"} posts a week. ${count(a.winners, "winner")}, ${a.average} average.`))
-      .join("\n")}\n\nLooked at: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}. Instagram gave the video for ${f.videosGiven} of them; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
+    `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels (the middle half). Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}\n\nLooked at: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first. Instagram gave the video for ${f.videosGiven} of them; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
     f.notes.length ? `## What limited this run\n${f.notes.map((n) => `- ${n}`).join("\n")}` : "",
-    f.table.length ? `## Our rules, measured on these Reels\nThis table never changes a rule. A rule winners break is for Thomas to weigh. About ${f.table.length} rules are tested at once, so one or two can look clear by chance.\n\n${tableText(f.table)}` : "",
-    `## Patterns\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n")}` : ""}`,
+    f.table.length ? `## Our rules, measured on these Reels\nThis table never changes a rule. A rule the winners speak against, or one most of them break, is for Thomas to weigh. About ${f.table.length} rules are tested at once, so one or two can look clear by chance.\n\n${tableText(f.table)}` : "",
+    `## Patterns\nProposed from half of the Reels, then checked by a reader who didn't know the results on the other half.\n\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}: ${patternProblem(p)}.)`).join("\n")}` : ""}`,
     `## What can't be measured on someone else's Reel\n${NOT_MEASURED.map((n) => `- ${n.check}: ${n.why}.`).join("\n")}`,
     f.reels.length ? `## The Reels\n| id | account | group | lift | result | posted | studied from | about | link |\n|---|---|---|---|---|---|---|---|---|\n${f.reels.map(reel).join("\n")}` : "",
   ]
@@ -264,13 +271,13 @@ export async function researchBrief(vault: Vault, format: Format): Promise<strin
   const backed = verdictRows(f, "backed");
   const onFormat = winnersOf(f).filter((r) => r.labels?.onFormat !== "no" && r.labels?.premise?.trim());
   const about = [...onFormat].sort((a, b) => b.lift - a.lift).slice(0, 5);
-  const head = `Stage 1 compared ${count(winnersOf(f).length, "winning Reel")} with ${count(averageOf(f).length, "average Reel")} from ${handles(usableOf(f))} (${f.studiedAt.slice(0, 10)}). A winner is in its own account's top quarter, with at least ${WINNER_LIFT} times that account's median.`;
+  const head = `Stage 1 compared ${count(winnersOf(f).length, "winning Reel")} with ${count(averageOf(f).length, "average Reel")} from ${handles(usableOf(f))} (${f.studiedAt.slice(0, 10)}). A winner is in its own account's top quarter, with at least ${WINNER_LIFT} times what that account's Reels were getting at the time.`;
   const parts = [
     head,
     backed.length ? `Rules of ours that winners follow clearly more often than average Reels:\n${backed.map((r) => `- ${rowText(r)}`).join("\n")}` : "",
     patterns.length ? `What else winners do more often than average Reels:\n${patterns.map((l) => `- ${l.text}${l.evidence ? ` (${l.evidence})` : ""}`).join("\n")}` : "",
     !backed.length && !patterns.length ? "It found no clear difference between winners and average Reels yet, so there is no pattern to lean on." : "",
-    about.length ? `What some of the winners were about (to show the kind of thing, never to copy):\n${about.map((r) => `- ${r.labels!.premise!.trim()} (${r.lift} times its account's median)`).join("\n")}` : "",
+    about.length ? `What some of the winners were about (to show the kind of thing, never to copy):\n${about.map((r) => `- ${r.labels!.premise!.trim()} (${r.lift} times its account's usual)`).join("\n")}` : "",
   ];
   return parts.filter(Boolean).join("\n\n");
 }
@@ -286,6 +293,8 @@ export type ResearchDeps = {
   accounts: string[];
   ask?: Ask;
   discover?: typeof discoverAccount;
+  /** What earlier formats of the same run learned about Instagram's fields (left out: starts fresh). */
+  discovery?: DiscoveryState;
   fetchImpl?: typeof fetch;
   download?: typeof downloadFile;
   measure?: MeasureFile;
@@ -302,7 +311,35 @@ export type ResearchDeps = {
 
 function perGroupFrom(d: ResearchDeps): number {
   const asked = d.perGroup ?? Number(process.env.RESEARCH_PER_GROUP);
-  return Number.isFinite(asked) && asked > 0 ? Math.max(MIN_LOOKED_PER_GROUP, Math.min(20, Math.round(asked))) : PER_GROUP;
+  return Number.isFinite(asked) && asked > 0 ? Math.max(MIN_LOOKED_PER_GROUP, Math.min(PER_GROUP_MAX, Math.round(asked))) : PER_GROUP;
+}
+
+/**
+ * Reads each account and scores every Reel against its own account. An
+ * account that can't be read is kept, with why. Also used by `social
+ * accounts-test`, which stops here.
+ */
+export async function studyAccounts(d: Pick<ResearchDeps, "token" | "igUserId" | "accounts" | "discover" | "discovery" | "fetchImpl" | "log" | "now">): Promise<{ studies: AccountStudy[]; noSoundKind: string[] }> {
+  const log = d.log ?? (() => {});
+  const studies: AccountStudy[] = [];
+  const noSoundKind: string[] = [];
+  // A field Instagram refuses for one account is refused for all of them.
+  const state: DiscoveryState = d.discovery ?? { set: 0 };
+  for (const a of d.accounts) {
+    try {
+      const acc = await (d.discover ?? discoverAccount)(d.fetchImpl ?? fetch, d.token, d.igUserId, a, POSTS_PER_ACCOUNT, state);
+      const s = studyAccount(acc, (d.now ?? (() => new Date()))());
+      if (acc.gave && !acc.gave.audioType) noSoundKind.push(s.username);
+      log(accountLine(s));
+      studies.push(s);
+    } catch (err) {
+      const problem = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
+      const s: AccountStudy = { username: a, followers: null, reels: 0, settled: 0, scoredBy: null, median: null, postsPerWeek: null, winners: 0, average: 0, problem, candidates: [] };
+      log(accountLine(s));
+      studies.push(s);
+    }
+  }
+  return { studies, noSoundKind };
 }
 
 /** Stage 1 for one format, end to end. */
@@ -314,21 +351,7 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
   const notes: string[] = [];
 
   // 1. Read the accounts and score every Reel against its own account.
-  const studies: AccountStudy[] = [];
-  const noSoundKind: string[] = [];
-  for (const a of d.accounts) {
-    try {
-      const acc = await (d.discover ?? discoverAccount)(fetchImpl, d.token, d.igUserId, a, POSTS_PER_ACCOUNT);
-      const s = studyAccount(acc, now());
-      if (acc.gave && !acc.gave.audioType) noSoundKind.push(s.username);
-      log(s.problem ? `@${s.username}: can't be used, ${s.problem}.` : `@${s.username}: ${s.followers ?? "?"} followers, ${s.settled} Reels scored by ${s.scoredBy} (median ${s.median}): ${count(s.winners, "winner")}, ${s.average} average.`);
-      studies.push(s);
-    } catch (err) {
-      const problem = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
-      log(`@${a}: couldn't be read. ${problem}.`);
-      studies.push({ username: a, followers: null, reels: 0, settled: 0, scoredBy: null, median: null, postsPerWeek: null, winners: 0, average: 0, problem, candidates: [] });
-    }
-  }
+  const { studies, noSoundKind } = await studyAccounts(d);
   if (noSoundKind.length) notes.push(`Instagram wouldn't say what kind of sound ${handles(noSoundKind.map((username) => ({ username })))} used, so "its own sound" couldn't be measured for them.`);
   if (studies.some((s) => s.scoredBy === "likes and comments")) notes.push(`Instagram gave no views for ${handles(studies.filter((s) => s.scoredBy === "likes and comments"))}, so those Reels are scored by likes plus comments.`);
 
@@ -508,12 +531,13 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
       const sources = [patternSource(format), ...(format === "story" ? [LEGACY_SOURCE] : [])];
       const retired = await d.vault.retireLessons("pattern", sources);
       for (const p of kept) await d.vault.addLesson({ kind: "pattern", stage: 1, text: p.pattern, evidence: `${p.question} Yes for ${tallyText(p)}`, source: patternSource(format) }, now());
+      const against = verdictRows(findings, "against");
       const breaks = verdictRows(findings, "winners break it");
       await d.vault.logAction(
         {
           kind: "lesson",
-          summary: `Research, ${format}: ${count(winnersOf(findings).length, "winner")} compared with ${count(averageOf(findings).length, "average Reel")} from ${handles(usableOf(findings))}. Winners break ${count(breaks.length, "rule")} of ours, ${verdictRows(findings, "backed").length} backed, ${count(kept.length, "pattern")} kept${retired ? `, ${count(retired, "earlier pattern")} retired` : ""}.`,
-          detail: [tableText(table, ["winners break it", "backed"]), kept.length ? `Patterns kept:\n${kept.map((p) => `- ${p.pattern} (${tallyText(p)})`).join("\n")}` : "", notes.join("\n")].filter(Boolean).join("\n\n"),
+          summary: `Research, ${format}: ${count(winnersOf(findings).length, "winner")} compared with ${count(averageOf(findings).length, "average Reel")} from ${handles(usableOf(findings))}. Of our rules, ${verdictRows(findings, "backed").length} backed, ${against.length} the winners follow less often than average Reels, ${breaks.length} most winners break. ${count(kept.length, "pattern")} kept${retired ? `, ${count(retired, "earlier pattern")} retired` : ""}.`,
+          detail: [tableText(table, [...FOR_THOMAS, "backed"]), kept.length ? `Patterns kept:\n${kept.map((p) => `- ${p.pattern} (${tallyText(p)})`).join("\n")}` : "", notes.join("\n")].filter(Boolean).join("\n\n"),
           target: r.recordId,
         },
         now(),

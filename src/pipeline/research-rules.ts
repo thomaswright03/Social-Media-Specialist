@@ -180,12 +180,19 @@ export const NOT_MEASURED: readonly { check: string; why: string }[] = [
 ];
 
 export type Side = { n: number; follow: number; median: number | null };
-export type Verdict = "backed" | "no difference" | "winners break it" | "not enough data";
+/**
+ * What the two groups say about a rule of ours:
+ * - backed: winners follow it clearly more often than average Reels;
+ * - against: winners follow it clearly less often, the strongest sign a rule may be wrong;
+ * - winners break it: fewer than half of the winners follow it, and average Reels are about the same, so winning doesn't need it;
+ * - no difference: most winners follow it, and so do average Reels.
+ */
+export type Verdict = "backed" | "no difference" | "winners break it" | "against" | "not enough data";
 export type RuleRow = { id: string; stage: number; rule: string; needs: string; unit: string | null; winners: Side; average: Side; verdict: Verdict; /** Fisher's exact test on the two shares; under 0.05 the gap is unlikely to be chance. */ p: number | null; clear: boolean };
 
 /** Each side needs this many Reels the rule could be told for. */
 export const MIN_N = 5;
-/** Winners must follow a rule this much more often (as a share) to call it backed. */
+/** Winners must follow a rule this much more often (as a share) to call it backed, or this much less often to count against it. */
 export const GAP = 0.2;
 
 const lnFact = (() => {
@@ -208,8 +215,11 @@ export function fisher(a: number, b: number, c: number, d: number): number {
 export function verdictOf(winners: Side, average: Side): Verdict {
   if (winners.n < MIN_N || average.n < MIN_N) return "not enough data";
   const w = winners.follow / winners.n;
-  if (w < 0.5) return "winners break it";
-  return w - average.follow / average.n >= GAP ? "backed" : "no difference";
+  const gap = w - average.follow / average.n;
+  // 0.6 - 0.4 is a hair under 0.2 in floating point.
+  if (gap >= GAP - 1e-9) return "backed";
+  if (gap <= -GAP + 1e-9) return "against";
+  return w < 0.5 ? "winners break it" : "no difference";
 }
 
 /** The rules of a format, each measured on the winners and on the average Reels. Reels Claude marked as not this format are left out. */
@@ -229,21 +239,29 @@ export function rulesTable(format: Format, reels: StudiedReel[]): RuleRow[] {
 }
 
 const HEADINGS: Record<Verdict, string> = {
-  backed: "Backed: most winners follow our rule, and clearly more often than average Reels",
-  "no difference": "No difference: winners follow our rule about as often as average Reels",
-  "winners break it": "Winners break our rule: fewer than half of the winners follow it",
+  against: "Against our rule: winners follow it clearly less often than average Reels",
+  "winners break it": "Winners break our rule: fewer than half of the winners follow it, and average Reels are about the same",
+  backed: "Backed: winners follow our rule clearly more often than average Reels",
+  "no difference": "No difference: most winners follow our rule, and so do average Reels",
   "not enough data": "Not enough Reels to tell",
 };
+
+/** The verdicts in the order a report shows them: what speaks against our rules first. */
+export const VERDICTS: readonly Verdict[] = ["against", "winners break it", "backed", "no difference", "not enough data"];
+/** The two verdicts that are for Thomas to weigh. */
+export const FOR_THOMAS: readonly Verdict[] = ["against", "winners break it"];
 
 /** One row in plain words: "10 to 14 shots (stage 4): 9 of 12 winners, 4 of 11 average Reels. Winners' median 12 shots, average 19." */
 export function rowText(r: RuleRow): string {
   if (r.verdict === "not enough data") return `${r.rule} (stage ${r.stage}): needs ${r.needs}, which was there for ${r.winners.n} winners and ${r.average.n} average Reels.`;
   const medians = r.winners.median !== null && r.average.median !== null ? ` Winners' median ${r.winners.median}${r.unit ? ` ${r.unit}` : ""}, average ${r.average.median}.` : "";
-  return `${r.rule} (stage ${r.stage}): ${r.winners.follow} of ${r.winners.n} winners, ${r.average.follow} of ${r.average.n} average Reels.${medians}${r.clear ? " A gap this size is unlikely to be chance." : ""}`;
+  const gap = r.verdict === "backed" || r.verdict === "against";
+  const chance = r.clear ? " A gap this size is unlikely to be chance." : gap ? " With this few Reels, a gap this size can still be chance." : "";
+  return `${r.rule} (stage ${r.stage}): ${r.winners.follow} of ${r.winners.n} winners, ${r.average.follow} of ${r.average.n} average Reels.${medians}${chance}`;
 }
 
 /** The whole table, grouped by verdict. */
-export function tableText(rows: RuleRow[], verdicts: readonly Verdict[] = ["winners break it", "backed", "no difference", "not enough data"]): string {
+export function tableText(rows: RuleRow[], verdicts: readonly Verdict[] = VERDICTS): string {
   return verdicts
     .map((v) => ({ v, rows: rows.filter((r) => r.verdict === v) }))
     .filter((g) => g.rows.length)

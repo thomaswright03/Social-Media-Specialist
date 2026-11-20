@@ -73,8 +73,8 @@ three other accounts (`pipeline/research/accounts.json`). It compares each
 account's winning Reels with that account's average ones, measures them
 (views, length, cuts, loudness, the words and when they are said), and tests
 our own rules on them. It only reads other accounts; it never follows,
-comments or posts. A rule of ours that winners break is reported to Thomas,
-never changed on its own.
+comments or posts. A rule of ours that the winners speak against, or that
+most of them break, is reported to Thomas, never changed on its own.
 
 What it makes (Thomas, 2026-11-18): about 80% entertainment (standalone
 stick-figure stories, satisfying AI videos, and current events explained with

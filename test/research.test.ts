@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { discoverAccount, type DiscoveredAccount, type Media } from "../src/instagram.ts";
 import { CAMERAS, LABELS, MAX_SHOTS, MIN_SHOTS, UNCLEAR, type ReelLabels } from "../src/pipeline/gates.ts";
-import { LEGACY_SOURCE, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
+import { LEGACY_SOURCE, PER_GROUP, blindView, nicheFor, patternSource, reportText, researchBrief, runResearch, studyAccounts, summaryText, tallyPatterns, type ResearchDeps } from "../src/pipeline/research.ts";
 import { RESEARCH_FORMATS, accountsFor, cleanHandle, fileAccounts, parseAccounts } from "../src/pipeline/research-accounts.ts";
 import { captionFacts, cutTimes, lufsFrom, sampleShots, shotBounds, shotStats, soundShareFrom, speechFacts, type MeasureFile, type VideoFacts } from "../src/pipeline/research-measure.ts";
 import { NOT_MEASURED, RULES, fisher, rowText, rulesTable, tableText, verdictOf, type StudiedReel } from "../src/pipeline/research-rules.ts";
-import { MIN_SCORED, pickSample, postsPerWeek, studyAccount } from "../src/pipeline/research-sample.ts";
+import { MIN_SCORED, WINDOW, accountLine, pickSample, postsPerWeek, studyAccount } from "../src/pipeline/research-sample.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 import { heardFrom, transcribe, type Heard } from "../src/transcribe.ts";
 import { Vault } from "../src/vault.ts";
@@ -65,6 +65,19 @@ describe("discoverAccount", () => {
     expect(urls[1]).toContain("media.after(CURSOR1).limit(50)");
   });
 
+  it("keeps paging after a short page, and stops at an empty one", async () => {
+    // Instagram may answer with fewer posts than asked for while more remain: the first real run read 61 Reels of an account with over a thousand posts.
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      return urls.length <= 2 ? page(Array.from({ length: 30 }, (_, i) => row(urls.length * 100 + i)), `CURSOR${urls.length}`) : page([], "CURSOR3");
+    }) as typeof fetch;
+    const a = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200);
+    expect(a.media).toHaveLength(60);
+    expect(urls).toHaveLength(3);
+    expect(urls[2]).toContain("media.after(CURSOR2).limit(50)");
+  });
+
   it("drops a field Instagram refuses and asks again", async () => {
     const urls: string[] = [];
     const fetchImpl = (async (url: string) => {
@@ -89,6 +102,21 @@ describe("discoverAccount", () => {
     expect(urls).toHaveLength(3);
     expect(a.gave).toEqual({ views: false, audioType: false });
     expect(a.media[0]).toMatchObject({ likes: 10, views: null, audioType: null });
+  });
+
+  it("doesn't ask the next account for a field Instagram just refused, and counts its requests", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(decodeURIComponent(url));
+      if (urls.at(-1)!.includes("media_audio_type")) return new Response(JSON.stringify({ error: { message: "(#100) Please read documentation for supported fields.", code: 100 } }), { status: 400 });
+      return page([{ ...row(1), media_audio_type: undefined }]);
+    }) as typeof fetch;
+    const state = { set: 0 };
+    const first = await discoverAccount(fetchImpl, "EAAx", "ig1", "stickmanstorys22", 200, state);
+    const second = await discoverAccount(fetchImpl, "EAAx", "ig1", "thestorystix", 200, state);
+    expect([first.requests, second.requests]).toEqual([2, 1]);
+    expect(urls.filter((u) => u.includes("media_audio_type"))).toHaveLength(1);
+    expect(second.gave).toEqual({ views: true, audioType: false });
   });
 
   it("refuses something that isn't a username", async () => {
@@ -162,6 +190,35 @@ describe("scoring an account's Reels against the account itself", () => {
     expect(s.problem).toBe(`only 5 Reels old enough to score (needs ${MIN_SCORED})`);
     expect(s.candidates).toEqual([]);
     expect(studyAccount(account("new", SIXTEEN, () => ({ timestamp: NOW.toISOString() })), NOW).problem).toContain("between 7 and 365 days old");
+  });
+
+  it("scores a Reel against what the account's Reels were getting around the same time", () => {
+    // 60 Reels, newest first. The account grew tenfold: its 30 newer Reels got about 1,000 views, its 30 older ones about 100.
+    // One new Reel got 4,000 and one old Reel got 400: each four times its neighbours.
+    const views: number[] = Array.from({ length: 60 }, (_, i) => (i < 30 ? 1000 : 100));
+    views[5] = 4000;
+    views[50] = 400;
+    const s = studyAccount(account("grew", views), NOW);
+    expect(WINDOW).toBeLessThan(30);
+    // Against the whole account's median (700), every newer Reel would have won and the old hit would be below average.
+    expect(s.median).toBe(700);
+    expect(s.candidates.filter((c) => c.group === "winner").map((c) => [c.views, c.lift])).toEqual([[4000, 4], [400, 4]]);
+    expect(s.candidates.filter((c) => c.group === "average").every((c) => c.lift === 1)).toBe(true);
+    expect(new Set(s.candidates.filter((c) => c.group === "average").map((c) => c.views))).toEqual(new Set([1000, 100]));
+  });
+
+  it("takes Reels that come with a video file first, so there is something to measure", () => {
+    // Instagram gives a video for only two of the four winners (not the biggest) and one of the eight average Reels.
+    const s = studyAccount(account("a", SIXTEEN, (i) => ({ mediaUrl: i === 2 || i === 3 || i === 9 ? `https://cdn.example/a${i}.mp4` : null })), NOW);
+    expect(s).toMatchObject({ winners: 4, winnersWithVideo: 2, average: 8, averageWithVideo: 1, postsRead: 16, postsInAll: 16 });
+    const sample = pickSample([s], 3);
+    expect(sample.winners.map((c) => [c.lift, Boolean(c.mediaUrl)])).toEqual([[3, true], [2, true], [5, false]]);
+    expect(sample.average.map((c) => Boolean(c.mediaUrl))).toEqual([true, false, false]);
+  });
+
+  it("says in one line what an account gave, or why it can't be used", () => {
+    expect(accountLine(studyAccount(account("a", SIXTEEN), NOW))).toBe("@a: 1,000 followers, 16 of its 16 posts read, 16 Reels scored by views, median 100, 4.5 posts a week. 4 winners (4 with a video file), 8 average (8 with a video file).");
+    expect(accountLine(studyAccount(account("small", [300, 200, 100, 100, 50]), NOW))).toBe("@small: not used. only 5 Reels old enough to score (needs 8) (5 of its 5 posts read).");
   });
 
   it("takes winners and average Reels from the accounts in turns", () => {
@@ -316,9 +373,21 @@ describe("our rules, counted on winners and on average Reels", () => {
 
   it("gives a verdict only with enough Reels on both sides", () => {
     expect(verdictOf({ n: 4, follow: 4, median: null }, { n: 10, follow: 0, median: null })).toBe("not enough data");
-    expect(verdictOf({ n: 10, follow: 4, median: null }, { n: 10, follow: 9, median: null })).toBe("winners break it");
     expect(verdictOf({ n: 10, follow: 8, median: null }, { n: 10, follow: 5, median: null })).toBe("backed");
     expect(verdictOf({ n: 10, follow: 8, median: null }, { n: 10, follow: 7, median: null })).toBe("no difference");
+    // Most winners don't follow it, and nor do average Reels: winning doesn't need it.
+    expect(verdictOf({ n: 10, follow: 3, median: null }, { n: 10, follow: 2, median: null })).toBe("winners break it");
+  });
+
+  it("says when winners follow a rule less often than average Reels", () => {
+    expect(verdictOf({ n: 10, follow: 4, median: null }, { n: 10, follow: 9, median: null })).toBe("against");
+    // The first real run: 6 of 12 winners stood alone, 8 of 11 average Reels did. It was filed under "no difference".
+    expect(verdictOf({ n: 12, follow: 6, median: null }, { n: 11, follow: 8, median: null })).toBe("against");
+    // A gap of exactly 20 points counts, either way (0.6 - 0.4 is a hair under 0.2 in floating point).
+    expect(verdictOf({ n: 5, follow: 3, median: null }, { n: 5, follow: 2, median: null })).toBe("backed");
+    expect(verdictOf({ n: 5, follow: 2, median: null }, { n: 5, follow: 3, median: null })).toBe("against");
+    // Few winners follow it, but clearly more than average Reels do: that backs it.
+    expect(verdictOf({ n: 10, follow: 4, median: null }, { n: 10, follow: 0, median: null })).toBe("backed");
   });
 
   it("backs a rule winners follow and average Reels don't, with both medians", () => {
@@ -328,12 +397,13 @@ describe("our rules, counted on winners and on average Reels", () => {
     expect(length).toMatchObject({ verdict: "backed", winners: { n: 8, follow: 8, median: 40 }, average: { n: 8, follow: 0, median: 20 }, clear: true });
     expect(rowText(length)).toBe("30 to 60 seconds long (stage 4): 8 of 8 winners, 0 of 8 average Reels. Winners' median 40 s, average 20. A gap this size is unlikely to be chance.");
     // 40 s in 2.5 s shots is 16 shots: over our 14.
-    expect(table.find((r) => r.id === "shots")).toMatchObject({ verdict: "winners break it", winners: { follow: 0, median: 16 } });
+    const shots = table.find((r) => r.id === "shots")!;
+    expect(shots).toMatchObject({ verdict: "against", winners: { follow: 0, median: 16 }, average: { follow: 8 } });
     // Nobody was labelled or transcribed, so those rules have nothing to count.
     expect(table.find((r) => r.id === "mid-action")).toMatchObject({ verdict: "not enough data", winners: { n: 0 } });
     expect(table.find((r) => r.id === "pace")!.verdict).toBe("not enough data");
     const text = tableText(table);
-    expect(text.indexOf("Winners break our rule")).toBeLessThan(text.indexOf("Backed"));
+    expect(text.indexOf("Against our rule")).toBeLessThan(text.indexOf("Backed"));
     expect(text).toContain("Not enough Reels to tell");
   });
 
@@ -379,7 +449,8 @@ describe("stage 1's prompts", () => {
   it("fills the pattern and check prompts", () => {
     const p = stagePrompt(1, { COUNT: "12", FORMAT: "ad", NICHE: "n", WINNER_LIFT: "1.5", REELS: "[]", TABLE: "t" }, "patterns");
     expect(p).toContain("12 ad Reels");
-    expect(p).toContain("at least 1.5 times");
+    expect(p).toContain("with a lift of at least 1.5");
+    expect(p).toContain("more than one account");
     expect(p).not.toContain("{{");
     expect(stagePrompt(1, { QUESTIONS: "1. Is it?", REELS: "[]" }, "check")).toContain("1. Is it?");
   });
@@ -479,59 +550,62 @@ describe("runResearch", () => {
     expect(r.gate.checks.every((c) => c.name.startsWith("Story: "))).toBe(true);
     const found = r.findings;
     expect(found.accounts.map((a) => [a.username, a.winners, a.average])).toEqual([["a", 10, 20], ["b", 10, 20], ["c", 10, 20]]);
-    expect(found.reels.filter((x) => x.group === "winner")).toHaveLength(12);
-    expect(found.reels.filter((x) => x.group === "average")).toHaveLength(12);
+    expect(found.accounts[0]).toMatchObject({ postsRead: 40, postsInAll: 40, winnersWithVideo: 10, averageWithVideo: 20 });
+    expect(found.reels.filter((x) => x.group === "winner")).toHaveLength(PER_GROUP);
+    expect(found.reels.filter((x) => x.group === "average")).toHaveLength(PER_GROUP);
     expect(new Set(found.reels.filter((x) => x.group === "winner").map((x) => x.account))).toEqual(new Set(["a", "b", "c"]));
-    expect(found).toMatchObject({ videosGiven: 24, videosMeasured: 24, transcripts: 24, labelRounds: 1, asked: true });
-    expect(f.measured).toHaveLength(24);
+    expect(found).toMatchObject({ videosGiven: 40, videosMeasured: 40, transcripts: 40, labelRounds: 1, asked: true });
+    expect(f.measured).toHaveLength(40);
 
     // Code measured the difference; Claude never supplied a number.
-    expect(found.table.find((x) => x.id === "length")).toMatchObject({ verdict: "backed", winners: { n: 12, follow: 12, median: 40 }, average: { n: 12, follow: 0, median: 20 } });
-    expect(found.table.find((x) => x.id === "standalone")).toMatchObject({ verdict: "no difference", winners: { follow: 12 } });
-    expect(found.table.find((x) => x.id === "pace")!.winners.n).toBe(12);
+    expect(found.table.find((x) => x.id === "length")).toMatchObject({ verdict: "backed", winners: { n: 20, follow: 20, median: 40 }, average: { n: 20, follow: 0, median: 20 } });
+    expect(found.table.find((x) => x.id === "standalone")).toMatchObject({ verdict: "no difference", winners: { follow: 20 } });
+    expect(found.table.find((x) => x.id === "pace")!.winners.n).toBe(20);
 
     // Labelling and checking are blind: no results, no group, no account.
     const blind = claude.prompts.filter((p) => p.step !== 2);
     expect(blind.length).toBeGreaterThanOrEqual(5);
     for (const p of blind) for (const shown of p.reels) expect(Object.keys(shown).sort()).toEqual(["caption", "id", "open", "seconds", "shotFrames", "shots", "transcript"]);
-    // The ids don't give the groups away: winners aren't simply the first twelve.
+    // The ids don't give the groups away: winners aren't simply the first twenty.
     const ids = found.reels.filter((x) => x.group === "winner").map((x) => x.id).sort();
-    expect(ids).not.toEqual(Array.from({ length: 12 }, (_, i) => `r${String(i + 1).padStart(2, "0")}`));
+    expect(ids).not.toEqual(Array.from({ length: PER_GROUP }, (_, i) => `r${String(i + 1).padStart(2, "0")}`));
 
     // Patterns are drawn from one half and checked on the other.
     const proposedFrom = claude.prompts.find((p) => p.step === 2)!.reels.map((x) => x.id);
     const checkedOn = claude.prompts.filter((p) => p.step === 3).flatMap((p) => p.reels.map((x) => x.id));
-    expect(proposedFrom).toHaveLength(12);
-    expect(checkedOn).toHaveLength(12);
+    expect(proposedFrom).toHaveLength(20);
+    expect(checkedOn).toHaveLength(20);
     expect(proposedFrom.filter((id) => checkedOn.includes(id))).toEqual([]);
     expect(found.reels.filter((x) => x.heldOut).map((x) => x.id).sort()).toEqual([...checkedOn].sort());
     expect(claude.prompts.find((p) => p.step === 2)!.reels[0]).toHaveProperty("lift");
     expect(found.patterns).toEqual([
-      { pattern: "Name an exact amount of money in the first line.", question: "Does the caption's first line name an amount of money?", winnersYes: 6, winnersAsked: 6, averageYes: 0, averageAsked: 6, kept: true },
-      { pattern: "End the caption on a follow.", question: "Does the caption ask for a follow?", winnersYes: 6, winnersAsked: 6, averageYes: 6, averageAsked: 6, kept: false },
+      { pattern: "Name an exact amount of money in the first line.", question: "Does the caption's first line name an amount of money?", winnersYes: 10, winnersAsked: 10, averageYes: 0, averageAsked: 10, winnerAccounts: 3, kept: true },
+      { pattern: "End the caption on a follow.", question: "Does the caption ask for a follow?", winnersYes: 10, winnersAsked: 10, averageYes: 10, averageAsked: 10, winnerAccounts: 3, kept: false },
     ]);
 
     // The Vault: the new pattern in, the old one retired, other lessons untouched, all of it in the History.
     const lessons = await vault.lessons();
     expect(lessons.map((l) => [l.kind, l.source, l.text])).toEqual([["avoid", "stage 0", "Slow openings."], ["pattern", patternSource("story"), "Name an exact amount of money in the first line."]]);
-    expect(lessons[1]!.evidence).toBe("Does the caption's first line name an amount of money? Yes for 6 of 6 winners and 0 of 6 average Reels it wasn't drawn from");
+    expect(lessons[1]!.evidence).toBe("Does the caption's first line name an amount of money? Yes for 10 of 10 winners (in 3 accounts) and 0 of 10 average Reels it wasn't drawn from");
     const row = await vault.latestStage(1, { subject: "research:story", passedOnly: true });
     expect(row).toMatchObject({ passed: true, attempt: 1 });
     const actions = await vault.actions();
     expect(actions.map((a) => a.kind).sort()).toEqual(["lesson", "stage"]);
     const lesson = actions.find((a) => a.kind === "lesson")!;
-    expect(lesson.summary).toBe("Research, story: 12 winners compared with 12 average Reels from @a, @b, @c. Winners break 3 rules of ours, 2 backed, 1 pattern kept, 1 earlier pattern retired.");
+    expect(lesson.summary).toBe("Research, story: 20 winners compared with 20 average Reels from @a, @b, @c. Of our rules, 2 backed, 1 the winners follow less often than average Reels, 2 most winners break. 1 pattern kept, 1 earlier pattern retired.");
+    expect(lesson.detail).toContain("Against our rule: winners follow it clearly less often than average Reels:\n- 8 to 14 shots (stage 4): 0 of 20 winners, 20 of 20 average Reels.");
     expect(lesson.detail).toContain("Winners break our rule");
     expect(actions.every((a) => !a.onInstagram)).toBe(true);
 
     // What later stages are told, per format.
     const brief = await researchBrief(vault, "story");
-    expect(brief).toContain("Stage 1 compared 12 winning Reels with 12 average Reels from @a, @b, @c (2026-11-19)");
-    expect(brief).toContain("- 30 to 60 seconds long (stage 4): 12 of 12 winners, 0 of 12 average Reels.");
-    expect(brief).toContain("- Name an exact amount of money in the first line. (Does the caption's first line name an amount of money? Yes for 6 of 6 winners");
+    expect(brief).toContain("Stage 1 compared 20 winning Reels with 20 average Reels from @a, @b, @c (2026-11-19)");
+    expect(brief).toContain("- 30 to 60 seconds long (stage 4): 20 of 20 winners, 0 of 20 average Reels.");
+    expect(brief).toContain("- Name an exact amount of money in the first line. (Does the caption's first line name an amount of money? Yes for 10 of 10 winners");
     expect(brief).toContain("A man and his money");
     expect(brief).not.toContain("serialized");
     expect(brief).not.toContain("Winners break");
+    expect(brief).not.toContain("Against our rule");
     expect(await researchBrief(vault, "ad")).toBe("(none yet)");
 
     // The report and the spoken summary.
@@ -540,11 +614,12 @@ describe("runResearch", () => {
     expect(report).toContain("# Stage 1 research: story");
     expect(report).toContain("Passed its gate.");
     expect(report).toContain("- Kept: Name an exact amount of money in the first line.");
-    expect(report).toContain("- Dropped: End the caption on a follow.");
+    expect(report).toContain("- Dropped: End the caption on a follow. (Does the caption ask for a follow? Yes for 10 of 10 winners (in 3 accounts) and 10 of 10 average Reels it wasn't drawn from: average Reels show it nearly as often.)");
+    expect(report).toContain("- @a: 1,000 followers, 40 of its 40 posts read, 40 Reels scored by views, median 100, 5.7 posts a week. 10 winners (10 with a video file), 20 average (20 with a video file).");
     expect(report).toContain("What can't be measured on someone else's Reel");
     expect(report).toBe(`${reportText(found, r.gate)}\n`);
-    expect(summaryText(found, true)).toContain("story: 12 winners and 12 average Reels from @a, @b, @c. Winners break 3 rules of ours");
-    expect(logs.some((l) => l.includes("24 transcripts (12 min of sound, about $0.04"))).toBe(true);
+    expect(summaryText(found, true)).toContain("story: 20 winners and 20 average Reels from @a, @b, @c. Winners follow 1 rule of ours less often than average Reels: 8 to 14 shots. Most winners don't follow 2 rules of ours:");
+    expect(logs.some((l) => l.includes("40 transcripts (20 min of sound, about $0.07"))).toBe(true);
     await rm(out, { recursive: true, force: true });
     vault.close();
   });
@@ -559,10 +634,10 @@ describe("runResearch", () => {
     expect(r.findings).toMatchObject({ videosGiven: 0, videosMeasured: 0, transcripts: 0 });
     expect(r.findings.reels.every((x) => x.sight === "cover" && x.video === null && x.labels?.art === "stick-figures")).toBe(true);
     expect(Object.keys(claude.prompts[0]!.reels[0]!).sort()).toEqual(["caption", "cover", "id"]);
-    expect(r.findings.notes.join(" ")).toContain("Instagram gave no video for 24 of the 24 Reels");
+    expect(r.findings.notes.join(" ")).toContain("Instagram gave no video for 40 of the 40 Reels");
     expect(r.gate.checks.find((c) => c.name.includes("videos Instagram gave"))!.detail).toContain("only covers and captions");
     expect(r.findings.table.find((x) => x.id === "length")!.verdict).toBe("not enough data");
-    expect(r.findings.table.find((x) => x.id === "stick-figures")).toMatchObject({ verdict: "no difference", winners: { n: 12, follow: 12 } });
+    expect(r.findings.table.find((x) => x.id === "stick-figures")).toMatchObject({ verdict: "no difference", winners: { n: 20, follow: 20 } });
     // No patterns proposed, so nothing to check.
     expect(claude.prompts.filter((p) => p.step === 3)).toEqual([]);
     expect(r.findings.patterns).toEqual([]);
@@ -671,7 +746,7 @@ describe("runResearch", () => {
     const claude = fakeClaude();
     const r = await runResearch(base(vault, { ask: claude.ask, ffmpeg: false, fetchImpl: (async () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200 })) as unknown as typeof fetch }));
     expect(r.passed).toBe(false);
-    expect(r.gate.checks.find((c) => !c.passed)).toMatchObject({ name: "Story: the videos Instagram gave were measured", detail: "0 of 24" });
+    expect(r.gate.checks.find((c) => !c.passed)).toMatchObject({ name: "Story: the videos Instagram gave were measured", detail: "0 of 40" });
     expect(r.findings.notes[0]).toContain("ffmpeg isn't installed");
     expect(claude.prompts).toEqual([]);
     vault.close();
@@ -694,11 +769,36 @@ describe("runResearch", () => {
   });
 });
 
+describe("reading the accounts", () => {
+  it("keeps an account that can't be read, with why, and says what each gave", async () => {
+    const logs: string[] = [];
+    const { studies, noSoundKind } = await studyAccounts({
+      token: "EAAx",
+      igUserId: "ig1",
+      accounts: ["a", "private"],
+      discover: async (_f, _t, _ig, name) => {
+        if (name === "private") throw new Error("@private can't be read: Instagram only shows business and creator accounts to other apps.");
+        return { ...account(name, SIXTEEN), gave: { views: true, audioType: false } };
+      },
+      now: () => NOW,
+      log: (m) => logs.push(m),
+    });
+    expect(studies.map((x) => [x.username, x.problem])).toEqual([["a", null], ["private", "@private can't be read: Instagram only shows business and creator accounts to other apps"]]);
+    expect(noSoundKind).toEqual(["a"]);
+    expect(logs).toEqual([accountLine(studies[0]!), "@private: not used. @private can't be read: Instagram only shows business and creator accounts to other apps."]);
+  });
+});
+
 describe("what Claude is shown", () => {
   it("counts a blind reader's answers only on the Reels it was asked about", () => {
-    const held = [...Array.from({ length: 4 }, (_, i) => ({ id: `w${i}`, group: "winner" as const })), ...Array.from({ length: 4 }, (_, i) => ({ id: `a${i}`, group: "average" as const }))];
-    const answers = new Map<string, string[]>([["w0", ["yes"]], ["w1", ["yes"]], ["w2", ["yes"]], ["w3", ["unclear"]], ["a0", ["no"]], ["a1", ["yes"]], ["a2", ["no"]]]);
-    expect(tallyPatterns([{ pattern: "p", question: "q?" }], answers, held)).toEqual([{ pattern: "p", question: "q?", winnersYes: 3, winnersAsked: 3, averageYes: 1, averageAsked: 3, kept: true }]);
+    // Winners w0 to w5 and average Reels a0 to a5, from two accounts in turns. w5 got "unclear", a5 no answer at all.
+    const held = [...Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, group: "winner" as const, account: i % 2 ? "one" : "two" })), ...Array.from({ length: 6 }, (_, i) => ({ id: `a${i}`, group: "average" as const, account: i % 2 ? "one" : "two" }))];
+    const answers = new Map<string, string[]>([["w0", ["yes", "yes"]], ["w1", ["yes", "no"]], ["w2", ["yes", "yes"]], ["w3", ["no", "no"]], ["w4", ["no", "yes"]], ["w5", ["unclear", "no"]], ["a0", ["no", "no"]], ["a1", ["yes", "no"]], ["a2", ["no", "no"]], ["a3", ["no", "no"]], ["a4", ["no", "no"]]]);
+    expect(tallyPatterns([{ pattern: "p", question: "q?" }, { pattern: "one creator's habit", question: "r?" }], answers, held)).toEqual([
+      { pattern: "p", question: "q?", winnersYes: 3, winnersAsked: 5, averageYes: 1, averageAsked: 5, winnerAccounts: 2, kept: true },
+      // Three winners show it and no average Reel does, but all three are the same account's.
+      { pattern: "one creator's habit", question: "r?", winnersYes: 3, winnersAsked: 6, averageYes: 0, averageAsked: 5, winnerAccounts: 1, kept: false },
+    ]);
   });
 
   it("never shows a result in the blind view", () => {

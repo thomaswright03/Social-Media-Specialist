@@ -26,13 +26,13 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, preview, diagnose, research, ideas, script, produce, requests, instagram-test, hitta-test, voice-test]
+        options: [run, publish, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, hitta-test, voice-test]
       format:
-        description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research, the format to study; empty studies all four
+        description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research and accounts-test, the format to study; empty takes all four
         type: string
         required: false
       accounts:
-        description: 'For research, other accounts for this run, like "story: name1, name2; ad: name3"; empty uses pipeline/research/accounts.json'
+        description: 'For research and accounts-test, other accounts for this run, like "story: name1, name2; ad: name3"; empty uses pipeline/research/accounts.json'
         type: string
         required: false
 
@@ -48,7 +48,7 @@ permissions:
 jobs:
   social:
     runs-on: ubuntu-latest
-    # Research looks at up to 24 Reels a format with Claude: about an hour for all four.
+    # Research looks at up to 40 Reels a format with Claude: over an hour for all four.
     timeout-minutes: ${{ inputs.command == 'research' && 150 || 45 }}
     env:
       # The Vault's Turso database (the same values as the other employees').
@@ -89,7 +89,8 @@ jobs:
       RESEARCH_ACCOUNTS: ${{ inputs.accounts || vars.RESEARCH_ACCOUNTS }}
       # Stage 1 research: accounts typed for this run; empty studies the ones
       # in pipeline/research/accounts.json. "off" in RESEARCH_TRANSCRIBE skips
-      # the transcripts (ElevenLabs speech to text).
+      # the transcripts (ElevenLabs speech to text). accounts-test reads the
+      # same accounts and only says which of them stage 1 could use.
       RESEARCH_RUN_ACCOUNTS: ${{ inputs.accounts }}
       RESEARCH_TRANSCRIBE: ${{ vars.RESEARCH_TRANSCRIBE }}
       REEL_FORMAT: ${{ inputs.format }}

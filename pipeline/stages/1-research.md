@@ -6,38 +6,52 @@ that their average Reels don't.
 
 **Why it compares.** An account's top Reels on their own show what that
 account always does (its template), not why some Reels won. So each Reel is
-scored against its own account: its views divided by the account's median
-(its "lift"). A **winner** is in its account's top quarter and has at least
-1.5 times the median. It is compared with the same account's **average**
-Reels, the middle half. Reels under 7 days old are left out (still collecting
-views), and so are Reels over a year old.
+scored against its own account: its views divided by what that account's
+Reels were getting around the same time, the median of the 21 Reels it posted
+nearest to it (its "lift"). Against the whole year's median, an account that
+grew would have only its newest Reels as winners, and the comparison would
+show how the account changed, not why a Reel won. A **winner** is in its
+account's top quarter by lift, with a lift of at least 1.5. It is compared
+with the same account's **average** Reels, the middle half. Reels under 7
+days old are left out (still collecting views), and so are Reels over a year
+old.
 
 **Who does what.**
 
 | Step | Who | What |
 |------|-----|------|
 | Read the accounts | code (`src/instagram.ts`, Business Discovery) | up to 200 posts an account: views, likes, comments, caption, date, the video file when Instagram gives it |
-| Score and pick | code (`research-sample.ts`) | lift, winners and average Reels, up to 12 of each, taken from the accounts in turns |
+| Score and pick | code (`research-sample.ts`) | lift, winners and average Reels, up to 20 of each, taken from the accounts in turns, those with a video file first |
 | Measure | code (`research-measure.ts`, `src/transcribe.ts`) | the caption; from the video: length, every cut, loudness; from the transcript (ElevenLabs speech to text): when the voice starts, words a second, shots with speech, the longest stretch where nothing changes |
 | Label | Claude, blind (the `prompt` block) | what only eyes and ears can tell, chosen from fixed lists; it is never told how a Reel performed |
-| Test our rules | code (`research-rules.ts`) | every rule stages 3 to 6 hold, counted on winners and on average Reels: backed, no difference, winners break it, or not enough data |
+| Test our rules | code (`research-rules.ts`) | every rule stages 3 to 6 hold, counted on winners and on average Reels: backed (winners follow it 20+ points more often), against (20+ points less often), winners break it (under half of them follow it, average Reels about the same), no difference, or not enough data (under 5 Reels on a side) |
 | Propose patterns | Claude (the `patterns` block) | up to 5 things winners do that our rules don't cover, from half of the Reels, each as a yes/no question |
 | Check patterns | Claude, blind (the `check` block) | answers each question for the other half of the Reels, one by one |
-| Keep or drop | code (`patternHolds`) | a pattern is kept only when 3+ of those winners show it and winners show it at least 25 points more often than average Reels |
+| Keep or drop | code (`patternHolds`) | a pattern is kept only when it could be told for 5+ of those winners and 5+ of those average Reels, 3+ of the winners show it, they come from 2+ accounts, and winners show it at least 25 points more often than average Reels |
 
 Instagram gives the video only for some Reels: not when the sound is from its
-music library, and not when the owner turned downloads off. Those Reels are
-studied from their cover and caption, and the rules that need the video don't
-count them. Comment text, saves and shares of other accounts aren't readable.
+music library, and not when the owner turned downloads off. The first real
+run got a video for 3 of 24 Reels, so Reels that come with one are now taken
+first. The rest are studied from their cover and caption, and the rules that
+need the video don't count them. Comment text, saves and shares of other
+accounts aren't readable.
+
+The numbers are small (20 Reels a group, 10 of each held back for the
+check), so the report gives every count, says when a gap could still be
+chance, and a pattern is a lead to try, not a law.
 
 **The accounts** are in `pipeline/research/accounts.json`, by format. A run
 can name its own ("story: a, b; ad: c" in the workflow's accounts box).
+`social accounts-test` reads the same accounts and says which of them this
+stage could use: how many Reels it can score, how many winners and average
+Reels, and how many come with a video file. It asks Claude nothing and saves
+nothing, so it is the way to try an account before listing it.
 
 **What later stages get.** Stages 2 to 4 read `researchBrief` for their
 format: the rules winners follow clearly more often, the patterns kept, and
-what a few winners were about. A rule winners break is never changed by this
-stage: it is shown to Thomas (the run's report, the History, Hitta), and he
-decides.
+what a few winners were about. A rule the winners speak against, or one
+most of them break, is never changed by this stage: it is shown to Thomas
+(the run's report, the History, Hitta), and he decides.
 
 **Gate (code, `gateResearch`):**
 - at least 2 accounts could be studied, so one creator's habits don't pass for what wins;
@@ -45,7 +59,7 @@ decides.
 - the videos Instagram gave were measured (the first run measured none: ffmpeg wasn't installed);
 - every Reel was labelled, none was added, and every label is one of its choices;
 - at least 5 of our rules have enough Reels behind them for a verdict;
-- every pattern kept is shown by 3+ winners it wasn't drawn from, and more often than by average Reels.
+- every pattern kept is shown by 3+ winners it wasn't drawn from, in 2+ accounts, and clearly more often than by average Reels.
 
 ## What each format means here
 
@@ -131,7 +145,7 @@ Reply with only JSON, one entry for every Reel above and no others:
 <!-- patterns -->
 You are the Social Media Specialist. Stage 1, step 2 of 3: say what the winners do that the average Reels don't.
 
-Below are {{COUNT}} {{FORMAT}} Reels from other accounts ({{NICHE}}). Each is marked winner or average. A winner is in its own account's top quarter and has at least {{WINNER_LIFT}} times that account's median; an average Reel is from the same account's middle half. `lift` is the Reel's result divided by its account's median. For each you get what code measured and how a reader who didn't know the results described it. A Reel's picture files (`open`, `shots`, `cover`) are in this folder: open one with the Read tool when a description isn't enough.
+Below are {{COUNT}} {{FORMAT}} Reels from other accounts ({{NICHE}}). Each is marked winner or average. `lift` is the Reel's result divided by what its own account's Reels were getting around the same time. A winner is in its account's top quarter, with a lift of at least {{WINNER_LIFT}}; an average Reel is from the same account's middle half. For each you get what code measured and how a reader who didn't know the results described it. A Reel's picture files (`open`, `shots`, `cover`) are in this folder: open one with the Read tool when a description isn't enough.
 
 <reels>
 {{REELS}}
@@ -144,10 +158,11 @@ Code already tested our own rules on these accounts' Reels:
 
 Find up to 5 things the winners do that the average Reels don't, and that the rules above don't already cover. Look at what the Reels are about, how they open, what the first words promise, how they end, and what the caption does.
 
-Each one will be tested on Reels you haven't seen. A separate reader, who isn't told which are winners, answers your question for each of them, and code keeps a pattern only when at least 3 of those winners show it and winners show it clearly more often than average Reels. So:
+Each one will be tested on Reels you haven't seen. A separate reader, who isn't told which are winners, answers your question for each of them, and code keeps a pattern only when at least 3 of those winners show it, they come from more than one account, and winners show it clearly more often than average Reels. So:
 - Write each as a question with a yes or no answer about one Reel, answerable from its frames, transcript and caption alone. "Does the first spoken sentence name a specific amount of money or time?" works. "Is the hook strong?" doesn't, because two readers would answer it differently.
 - Never ask about views, likes, the account or the date.
 - Something most Reels in both groups do is a habit of these accounts, not a reason a Reel won. Leave it out.
+- Something only one account's winners do is that creator's habit. Look for what winners of different accounts share.
 - Fewer is fine. When nothing separates the two groups, return an empty list.
 
 Reply with only JSON: {"patterns":[{"pattern":"what to do, written as an instruction for our own Reels","question":"the yes/no question"}]}

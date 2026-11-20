@@ -318,7 +318,12 @@ export type DiscoveredAccount = {
   media: Media[];
   /** Which of the newer fields Instagram answered with (left out by callers that build one by hand). */
   gave?: { views: boolean; audioType: boolean };
+  /** How many requests reading it took. Business Discovery allows an app about 200 an hour. */
+  requests?: number;
 };
+
+/** Carried from one account to the next in a run, so a field Instagram refused once isn't asked for again. */
+export type DiscoveryState = { set: number };
 
 const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count,media_url,thumbnail_url";
 // Newer fields are asked for first and dropped a set at a time when Instagram
@@ -329,6 +334,7 @@ const DISCOVERY_MEDIA = "id,caption,media_type,media_product_type,timestamp,perm
 const DISCOVERY_FIELD_SETS = [`${DISCOVERY_MEDIA},view_count,media_audio_type`, `${DISCOVERY_MEDIA},view_count`, DISCOVERY_MEDIA] as const;
 const refusedField = (err: unknown) => err instanceof InstagramError && /nonexisting field|unknown field|invalid field|supported fields|field[^.]{0,40}(does not exist|isn't available|is not available|not supported)/i.test(err.message);
 const DISCOVERY_PAGE = 50;
+const DISCOVERY_MAX_PAGES = 10;
 
 /**
  * Up to `max` recent posts of another professional account, with their
@@ -337,22 +343,23 @@ const DISCOVERY_PAGE = 50;
  * read at all. A Reel comes without `mediaUrl` when its sound is from
  * Instagram's music library or its owner turned downloads off.
  */
-export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId: string, username: string, max = 100): Promise<DiscoveredAccount> {
+export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId: string, username: string, max = 100, state: DiscoveryState = { set: 0 }): Promise<DiscoveredAccount> {
   const handle = username.replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/[/?#].*$/, "").trim();
   if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) throw new InstagramError(`"${username}" isn't an Instagram username.`, null, null);
   const media: Media[] = [];
   let after: string | null = null;
   let head: Record<string, unknown> = {};
-  let set = 0;
-  for (let page = 0; page < 4 && media.length < max; page++) {
+  let requests = 0;
+  for (let page = 0; page < DISCOVERY_MAX_PAGES && media.length < max; page++) {
     let r: Record<string, unknown> | null = null;
     while (!r) {
-      const edge = `media${after ? `.after(${after})` : ""}.limit(${DISCOVERY_PAGE}){${DISCOVERY_FIELD_SETS[set]}}`;
+      const edge = `media${after ? `.after(${after})` : ""}.limit(${DISCOVERY_PAGE}){${DISCOVERY_FIELD_SETS[state.set]}}`;
+      requests++;
       try {
         r = await call(fetchImpl, "GET", igUserId, token, { fields: `business_discovery.username(${handle}){username,followers_count,media_count,${edge}}` }, FB_HOST);
       } catch (err) {
-        if (refusedField(err) && set < DISCOVERY_FIELD_SETS.length - 1) {
-          set++;
+        if (refusedField(err) && state.set < DISCOVERY_FIELD_SETS.length - 1) {
+          state.set++;
           continue;
         }
         if (err instanceof InstagramError && /cannot be found|does not exist|not.*business/i.test(err.message)) {
@@ -381,11 +388,12 @@ export async function discoverAccount(fetchImpl: Fetch, token: string, igUserId:
       });
     }
     // Business Discovery pages with cursors only: its answers carry no "next"
-    // link, so a short page is the last one.
+    // link. A page may hold fewer rows than asked for, so only an empty page,
+    // a missing cursor or the account's own post count ends it.
     after = edgeData?.paging?.cursors?.after ?? null;
-    if (!after || rows.length < DISCOVERY_PAGE) break;
+    if (!after || !rows.length || media.length >= (n(head.media_count) ?? Infinity)) break;
   }
-  return { username: String(head.username ?? handle), followers: n(head.followers_count), posts: n(head.media_count), media: media.slice(0, max), gave: { views: set <= 1, audioType: set === 0 } };
+  return { username: String(head.username ?? handle), followers: n(head.followers_count), posts: n(head.media_count), media: media.slice(0, max), gave: { views: state.set <= 1, audioType: state.set === 0 }, requests };
 }
 
 export type PageRef = { id: string; name: string; instagramId: string | null; accessToken: string | null };

@@ -19,6 +19,7 @@ import {
   labelProblems,
   mayAutoPost,
   patternHolds,
+  patternProblem,
   sameNumber,
   scoreVariants,
   type Looked,
@@ -221,7 +222,7 @@ describe("stage 1, research", () => {
     videosGiven: 12,
     videosMeasured: 12,
     verdicts: 5,
-    patterns: [{ pattern: "Open on the problem", question: "Is the problem on screen in the first frame?", winnersYes: 3, winnersAsked: 3, averageYes: 0, averageAsked: 3 }],
+    patterns: [{ pattern: "Open on the problem", question: "Is the problem on screen in the first frame?", winnersYes: 3, winnersAsked: 5, averageYes: 0, averageAsked: 5, winnerAccounts: 2 }],
   };
   const failed = (x: ResearchGateInput) => gateResearch(x).checks.filter((c) => !c.passed).map((c) => `${c.name}${c.detail ? `: ${c.detail}` : ""}`);
 
@@ -269,10 +270,23 @@ describe("stage 1, research", () => {
   it("needs five rules with a verdict, and keeps no pattern the blind check didn't back", () => {
     expect(failed({ ...ok, verdicts: 4 })).toEqual(["Story: at least 5 of our rules have enough Reels behind them for a verdict: 4 rules"]);
     const weak = { ...ok.patterns[0]!, winnersYes: 2 };
-    expect(failed({ ...ok, patterns: [weak] })).toEqual([`Story: every pattern kept is shown by 3+ winners it wasn't drawn from, and more often than by average Reels: "Open on the problem": 2 of 3 winners, 0 of 3 average`]);
-    expect(patternHolds({ ...ok.patterns[0]!, winnersYes: 5, winnersAsked: 6, averageYes: 4, averageAsked: 6 })).toBe(false);
-    expect(patternHolds({ ...ok.patterns[0]!, winnersYes: 5, winnersAsked: 6, averageYes: 3, averageAsked: 6 })).toBe(true);
-    expect(patternHolds({ ...ok.patterns[0]!, winnersYes: 3, winnersAsked: 3, averageYes: 0, averageAsked: 0 })).toBe(false);
+    expect(failed({ ...ok, patterns: [weak] })).toEqual([
+      `Story: every pattern kept is shown by 3+ winners it wasn't drawn from, in 2+ accounts, and clearly more often than by average Reels: "Open on the problem": 2 of 5 winners, 0 of 5 average, only 2 of those winners show it (needs 3)`,
+    ]);
+  });
+
+  it("keeps a pattern only when the Reels it wasn't drawn from back it", () => {
+    const p = { pattern: "Open on the problem", question: "Is the problem on screen in the first frame?", winnersYes: 5, winnersAsked: 10, averageYes: 2, averageAsked: 10, winnerAccounts: 2 };
+    expect(patternProblem(p)).toBeNull();
+    expect(patternHolds(p)).toBe(true);
+    // 50% against 30% is under the 25 points; 50% against 25% is exactly on it.
+    expect(patternProblem({ ...p, averageYes: 3 })).toBe("average Reels show it nearly as often");
+    expect(patternHolds({ ...p, winnersYes: 4, winnersAsked: 8, averageYes: 2, averageAsked: 8 })).toBe(true);
+    // One creator's habit isn't a pattern.
+    expect(patternProblem({ ...p, winnerAccounts: 1 })).toBe("the winners that show it are all from one account");
+    // The first real run kept a pattern on 3 of 5 winners against 1 of 4 average Reels.
+    expect(patternProblem({ ...p, winnersYes: 3, winnersAsked: 5, averageYes: 1, averageAsked: 4 })).toBe("it could be told for only 5 winners and 4 average Reels (needs 5 of each)");
+    expect(patternProblem({ ...p, winnersYes: 2, winnersAsked: 5, averageYes: 0, averageAsked: 5 })).toBe("only 2 of those winners show it (needs 3)");
   });
 });
 

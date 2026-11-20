@@ -135,7 +135,11 @@ Then, from the Actions tab → Social Media Specialist → Run workflow:
    accounts for one run, type them in the **accounts** box, like
    `story: name1, name2; ad: name3`. The report is the run's **research**
    artifact, and a summary goes into the History. It posts nothing. One
-   format takes about 15 minutes, all four about an hour.
+   format takes about 20 minutes, all four over an hour.
+   `accounts-test` takes the same two boxes and only says which accounts
+   stage 1 could use (how many winners and average Reels each has, and how
+   many come with a video file). It takes a minute, asks Claude nothing and
+   saves nothing: try an account with it before adding it to the file.
    With `ELEVENLABS_API_KEY` set it also transcribes each Reel (ElevenLabs
    speech to text, about $0.20 an hour of sound, so a few cents a run); a
    key limited to some features needs Speech to Text turned on. Set the
@@ -155,6 +159,7 @@ npx social preview         draft one post into preview.jpg; saves nothing, posts
 npx social diagnose        content pipeline stage 0: Insights diagnosis (pipeline/README.md)
 npx social research        content pipeline stage 1, every format: winners against average Reels
 npx social research story  the same for one format; add "story: a, b" to study other accounts
+npx social accounts-test   which of those accounts stage 1 could use; saves nothing, posts nothing
 npx social instagram-test  read the Instagram account; posts nothing
 npx social hitta-test      send Hitta a test report
 npm test                   the tests
