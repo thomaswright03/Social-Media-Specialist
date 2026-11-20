@@ -179,7 +179,9 @@ export function composeHtml(t: TimedShot[], svgs: string[], motions: (ShotMotion
   });
   // An all-graphics Reel is one world the camera flies through.
   const world = motions.length > 0 && t.length === motions.length && motions.every(Boolean) ? worldPath(shots.map((s) => s.tr)) : null;
-  const chunks = captionChunks(t).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
+  // A physics run shows each shot's words once, as the label at the top; the
+  // caption band would print them a second time over the arena (test run 3).
+  const chunks = (physics ? [] : captionChunks(t)).map((c) => ({ from: c.from, to: c.to, words: c.words.map((w) => ({ w: w.word, s: w.start })) }));
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=block">
 <style>
