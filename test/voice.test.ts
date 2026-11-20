@@ -29,7 +29,7 @@ describe("ElevenLabs voice", () => {
 });
 
 describe("one expressive take (Thomas, 2026-11-19)", async () => {
-  const { splitRead, spokenText, align } = await import("../src/voice.ts");
+  const { splitRead, splitReadAt, loudness, MAX_PAUSE, spokenText, align } = await import("../src/voice.ts");
   it("drops audio tags from the timed words and the counted text", () => {
     const text = "[excited] Hi you";
     const n = [...text].length;
@@ -44,6 +44,43 @@ describe("one expressive take (Thomas, 2026-11-19)", async () => {
     expect(parts.map((p) => [p.from, p.to].map((x) => Math.round(x * 100) / 100))).toEqual([[0.04, 1.44], [1.44, 2.65]]);
     expect(parts[1]!.words[0]!.start).toBeCloseTo(0.06);
     expect(splitRead([w("a", 0)], ["a b"])).toBeNull();
+  });
+
+  it("cuts in the narrator's real pause even when the word stamps are off (Thomas, 2026-11-20)", () => {
+    // Speech 0.10-1.00 and 1.30-2.30, silence elsewhere; the stamps run 0.3 s late.
+    const step = 0.01;
+    const rms = Array.from({ length: 260 }, (_, f) => ((f >= 10 && f < 100) || (f >= 130 && f < 230) ? 0.3 : 0.001));
+    const w = (word: string, start: number) => ({ word, start, end: start + 0.25 });
+    const words = [w("Critics", 0.4), w("love", 0.7), w("it.", 1.0), w("One", 1.7), w("says", 2.0), w("no.", 2.3)];
+    const lines = ["[excited] Critics love it.", "One says no."];
+    // The old cut, on the stamps, lands inside the second line's first word.
+    expect(splitRead(words, lines)![0]!.to).toBeGreaterThan(1.3);
+    const parts = splitReadAt(words, lines, { step, rms })!;
+    expect(parts[0]!.to).toBeGreaterThanOrEqual(1.0);
+    expect(parts[0]!.to).toBeLessThanOrEqual(1.3);
+    expect(parts[1]!.from).toBe(parts[0]!.to);
+    expect(parts[1]!.words[0]!.start).toBeCloseTo(1.3 - parts[1]!.from, 2);
+    expect(parts[0]!.from).toBeCloseTo(0.05);
+    expect(parts[1]!.to).toBeCloseTo(2.5);
+  });
+
+  it("shortens a long pause between lines and keeps the words whole", () => {
+    const rms = Array.from({ length: 300 }, (_, f) => ((f >= 10 && f < 100) || (f >= 200 && f < 280) ? 0.3 : 0.001));
+    const w = (word: string, start: number) => ({ word, start, end: start + 0.25 });
+    const parts = splitReadAt([w("a", 0.1), w("b", 0.6), w("c", 2.0), w("d", 2.5)], ["a b", "c d"], { step: 0.01, rms })!;
+    expect(parts[0]!.to).toBeGreaterThanOrEqual(1.0);
+    expect(parts[1]!.from).toBeLessThanOrEqual(2.0);
+    expect(parts[1]!.from - parts[0]!.to).toBeGreaterThan(0.5);
+    expect(parts[0]!.to - 1.0 + (2.0 - parts[1]!.from)).toBeCloseTo(MAX_PAUSE, 2);
+  });
+
+  it("measures loudness from raw samples", () => {
+    const pcm = Buffer.alloc(16000 * 2 * 0.1);
+    for (let i = 800; i < 1600; i++) pcm.writeInt16LE(16384, i * 2);
+    const l = loudness(pcm, 16000);
+    expect(l.rms.length).toBe(10);
+    expect(l.rms[0]).toBe(0);
+    expect(l.rms[6]).toBeCloseTo(0.5);
   });
 
   it("asks for v3 with settings, and aligns when the speech call gives no timings", async () => {
