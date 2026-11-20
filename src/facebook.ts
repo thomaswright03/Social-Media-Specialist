@@ -1,9 +1,9 @@
 // The Facebook Page ("Wright AI Solutions LLC"), through the same Facebook
 // token as Instagram (Facebook login). It reads the Page and its posts, and
 // writes only when called: publishDue cross-posts a post Thomas approved
-// (FACEBOOK_CROSSPOST=off turns that off). Every write is logged by its
+// (FACEBOOK_CROSSPOST=off turns that off), a Reel as a Page Reel. Every write is logged by its
 // caller through vault.logAction.
-import { call, FB_HOST, findPage, graphHost, InstagramError } from "./instagram.ts";
+import { call, FB_HOST, findPage, GRAPH_VERSION, graphHost, InstagramError, RUPLOAD_HOST } from "./instagram.ts";
 
 type Fetch = typeof fetch;
 
@@ -19,6 +19,8 @@ export type FacebookPageClient = {
   publishPhoto(imageUrl: string, message: string): Promise<{ postId: string; permalink: string | null }>;
   /** A video post from a public video URL. */
   publishVideo(videoUrl: string, description: string): Promise<{ videoId: string; permalink: string | null }>;
+  /** A Page Reel uploaded from the video's bytes (Facebook's video_reels start, upload, finish). */
+  publishReelFile?(video: Uint8Array, description: string): Promise<{ videoId: string; permalink: string | null }>;
   comments(objectId: string): Promise<PageComment[]>;
   reply(objectId: string, message: string): Promise<{ id: string }>;
 };
@@ -93,6 +95,27 @@ export function facebookPageClient(token: string, opts: { fetchImpl?: Fetch; pag
       const r = await post(`${await id()}/videos`, { file_url: videoUrl, description });
       const videoId = String(r.id ?? "");
       if (!videoId) throw new InstagramError("Facebook didn't say the video went out.", null, null);
+      const back = await get(videoId, { fields: "permalink_url" }).catch(() => ({}) as Record<string, unknown>);
+      const link = typeof back.permalink_url === "string" ? back.permalink_url : null;
+      return { videoId, permalink: link && link.startsWith("/") ? `https://www.facebook.com${link}` : link };
+    },
+
+    async publishReelFile(video, description) {
+      const page = await id();
+      const start = await post(`${page}/video_reels`, { upload_phase: "start" });
+      const videoId = String(start.video_id ?? "");
+      if (!videoId) throw new InstagramError("Facebook didn't start the Reel upload.", null, null);
+      const uri = typeof start.upload_url === "string" && start.upload_url.startsWith(`https://${RUPLOAD_HOST}/`) ? start.upload_url : `https://${RUPLOAD_HOST}/video-upload/${GRAPH_VERSION}/${videoId}`;
+      let res: Response;
+      try {
+        res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${pageToken}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
+      } catch (err) {
+        throw new InstagramError(`The Reel upload didn't reach Facebook: ${err instanceof Error ? err.message : String(err)}`, null, null);
+      }
+      const up = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
+      if (!res.ok || up.error || up.success === false) throw new InstagramError(`Facebook didn't take the Reel upload: ${up.error?.message || `HTTP ${res.status}`}`, res.status, null);
+      const done = await post(`${page}/video_reels`, { upload_phase: "finish", video_id: videoId, video_state: "PUBLISHED", description });
+      if (done.success === false) throw new InstagramError("Facebook didn't publish the Reel.", null, null);
       const back = await get(videoId, { fields: "permalink_url" }).catch(() => ({}) as Record<string, unknown>);
       const link = typeof back.permalink_url === "string" ? back.permalink_url : null;
       return { videoId, permalink: link && link.startsWith("/") ? `https://www.facebook.com${link}` : link };

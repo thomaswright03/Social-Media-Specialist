@@ -36,8 +36,8 @@ Thomas's computer off.
    failed, Hitta is told, and Thomas taps Try again.
    A finished Reel kept in `posts/reels` (listed in `posts/reels/drafts.json`,
    added as a draft by `social reel-drafts`) is approved the same way; its video
-   is uploaded from the repo as a normal Reel. The Facebook Page skips it, as the
-   Page only takes a video from a public link.
+   is uploaded from the repo as a normal Reel, and the same video goes up as a
+   Reel on the Facebook Page (a Page refusal is logged, never retried).
 
 Approving on the page puts the post on the next posting day (Monday,
 Wednesday and Friday by default) at the posting time (11:30 Arizona by
