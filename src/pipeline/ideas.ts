@@ -14,6 +14,7 @@ import { nicheFor, researchBrief } from "./research.ts";
 import { runStage, stagePrompt, testerPrompt } from "./stages.ts";
 
 export const COLD_READS = 3;
+export const IDEAS_TRIES = 5;
 
 export const coldPrompt = (sentence: string) => testerPrompt("cold-read", { SENTENCE: sentence });
 
@@ -48,7 +49,8 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
       fmt.push(check(`Finalist ${f.id} is built on 2+ news items from 2+ publishers`, missing === 0 && items.length >= 2 && publishers.size >= 2, missing ? `${missing} of its news numbers aren't on the list` : `${items.length} items, ${publishers.size} publishers`));
     }
     if (choice.format === "ad") {
-      fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}`, Boolean(choice.product) && f.s.toLowerCase().includes(choice.product!.name.toLowerCase())));
+      const named = Boolean(choice.product) && f.s.toLowerCase().includes(choice.product!.name.toLowerCase());
+      fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}: its sentence names "${choice.product?.name ?? "the product"}" word for word`, named, named ? undefined : `"${f.s.slice(0, 160)}"`));
     } else {
       const g = gateFormat({ format: choice.format, product: null }, { caption: f.s, shots: [] }, products).checks.find((c) => c.name === "Entertainment doesn't sell");
       if (g) fmt.push({ ...g, name: `Finalist ${f.id}: ${g.name.toLowerCase()}` });
@@ -96,6 +98,8 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
       }),
     gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask), news),
     input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null, ...(news.length ? { news } : {}) },
+    // A try is cheap (one call and 9 cold reads) next to a lost day, so 5.
+    tries: IDEAS_TRIES,
     log: d.log,
     now: d.now,
   });

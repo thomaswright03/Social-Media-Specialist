@@ -270,7 +270,8 @@ export function gateIdeas(x: Ideas | null, cold: ColdReads): GateResult {
     const p = pitches.find((q) => q.id === id);
     const s = p?.sentence ?? "";
     checks.push(check(`Finalist ${id} is one of the top 3 scores`, Boolean(p) && total(p!) >= cutoff, p ? `total ${total(p)}, the top 3 need ${cutoff}` : "no pitch with that id"));
-    checks.push(check(`Finalist ${id} is one sentence`, isOneSentence(s)));
+    // The sentence goes into the detail, so a retry sees exactly what to fix.
+    checks.push(check(`Finalist ${id} is one sentence (no full stop, "!" or "?" before its last word)`, isOneSentence(s), isOneSentence(s) ? undefined : `"${s.slice(0, 160)}"`));
     checks.push(check(`Finalist ${id} doesn't lean on another episode`, !REFERS_TO_OTHER_EPISODES.test(s)));
     const reads = cold[id] ?? [];
     const yes = reads.filter(Boolean).length;
