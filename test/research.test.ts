@@ -798,9 +798,29 @@ describe("runResearch", () => {
     expect(r.gate.checks.find((c) => c.name.includes("videos Instagram gave"))!.detail).toContain("only covers and captions");
     expect(r.findings.table.find((x) => x.id === "length")!.verdict).toBe("not enough data");
     expect(r.findings.table.find((x) => x.id === "stick-figures")).toMatchObject({ verdict: "no difference", winners: { n: 20, follow: 20 } });
-    // No patterns proposed, so nothing to check.
+    // No patterns proposed, so nothing to check, and the report says none were proposed.
     expect(claude.prompts.filter((p) => p.step === 3)).toEqual([]);
     expect(r.findings.patterns).toEqual([]);
+    expect(r.findings.proposed).toBe(0);
+    expect(r.report).toContain("None proposed.");
+    vault.close();
+  });
+
+  it("says so when the answer that should propose patterns can't be read", async () => {
+    const vault = await memoryVault();
+    const claude = fakeClaude();
+    const f = fakes();
+    const logs: string[] = [];
+    const ask = async (prompt: string) => (prompt.includes("step 2 of 3") ? "I couldn't find anything worth proposing." : claude.ask(prompt));
+    const r = await runResearch(base(vault, { ask, download: f.download, measure: f.measure, discover: async (_f, _t, _ig, name) => bigAccount(name), log: (m) => logs.push(m) }));
+    // It still passes (patterns are optional), but an unread answer isn't reported as "there are none".
+    expect(r.passed).toBe(true);
+    expect(r.findings.patterns).toEqual([]);
+    expect(r.findings.proposed).toBeUndefined();
+    expect(r.findings.notes.join(" ")).toContain("gave no answer that could be read");
+    expect(logs.join("\n")).toContain("The pattern turn's answer couldn't be read.");
+    expect(r.report).toContain("None kept.");
+    expect(r.report).not.toContain("None proposed.");
     vault.close();
   });
 

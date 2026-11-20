@@ -133,6 +133,8 @@ export type Findings = {
   soundSigns?: string[];
   /** Reels looked at in place of ones that turned out not to be the format. */
   replaced?: number;
+  /** How many patterns were proposed, kept or not. Missing when the proposing step gave no answer that could be read. */
+  proposed?: number;
 };
 
 export type ResearchResult = { format: Format; passed: boolean; gate: GateResult; findings: Findings; report: string; reportFile: string | null };
@@ -277,7 +279,7 @@ export function reportText(f: Findings, gate: GateResult): string {
     `## What was compared\nEach Reel is scored against its own account: its result divided by the median of the ${WINDOW} Reels that account posted nearest to it in time (its lift). A winner is in its account's top quarter by lift, with a lift of at least ${WINNER_LIFT}. It is compared with the same account's average Reels: the middle half, with a lift from ${AVERAGE_LIFT.min} to under ${AVERAGE_LIFT.max}. Reels under ${MIN_AGE_DAYS} days or over ${MAX_AGE_DAYS} days old are left out.\n\n${f.accounts.map((a) => `- ${accountLine(a)}`).join("\n")}${f.soundSigns?.length ? `\n\n${f.soundSigns.join("\n\n")} Our Reels carry their own sound (stages 5 and 6): for Thomas to weigh.` : ""}\n\nCompared: ${count(winnersOf(f).length, "winner")} and ${count(averageOf(f).length, "average Reel")}, those with a video file first.${leftOutOf(f).length ? ` ${count(leftOutOf(f).length, "more Reel")} ${leftOutOf(f).length === 1 ? "wasn't a" : "weren't"} ${f.format} ${leftOutOf(f).length === 1 ? "Reel" : "Reels"} (these accounts post other things too) and ${leftOutOf(f).length === 1 ? "was" : "were"} left out${f.replaced ? `; the next ${f.replaced} in line ${f.replaced === 1 ? "was" : "were"} looked at in their place` : ""}.` : ""} Instagram gave the video for ${f.videosGiven} of the ${f.reels.length} Reels looked at; ${f.videosMeasured} were measured and ${f.transcripts} transcribed.`,
     f.notes.length ? `## What limited this run\n${f.notes.map((n) => `- ${n}`).join("\n")}` : "",
     f.table.length ? `## Our rules, measured on these Reels\nThis table never changes a rule. A rule the winners speak against, or one most of them break, is for Thomas to weigh. About ${f.table.length} rules are tested at once, so one or two can look clear by chance.\n\n${tableText(f.table)}` : "",
-    `## Patterns\nProposed from half of the Reels, then checked by a reader who didn't know the results on the other half.\n\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}: ${patternProblem(p)}.)`).join("\n")}` : ""}`,
+    `## Patterns\nProposed from half of the Reels, then checked by a reader who didn't know the results on the other half.\n\n${kept.length ? kept.map((p) => `- Kept: ${p.pattern} (${p.question} Yes for ${tallyText(p)}.)`).join("\n") : f.proposed === 0 ? "None proposed." : "None kept."}${dropped.length ? `\n${dropped.map((p) => `- Dropped: ${p.pattern} (${p.question} Yes for ${tallyText(p)}: ${patternProblem(p)}.)`).join("\n")}` : ""}`,
     `## What can't be measured on someone else's Reel\n${NOT_MEASURED.map((n) => `- ${n.check}: ${n.why}.`).join("\n")}`,
     f.reels.length ? `## The Reels\n| id | account | group | lift | result | posted | studied from | about | link |\n|---|---|---|---|---|---|---|---|---|\n${f.reels.map(reel).join("\n")}` : "",
   ]
@@ -545,15 +547,25 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
 
     // 6. Patterns: proposed from half of the Reels, then checked blind on the other half.
     let patterns: FoundPattern[] = [];
+    let proposedCount: number | undefined;
     if (labelled) {
       const onFormat = working.filter((r) => r.labels?.onFormat !== "no");
       const shown = onFormat.filter((r) => !r.heldOut);
       const held = onFormat.filter((r) => r.heldOut);
+      let failed = false;
       const answer = await ask(stagePrompt(1, { COUNT: String(shown.length), FORMAT: format, NICHE: niche, WINNER_LIFT: String(WINNER_LIFT), AVERAGE_FROM: String(AVERAGE_LIFT.min), REELS: JSON.stringify(shown.map(knownView), null, 1), TABLE: tableText(table) }, "patterns")).catch((err) => {
+        failed = true;
         log(`The pattern turn failed: ${err instanceof Error ? err.message : String(err)}`);
         return "";
       });
-      const proposed = (parseJson<{ patterns?: { pattern?: string; question?: string }[] }>(answer)?.patterns ?? [])
+      // An answer that can't be read is not the same as "there are none": say so in the report.
+      const offered = parseJson<{ patterns?: unknown }>(answer)?.patterns;
+      const readable = Array.isArray(offered);
+      if (!readable) {
+        if (!failed) log("The pattern turn's answer couldn't be read.");
+        notes.push("The step that proposes patterns gave no answer that could be read, so none were proposed this run. That says nothing about whether there are any.");
+      }
+      const proposed = ((readable ? offered : []) as { pattern?: string; question?: string }[])
         .map((p) => ({ pattern: (p?.pattern ?? "").trim().slice(0, 300), question: (p?.question ?? "").trim().slice(0, 300) }))
         .filter((p) => p.pattern && p.question.endsWith("?"))
         .slice(0, MAX_PATTERNS);
@@ -571,13 +583,14 @@ export async function runResearch(d: ResearchDeps): Promise<ResearchResult> {
         });
         patterns = tallyPatterns(proposed, answers, held);
       }
+      if (readable) proposedCount = proposed.length;
       log(`Patterns: ${proposed.length} proposed, ${patterns.filter((p) => p.kept).length} held up on the Reels they weren't drawn from.`);
     }
 
     // 7. The gate, the record, and what later stages get.
     const reels: FoundReel[] = working.map(({ files: _files, ...r }) => r);
     const accounts = studies.map(({ candidates: _c, ...a }) => a);
-    const findings: Findings = { format, studiedAt: now().toISOString(), accounts, reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes, soundSigns: soundSigns(accounts), ...(replaced ? { replaced } : {}) };
+    const findings: Findings = { format, studiedAt: now().toISOString(), accounts, reels, asked: ready, labelRounds, videosGiven, videosMeasured, transcripts, table, patterns, notes, soundSigns: soundSigns(accounts), ...(replaced ? { replaced } : {}), ...(proposedCount !== undefined ? { proposed: proposedCount } : {}) };
     const kept = patterns.filter((p) => p.kept);
     const r = await runStage<Findings>({
       vault: d.vault,
