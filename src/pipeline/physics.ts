@@ -23,6 +23,13 @@ export const PALETTES = {
   candy: { bg: ["#120a1c", "#2c1240"], colors: ["#ff9ad5", "#9ad5ff", "#c4ff9a", "#ffe49a", "#d59aff"] },
 } as const;
 export type Palette = keyof typeof PALETTES;
+/** What each palette's colours are called, in order: a race names its winner by the colour actually drawn. */
+export const COLOUR_NAMES: Record<Palette, readonly string[]> = {
+  neon: ["GREEN", "PINK", "BLUE", "YELLOW", "ORANGE"],
+  sunset: ["ORANGE", "RED", "GOLD", "PURPLE", "TEAL"],
+  ocean: ["CYAN", "MINT", "WHITE", "BLUE", "GOLD"],
+  candy: ["PINK", "SKY", "LIME", "CREAM", "LILAC"],
+};
 export const PHYSICS_TRIES = 3;
 /** Formats made as physics rather than drawings. */
 export const USES_PHYSICS = { satisfying: true, story: false, explainer: false, ad: false } as const;
@@ -38,7 +45,7 @@ export type PhysicsPlan = {
   gap?: number;
   /** How the counter reads; {n} is the number, e.g. "{n} RINGS LEFT". */
   counter?: string;
-  /** race: the colours' names, in order, shown when one wins. */
+  /** race: ignored; the winner is named by its palette colour (COLOUR_NAMES), so the name always matches the ball. */
   names?: string[];
 };
 
@@ -362,7 +369,6 @@ export function physicsProblems(plan: PhysicsPlan | null): string[] {
   else range(plan.balls, 1, 4, "balls");
   if (plan.counter != null && (typeof plan.counter !== "string" || !plan.counter.includes("{n}") || plan.counter.length > 24)) p.push('counter is short text with {n} in it, like "{n} RINGS LEFT" (at most 24 characters).');
   else if (typeof plan.counter === "string" && plan.kind !== "race" && !counterFits(plan.kind, plan.counter)) p.push(`counter names what {n} counts in ${plan.kind}: ${{ "escape-rings": '"{n} RINGS LEFT"', "growing-ball": '"{n} BOUNCES"', multiply: '"{n}% FULL"' }[plan.kind]}; {n} is never anything else.`);
-  if (plan.kind === "race" && plan.names != null && (!Array.isArray(plan.names) || plan.names.some((n) => typeof n !== "string" || n.length > 10))) p.push("names are short colour names, at most 10 characters each.");
   return p;
 }
 
@@ -492,9 +498,10 @@ export const counterFits = (kind: PhysicsPlan["kind"], counter: string) => COUNT
 /** The counter's words for a frame. */
 export function counterText(plan: PhysicsPlan, n: number, winner: number | null, done: boolean): string {
   if (plan.kind === "race") {
-    if (winner == null) return n ? `LAP ${Math.min(n + 1, RACE_LAPS)} OF ${RACE_LAPS}` : "WHICH COLOUR WINS?";
-    const names = plan.names?.length ? plan.names : ["GREEN", "PINK", "BLUE", "YELLOW"];
-    return `${(names[winner] ?? "?").toUpperCase()} WINS!`;
+    // The hook above already asks which colour wins, so the counter starts on the lap.
+    if (winner == null) return `LAP ${Math.min(n + 1, RACE_LAPS)} OF ${RACE_LAPS}`;
+    const names = COLOUR_NAMES[plan.palette ?? "neon"] ?? COLOUR_NAMES.neon;
+    return `${names[winner] ?? "?"} WINS!`;
   }
   if (done) return plan.kind === "escape-rings" ? "FREE!" : plan.kind === "growing-ball" ? `FULL IN ${n} BOUNCES!` : "FULL!";
   const fallback = { "escape-rings": "{n} RINGS LEFT", "growing-ball": "{n} BOUNCES", multiply: "{n}% FULL", race: "" }[plan.kind];

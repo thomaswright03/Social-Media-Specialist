@@ -375,6 +375,12 @@ describe("stage 5, production", () => {
     expect(gateProduction(j, { ours: 2 }).passed).toBe(false);
     expect(gateProduction({ ours: { ...j.ours, sound: 3 } }, { ours: 5 }, [], 4).passed).toBe(false);
   });
+  it("doesn't score voice for a Reel with no narrator by design (test run 3 failed a satisfying video on voice 1 of 5)", () => {
+    const silent = { ours: { art: 4, readability: 4, sound: 4 } };
+    expect(gateProduction(silent, { ours: 5 }, [], undefined, { voiced: false }).passed).toBe(true);
+    expect(gateProduction({ ours: { ...silent.ours, voice: 1 } }, { ours: 5 }, [], undefined, { voiced: false }).checks.some((c) => c.name.startsWith("Voice"))).toBe(false);
+    expect(gateProduction(silent, { ours: 5 }).passed).toBe(false);
+  });
   it("learned checks still block", () => {
     expect(gateProduction(j, { ours: 5 }, [{ name: "lesson", passed: false }]).passed).toBe(false);
   });

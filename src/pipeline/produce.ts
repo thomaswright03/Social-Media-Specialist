@@ -332,6 +332,7 @@ export async function runProduce(d: {
   let facts!: MediaFacts;
   let r!: Awaited<ReturnType<typeof runStage<ProductionJudgement>>>;
   const redrawable = !physics && !motions.some(Boolean) && svgs.some(Boolean);
+  const voiced = voiceFiles.some(Boolean);
   for (let round = 0; ; round++) {
     // Render, mix, mux.
     const browser = await d.browser();
@@ -389,7 +390,9 @@ export async function runProduce(d: {
     const pictures = picturesLine(retold);
     const cuts = t.length - 1;
     const notes = [
-      `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`,
+      voiced
+        ? `Ours: an upbeat ElevenLabs narrator (Liam, v3 with audio tags, Thomas's pick) reads ${voiceFiles.filter(Boolean).length} lines, each read with the lines around it; captions word by word with the current word in lime.`
+        : "Ours has no narrator by design: no voice and no spoken captions, only the on-screen text. Don't score VOICE: write null for it.",
       physics
         ? `Our sound: ${effects[0]?.cue ?? "our own notes"}, an original chord loop that climbs as it goes, a chord and a burst on each big moment, over our own low pad and room tone, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns. Our picture: ${look}, one continuous simulated shot like the leading satisfying physics accounts.`
         : `Our sound: ${effects.length} sound effects made for this Reel by ElevenLabs from the script's cues (${effects.map((e) => e.cue).slice(0, 8).join("; ") || "none"}), our own low pad, room tone and a slow heartbeat pulse, a whoosh on each of the ${cuts} cuts, all ducked under the voice, ${facts.lufs ?? "?"} LUFS, true peak ${facts.truePeak ?? "?"} dB. No music anyone else owns.`,
@@ -403,7 +406,7 @@ export async function runProduce(d: {
       prompt: () => stagePrompt(5, { FRAMES: `${ours.join(", ")} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
       gate: (j) => {
         if (j?.seen) log(`The judge saw: ${j.seen.ours ?? "?"}`);
-        const g = gateProduction(j, { ours: ours.length }, learned);
+        const g = gateProduction(j, { ours: ours.length }, learned, undefined, { voiced });
         return gate([
           check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
           check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),

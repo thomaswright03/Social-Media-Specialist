@@ -446,10 +446,12 @@ export type ProductionJudgement = { seen?: { ours?: string; benchmark?: string }
  */
 export const RUBRIC_MIN = 3;
 
-export function gateProduction(j: ProductionJudgement | null, frames: { ours: number }, learned: Check[] = [], min = RUBRIC_MIN): GateResult {
+export function gateProduction(j: ProductionJudgement | null, frames: { ours: number }, learned: Check[] = [], min = RUBRIC_MIN, opts: { voiced?: boolean } = {}): GateResult {
+  // A Reel with no narrator by design (satisfying) isn't scored on voice.
+  const axes = PRODUCTION_AXES.filter((a) => a !== "voice" || opts.voiced !== false);
   return gate([
     check("Our key frames are there", frames.ours >= 3, `${frames.ours} frames`),
-    ...PRODUCTION_AXES.map((a) => {
+    ...axes.map((a) => {
       const o = j?.ours?.[a];
       return check(`${a[0]!.toUpperCase()}${a.slice(1)} scores at least ${min} of 5 on our rubric`, typeof o === "number" && o >= min, `${o ?? "?"} of 5`);
     }),

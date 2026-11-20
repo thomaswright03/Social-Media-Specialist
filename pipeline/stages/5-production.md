@@ -59,7 +59,7 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   prompt below), never against other accounts' Reels (Thomas, 2026-11-20:
   "grade stuff according to our rubric, not what other people do in their
   content");
-- every axis scores at least 3 of 5 (`RUBRIC_MIN` in `gates.ts`); the
+- every axis scores at least 3 of 5 (`RUBRIC_MIN` in `gates.ts`; voice isn't scored for a Reel with no narrator by design); the
   scores go on the History, and the fixFirst note is what gets worked on next;
 - every learned check for stage 5.
 
@@ -96,7 +96,7 @@ Look for: is it big enough to read on a phone? Does it stand out from what is be
 2: several pieces are hard to read.
 1: most of it cannot be read, or it is missing where it was needed.
 
-VOICE (from the notes)
+VOICE (from the notes; if the notes say the Reel has no narrator by design, write null)
 Look for: is every line there, clear over the music and effects, at a natural pace, with nothing cut off?
 5: everything in the notes is on target.
 4: one small miss a listener might not notice.
@@ -388,7 +388,7 @@ The scenes (every field not marked optional is required):
 - escape-rings: {"kind":"escape-rings","rings":8,"gap":34,"balls":1,"counter":"{n} RINGS LEFT"} Spinning rings inside each other, each with a gap; a ball bounces inside and breaks out ring by ring. rings 3 to 14, gap in degrees 18 to 70 (smaller is harder), balls 1 to 4. The finish: the last ring breaks.
 - growing-ball: {"kind":"growing-ball","counter":"{n} BOUNCES"} One ball bounces inside a circle and grows a little on every bounce until it fills the circle. The finish: it fills it.
 - multiply: {"kind":"multiply","balls":150,"counter":"{n}% FULL"} One ball; every ball that hits the wall makes a new one, so the count doubles faster and faster until the balls fill the whole circle. balls 60 to 250 (more means smaller balls). The finish: the circle is full.
-- race: {"kind":"race","balls":4,"names":["Green","Pink","Blue","Yellow"]} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. names are the colours in order (green, pink, blue, yellow on neon). The counter shows the lap, then the winner.
+- race: {"kind":"race","balls":4} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. The colours come from the palette (neon: green, pink, blue, yellow; sunset: orange, red, gold, purple; ocean: cyan, mint, white, blue; candy: pink, sky, lime, cream), and the counter shows the lap, then the winner by its colour. Pick the palette whose colours the script names.
 
 Every scene also takes palette (optional): neon (default), sunset, ocean or candy.
 

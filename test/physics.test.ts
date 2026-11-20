@@ -80,9 +80,11 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
   it("counts toward the finish, then names it", () => {
     expect(counterText({ kind: "escape-rings" }, 5, null, false)).toBe("5 RINGS LEFT");
     expect(counterText({ kind: "escape-rings" }, 0, null, true)).toBe("FREE!");
-    expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 0, null, false)).toBe("WHICH COLOUR WINS?");
-    expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 1, null, false)).toBe("LAP 2 OF 3");
-    expect(counterText({ kind: "race", names: ["Lime", "Rose"] }, 3, 1, true)).toBe("ROSE WINS!");
+    expect(counterText({ kind: "race" }, 0, null, false)).toBe("LAP 1 OF 3");
+    expect(counterText({ kind: "race" }, 1, null, false)).toBe("LAP 2 OF 3");
+    // The winner is named by the colour actually drawn, whatever names the plan gave (test run 3 said "PURPLE WINS!" on neon).
+    expect(counterText({ kind: "race", names: ["Purple", "Rose"] }, 3, 1, true)).toBe("PINK WINS!");
+    expect(counterText({ kind: "race", palette: "sunset" }, 3, 3, true)).toBe("PURPLE WINS!");
     expect(counterText({ kind: "multiply", counter: "{n}% filled" }, 12, null, false)).toBe("12% FILLED");
   });
 
