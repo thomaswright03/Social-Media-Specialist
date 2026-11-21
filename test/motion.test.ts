@@ -1,7 +1,7 @@
 // The motion kit (Thomas, 2026-11-19: "the animations are terrible").
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
+import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, replanShots, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { composeHtml, timeline, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
@@ -53,6 +53,23 @@ describe("motion plan", () => {
     expect(keys(block("ICONS")).sort()).toEqual([...ICONS].sort());
     expect(keys(block("THEMES")).sort()).toEqual([...THEMES].sort());
     expect([...block("PIECES").matchAll(/^\s{4}([a-z]+)\(p\)/gm)].map((m) => m[1]).sort()).toEqual([...KINDS].sort());
+  });
+});
+
+describe("re-planning flagged shots", () => {
+  it("changes only the shots viewers flagged, and keeps the rest exactly (test run 44843234773)", async () => {
+    const seen: string[] = [];
+    const answer: MotionPlan = { shots: [
+      { shot: 1, pieces: [{ kind: "title", text: "SOMETHING ELSE" }] },
+      { shot: 2, pieces: [{ kind: "compare", left: { name: "Before", value: 3.2 }, right: { name: "Now", value: 4.2 } }] },
+    ] };
+    const next = await replanShots(good, [2], shots, async (p) => (seen.push(p), JSON.stringify(answer)));
+    expect(next!.shots[0]).toEqual(good.shots[0]);
+    expect(next!.shots[1]!.pieces[0]!.kind).toBe("compare");
+    expect(seen[0]).toContain("shot 2 (\"A dozen went from $3.20 to $4.20.\")");
+    // A new plan that breaks the checks (a number the script never says) gives up.
+    const wrong: MotionPlan = { shots: [good.shots[0]!, { shot: 2, pieces: [{ kind: "counter", to: 99 }] }] };
+    expect(await replanShots(good, [2], shots, async () => JSON.stringify(wrong))).toBeNull();
   });
 });
 

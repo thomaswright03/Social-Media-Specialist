@@ -12,7 +12,7 @@ import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundE
 import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
-import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
+import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, physicsStory, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
@@ -280,6 +280,7 @@ export async function runProduce(d: {
   let look = "";
   let svgs: string[] = t.map(() => "");
   let motions: (ShotMotion | null)[] = [];
+  let motionPlanned: MotionPlan | null = null;
   let physics = "";
   let physicsWhat = "";
   let cast: Cast = NO_CAST;
@@ -311,6 +312,7 @@ export async function runProduce(d: {
       return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
     }
     motions = t.map((_, i) => shotMotion(m.plan, i));
+    motionPlanned = m.plan;
     log(`Motion plan: ${look}.`);
   } else {
     look = await lookSheet(timed, d.ask, style, log);
@@ -354,7 +356,7 @@ export async function runProduce(d: {
   let boxes: TextBox[] = [];
   let facts!: MediaFacts;
   let r!: Awaited<ReturnType<typeof runStage<ProductionJudgement>>>;
-  const redrawable = !physics && !motions.some(Boolean) && svgs.some(Boolean);
+  const redrawable = (!physics && !motions.some(Boolean) && svgs.some(Boolean)) || Boolean(motionPlanned);
   const voiced = voiceFiles.some(Boolean);
   for (let round = 0; ; round++) {
     // Render, mix, mux.
@@ -452,6 +454,15 @@ export async function runProduce(d: {
     if (r.gate.passed || !redrawable || round >= REDRAW_ROUNDS || !bad.length || !onlyPictures) break;
     log(`Redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}: a viewer said ${bad.length > 1 ? "their pictures don't" : "its picture doesn't"} show what the voice says.`);
     await d.vault.logAction({ kind: "stage", summary: `Stage 5, Production: redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}, whose pictures didn't show what the voice says.`, target: reel.subject }, now());
+    if (motionPlanned) {
+      // Graphics: new pieces for just those shots, from the motion kit.
+      const next = await replanShots(motionPlanned, bad, timed, d.ask, style, log);
+      if (!next) break;
+      motionPlanned = next;
+      motions = t.map((_, i) => shotMotion(next, i));
+      await writeFile(join(d.outDir, "motion.json"), JSON.stringify(next, null, 1));
+      continue;
+    }
     for (const n of bad) {
       const said = timed[n - 1]!.line?.trim() || timed[n - 1]!.onScreenText?.trim() || "";
       const scene = await drawScene(timed, n - 1, look, d.ask, cast, style, `A viewer watching the finished video said this shot's picture doesn't show what is said over it${said ? ` ("${said}")` : ""}. Draw it so the picture shows exactly that, plainly, at a glance.`);
