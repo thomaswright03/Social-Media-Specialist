@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, youtube-test, hitta-test, voice-test]
+        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, youtube-test, youtube-backfill, hitta-test, voice-test]
       format:
         description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research and accounts-test, the format to study; empty takes all four
         type: string
@@ -36,7 +36,7 @@ on:
         type: string
         required: false
       subject:
-        description: For script and produce, the subject of a Reel to make again (as the Vault shows it); empty takes the next one waiting
+        description: 'For script and produce, the subject of a Reel to make again (as the Vault shows it); empty takes the next one waiting. For youtube-backfill, "go" uploads (empty only lists), and "skip: id1, id2" leaves Reels out'
         type: string
         required: false
 
@@ -229,7 +229,7 @@ jobs:
       # First, before anything long: Hitta waits on the phone for these
       # answers (src/hitta-requests.ts). A failure here never stops the run.
       - name: Answer Hitta's requests
-        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hitta-test' && env.COMMAND != 'instagram-test' && env.COMMAND != 'page-audit' && env.COMMAND != 'youtube-test' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
+        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hitta-test' && env.COMMAND != 'instagram-test' && env.COMMAND != 'page-audit' && env.COMMAND != 'youtube-test' && env.COMMAND != 'youtube-backfill' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
         continue-on-error: true
         run: npx social requests
 

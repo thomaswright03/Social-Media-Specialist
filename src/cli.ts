@@ -11,6 +11,8 @@
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   page-audit      reads the Facebook Page's profile, posts, Reels and insights for an audit; changes nothing
 //   youtube-test    signs in to YouTube and reads the channel; uploads nothing
+//   youtube-backfill lists the Reels already on Instagram that aren't on YouTube yet; with "go" in the
+//                   subject box it uploads them as Shorts (Thomas asked, 2026-11-21); "skip: <ids or links>" leaves some out
 //   hitta-test      sends Hitta a low-urgency test report
 //   ideas           stage 2: picks the next Reel's format (80% entertainment, 20% ads) and keeps 3 ideas
 //                   (REEL_FORMAT or a format after the command picks one by hand)
@@ -38,6 +40,7 @@ import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, askClaudeReading, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
 import { youtubeClient, youtubeCreds, youtubeOn } from "./youtube.ts";
+import { backfillYouTube } from "./youtube-backfill.ts";
 import { DISCOVERY_USAGE_STOP, call, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
@@ -298,6 +301,33 @@ async function main() {
     return;
   }
 
+  // Thomas, 2026-11-21: "all the reels that the ai has posted besides the two pinned posts on instagram need to be
+  // uploaded and posted as youtube shorts". Lists them unless the subject box says "go".
+  if (command === "youtube-backfill") {
+    const creds = youtubeCreds();
+    if (!creds) {
+      console.error("YouTube isn't set up (README, \"YouTube Shorts\").");
+      process.exit(2);
+    }
+    const arg = (process.argv[3] ?? "").trim();
+    const skip = (/skip:\s*(.*)$/i.exec(arg)?.[1] ?? "").split(/[\s,]+/).filter(Boolean);
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log });
+      if (!token) {
+        console.error("INSTAGRAM_ACCESS_TOKEN isn't set.");
+        process.exit(2);
+      }
+      const r = await backfillYouTube({ vault, ig: instagramClient(token.token), yt: youtubeClient(creds), log, skip, go: /^go\b/i.test(arg) });
+      if (/^go\b/i.test(arg)) log(`Uploaded ${r.uploaded.length}, refused ${r.failed.length}${r.stoppedForQuota ? ", the rest wait for YouTube's daily allowance (run it again tomorrow)" : ""}.`);
+      else log('Nothing uploaded. Run again with "go" (and any "skip: ...") in the subject box to upload these.');
+      if (r.failed.length) process.exitCode = 1;
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "youtube-test") {
     const creds = youtubeCreds();
     if (!creds) {
@@ -485,7 +515,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit, youtube-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit, youtube-test, youtube-backfill or hitta-test.`);
     process.exit(2);
   }
 
