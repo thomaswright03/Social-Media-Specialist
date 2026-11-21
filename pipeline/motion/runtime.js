@@ -866,6 +866,82 @@
       };
     },
 
+    // A graphic designed for this one shot (Thomas, 2026-11-21: "I want it to be creative with every new info
+    // graphic"). Claude draws the SVG; its parts animate by data-a (and start at data-t seconds), with the
+    // same easing as the rest of the kit, so it is a pure function of time like every other piece.
+    draw(p) {
+      const el = h("div", "width:900px;height:900px;position:relative");
+      const clean = String(p.svg || "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "");
+      const box = h("div", "position:absolute;left:0;top:0;width:820px;height:900px", clean);
+      el.appendChild(box);
+      const svg = box.querySelector("svg");
+      if (svg) {
+        svg.setAttribute("width", "820");
+        svg.setAttribute("height", "900");
+        svg.style.overflow = "hidden";
+        svg.classList.add("mk-draw");
+      }
+      const parts = Array.from(box.querySelectorAll("[data-a]")).map((e) => {
+        const a = e.getAttribute("data-a");
+        const t0 = clamp(Number(e.getAttribute("data-t") || 0) || 0, 0, 0.6);
+        if (a === "draw") e.setAttribute("pathLength", "1");
+        e.style.transformBox = "fill-box";
+        e.style.transformOrigin = a === "grow-up" ? "50% 100%" : a === "grow-right" ? "0% 50%" : "50% 50%";
+        const to = Number(e.getAttribute("data-to"));
+        const dec = decs([e.getAttribute("data-to") || 0], e.getAttribute("data-prefix"), e.getAttribute("data-suffix"));
+        return { e, a, t0, to, dec, pre: e.getAttribute("data-prefix") || "", suf: e.getAttribute("data-suffix") || "" };
+      });
+      return {
+        el,
+        update(l) {
+          for (const x of parts) {
+            const q = prog(l, x.t0, x.a === "draw" ? 0.55 : 0.45);
+            const st = x.e.style;
+            switch (x.a) {
+              case "draw":
+                st.strokeDasharray = "1";
+                st.strokeDashoffset = String(1 - outCubic(q));
+                break;
+              case "pop":
+                st.opacity = String(clamp(q * 4));
+                st.transform = `scale(${0.3 + 0.7 * outBack(q)})`;
+                break;
+              case "rise":
+                st.opacity = String(clamp(q * 3));
+                st.transform = `translateY(${(1 - outCubic(q)) * 80}px)`;
+                break;
+              case "drop":
+                st.opacity = String(clamp(q * 3));
+                st.transform = `translateY(${(1 - outBack(q)) * -140}px)`;
+                break;
+              case "grow-up":
+                st.transform = `scaleY(${Math.max(0.001, outCubic(q))})`;
+                break;
+              case "grow-right":
+                st.transform = `scaleX(${Math.max(0.001, outCubic(q))})`;
+                break;
+              case "fade":
+                st.opacity = String(outCubic(q));
+                break;
+              case "count":
+                if (Number.isFinite(x.to)) x.e.textContent = fmt(x.to * outCubic(q), x.dec, x.pre, x.suf);
+                st.opacity = String(clamp(q * 4));
+                break;
+              case "pulse":
+                st.opacity = String(clamp(q * 3));
+                st.transform = `scale(${(0.6 + 0.4 * outBack(q)) * (1 + 0.04 * Math.sin(Math.max(0, l - x.t0 - 0.45) * 5))})`;
+                break;
+              case "spin":
+                st.opacity = String(clamp(q * 3));
+                st.transform = `rotate(${(1 - outCubic(q)) * -180 + Math.max(0, l - x.t0 - 0.45) * 12}deg)`;
+                break;
+            }
+          }
+          el.style.transform = `translateY(${Math.sin(l * 1.4) * 5}px)`;
+        },
+      };
+    },
+
   };
 
   /** The moving background: a deep gradient, two slow light blobs, a drifting grid and rising specks. */
@@ -908,7 +984,17 @@
    * light blobs drift behind at a slower parallax, and its colours blend from
    * one shot's mood to the next.
    */
-  function world() {
+  /** The world's pattern, picked per Reel (2026-11-21) so the videos don't all sit on the same grid. */
+  const BACKDROPS = {
+    grid: (size) => ["linear-gradient(rgba(255,255,255,.05) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.05) 2px,transparent 2px)", `${size}px ${size}px`],
+    dots: (size) => ["radial-gradient(circle,rgba(255,255,255,.09) 3px,transparent 4px)", `${size / 2}px ${size / 2}px`],
+    diagonal: (size) => ["repeating-linear-gradient(45deg,rgba(255,255,255,.045) 0 2px,transparent 2px " + size / 3 + "px)", `${size}px ${size}px`],
+    rings: (size) => ["repeating-radial-gradient(circle at 50% 50%,rgba(255,255,255,.05) 0 2px,transparent 2px " + size / 4 + "px)", `${size * 2}px ${size * 2}px`],
+    plain: () => ["none", "auto"],
+  };
+
+  function world(backdrop) {
+    const pattern = BACKDROPS[backdrop] || BACKDROPS.grid;
     const el = h("div", "position:absolute;inset:0;overflow:hidden");
     const blobs = [0, 1].map(() => {
       const b = h("div", "position:absolute;width:1000px;height:1000px;border-radius:50%;opacity:.55;left:0;top:0");
@@ -943,8 +1029,9 @@
         // An endless zoom: the grid size cycles through one doubling.
         const lvl = Math.log2(scale);
         const size = 120 * Math.pow(2, lvl - Math.floor(lvl));
-        grid.style.backgroundImage = "linear-gradient(rgba(255,255,255,.05) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.05) 2px,transparent 2px)";
-        grid.style.backgroundSize = `${size}px ${size}px`;
+        const [img, bs] = pattern(size);
+        grid.style.backgroundImage = img;
+        grid.style.backgroundSize = bs;
         grid.style.backgroundPosition = `${wrap(540 - sx + t * 14, size)}px ${wrap(960 - sy + t * 22, size)}px`;
         for (const x of specks) {
           x.sp.style.transform = `translate(${wrap(x.x - sx * x.depth + Math.sin(t + x.y) * 12, 1600) - 260}px,${wrap(x.y - sy * x.depth - t * x.v, 2600) - 340}px)`;
@@ -978,5 +1065,5 @@
     };
   }
 
-  window.MK = { mount, world, ICONS: Object.keys(ICONS), KINDS: Object.keys(PIECES), THEMES: Object.keys(THEMES) };
+  window.MK = { mount, world, ICONS: Object.keys(ICONS), KINDS: Object.keys(PIECES), THEMES: Object.keys(THEMES), BACKDROPS: Object.keys(BACKDROPS) };
 })();

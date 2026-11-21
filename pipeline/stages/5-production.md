@@ -16,16 +16,26 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   drawn edge to edge with depth and light, big white stick figures with
   simple faces, one lime accent, small CSS animations. Code checks each drawing
   (size, no scripts or outside files) and asks again when one is broken.
-- **Motion kit (explainers):** instead of drawings, Claude picks one ready-made
-  animated piece per shot (title, news card, counter, bars, line, compare,
+- **Motion graphics (explainers and ads):** Claude designs most shots' graphic
+  itself, as an SVG for that one shot (the `draw` piece), made of the story's
+  own things, with its parts animated by code (`data-a`: draw, pop, rise, drop,
+  grow, count…); Thomas, 2026-11-21: "I don't want the same eight cards
+  getting used over and over for every video. I want it to be creative with
+  every new info graphic". At most 3 shots (`KIT_MAX`; an ad's app screens
+  aside) use a ready-made piece (title, news card, counter, bars, line, compare,
   quote, list, icon, timeline, waffle, people, coin stack, flow, split bar,
-  calendar, stock ticker, meter, phone chat, stamp) and fills it in as JSON
-  (the "motion" prompt);
+  calendar, stock ticker, meter, phone chat, stamp, the product's app screen),
+  and each Reel gets its own backdrop pattern (grid, dots, diagonal, rings or
+  plain). All of it is one JSON plan (the "motion" prompt);
   the pieces are built once in `pipeline/motion/runtime.js` with proper
   easing, readable by 0.6 s, over a moving background, and shots whip or zoom
   into each other. Code checks the plan (`src/pipeline/motion.ts`): every
-  shot has 1 or 2 valid pieces, every figure on screen is one the script
-  says, and no kind of piece is used twice in a Reel (Thomas, 2026-11-20).
+  shot has 1 or 2 valid pieces (a drawing alone), every figure on screen is one
+  the script says, no ready-made kind is used twice in a Reel (Thomas,
+  2026-11-20), no two drawings are the same, and each drawing is safe and
+  readable (`drawProblems`: shapes, text and gradients only, nothing outside,
+  under 14 KB, text 34 px or more and 90 characters at most, at least 2
+  animated parts).
 - **End card (Thomas, 2026-11-20):** every Reel, whatever its format, ends
   on 2.2 s of the company's card after its last shot: the logo (the
   website's bolt tile), "Wright AI Solutions" and wright-ai-solutions.com
@@ -332,7 +342,7 @@ Reply with only the SVG, starting with <svg and ending with </svg>.
 <!-- /art -->
 
 <!-- motion -->
-You are the motion designer for a vertical Instagram Reel (1080x1920). A narrator speaks over one animated graphic per shot. The graphics are ready-made pieces, built and animated in code with proper easing; your job is to pick the right piece for each shot and fill it in.
+You are the motion designer for a vertical Instagram Reel (1080x1920). A narrator speaks over one animated graphic per shot. Most shots get a graphic you design yourself for this video (a draw piece): every Reel's infographics are new, never the same cards as the last video. A few ready-made pieces, animated in code, are there for when one is plainly the best picture.
 
 <style>
 {{STYLE}}
@@ -342,7 +352,21 @@ You are the motion designer for a vertical Instagram Reel (1080x1920). A narrato
 {{SHOTS}}
 </shot_list>
 
-The pieces (every field not marked optional is required):
+Your own graphic (use it for most shots):
+- draw: {"kind":"draw","svg":"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 820 900'>…</svg>"} An infographic you design for this shot alone, drawn as SVG on a transparent 820 by 900 box over the dark moving backdrop. Code animates it: give the parts that should move data-a and, optionally, data-t (when it starts, 0 to 0.6 seconds, so the graphic reads by 0.6 s plus a beat):
+  - data-a="draw": a line, path or outline that draws itself (give it a stroke).
+  - data-a="pop", "rise", "drop", "fade", "pulse" or "spin": a shape or group that pops in, rises, drops in, fades in, pops in then gently beats, or spins in.
+  - data-a="grow-up" or "grow-right": a bar, a fill level or a stack that grows from its bottom or its left.
+  - data-a="count" on a <text>, with data-to (the number) and optional data-prefix and data-suffix: the number counts up. Write the final value as the text too.
+  How to make it good:
+  - Make the picture out of the story's own things, not boxes and rings. Pub poker: the 35% rise as two stacks of poker chips, the £5 as a note sliding across felt. Egg prices: eggs in a carton filling up as the price rises. A share of people: a crowd of little figures, some lit. A deadline: a clock face with the hand sweeping. Every shot's idea is different from the others.
+  - One idea per graphic, readable at a glance on a phone: one big shape or number, a few supporting shapes, few words.
+  - Bold, flat shapes with depth: 2 to 4 colours that suit this story plus white, chunky strokes (6 px or more), rounded ends, a soft shadow or a highlight where it helps. Pick this video's colours once and keep them through every shot so the Reel looks like one piece; the next video picks its own.
+  - Text: at most 8 bits of text and 90 characters in all, each at most 28 characters, every <text> with font-size 34 or more (numbers 90 or more), font-family Montserrat, font-weight 800 or 900. Keep text and important shapes 30 px inside the edges.
+  - Only shapes, text and gradients (svg, g, defs, linearGradient, radialGradient, stop, clipPath, mask, pattern, rect, circle, ellipse, line, polyline, polygon, path, text, tspan, use). No images, scripts, styles sheets, event handlers or links to anything outside (href="#id" is fine). Under 14 KB. Use single quotes for attributes inside the svg, so the JSON stays valid.
+  - A drawing fills its shot on its own: no second piece in that shot.
+
+Ready-made pieces (at most 3 shots in the whole video may use these; an ad's app screens don't count; every field not marked optional is required):
 - title: {"kind":"title","text":"WAIT, WHAT?","highlight":"what"} Big words that drop in one by one. At most 40 characters; highlight (optional) is one word shown in lime. For a hook or a turn, never to repeat the voice word for word.
 - headline: {"kind":"headline","publisher":"NPR","text":"…","date":"Nov 17"} A news card that drops in. Use the publisher and headline as the shot gives them. At most 110 characters.
 - counter: {"kind":"counter","to":3.1,"from":0,"prefix":"","suffix":"%","label":"egg prices this month"} A big number that counts up with a ring filling around it. from is optional (default 0). label at most 40 characters.
@@ -366,20 +390,21 @@ The pieces (every field not marked optional is required):
 - app: {"kind":"app","name":"Free Calorie Counter","screen":"Today","ring":{"value":1240,"of":1800,"unit":"cal","label":"eaten today"},"rows":[{"label":"Oatmeal","value":"320 cal"},{"label":"Chicken salad","value":"450 cal"}],"highlight":1,"button":"+ Add food"} The product's own screen on a phone: its name at the top, then (all optional, at least one) a goal ring that fills, up to 3 rows that slide in (2 with a ring and a button, 4 with no ring; label at most 18 characters, value at most 10), and a button that gets tapped (at most 20 characters). highlight (optional) is the row the shot is about. Only in an ad, and only for what the product really shows. name is the product's exact name. It may appear up to 3 times, each time a different screen.
 
 How to choose:
-1. The picture proves what the voice says in that shot. A shot that says a number shows that number (counter, bars, line, compare). A shot that says who did what shows the news card or an icon of the thing. A shot that says what changes for the viewer shows a compare or a list.
+1. The picture proves what the voice says in that shot. A shot that says a number shows that number, drawn out of the story's things. A shot that says who did what shows the people or the thing doing it (a real headline may use the news card). A shot that says what changes for the viewer shows the before and after.
 2. Every figure on screen comes from that shot's own visual or line, exactly as written there. Never round, never add a number the script doesn't say. Code checks this.
-3. One piece per shot, two only when the shot really needs both (a headline over a counter). Every kind of piece is used at most once in the whole video, so no picture repeats (there are 20 kinds; a video has at most 14 shots). The one exception is an ad's app screen, shown up to 3 times, each a different screen. Once a kind is used, pick the next best kind for the next shot: a percent can be a counter, a waffle, a split or people; money can be a counter, a stack, a meter, a ticker or a flow. Code checks this.
+3. Draw most shots yourself. At most 3 shots use ready-made pieces, and each ready-made kind is used at most once in the whole video, so no picture repeats; every drawing is different from the others. An ad's app screen is the exception: it may be shown up to 3 times, each a different screen, and doesn't count toward the 3. Code checks this.
 4. The first shot grabs: its piece is the most surprising thing in the video, usually the number.
-5. In an ad, a shot whose visual is the product's screen is an app piece filled from that visual's words. Every other shot uses the other pieces to make its point (the everyday problem, the number, what changes), so the product's screen is the payoff, not every slide.
+5. In an ad, a shot whose visual is the product's screen is an app piece filled from that visual's words. Every other shot makes its point with your own drawings (the everyday problem, the number, what changes), so the product's screen is the payoff, not every slide.
 6. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
 7. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.
 8. transition is how the shot comes in: whip (default, fast slide), zoom (a reveal or a big turn), flash (a shock), cut (the same idea continuing).
+9. backdrop (once, for the whole video) is the pattern behind everything: grid, dots, diagonal, rings or plain. Pick the one that suits this story; leave it out and code picks one at random.
 
 <last_refusal>
 {{PROBLEMS}}
 </last_refusal>
 
-Reply with only JSON: {"shots":[{"shot":1,"bg":"navy","transition":"cut","pieces":[{…}]}, …]}, one entry for every shot in the list, numbered as there.
+Reply with only JSON: {"backdrop":"dots","shots":[{"shot":1,"bg":"navy","transition":"cut","pieces":[{…}]}, …]}, one entry for every shot in the list, numbered as there.
 <!-- /motion -->
 
 <!-- physics -->
