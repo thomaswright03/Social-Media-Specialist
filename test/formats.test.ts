@@ -134,9 +134,32 @@ describe("gateFormat", () => {
     expect(gateFormat({ format: "story", product: null }, { caption: "x", shots: [{ line: "The end." }] }, P).checks.some((c) => c.name.startsWith("Ends on a question"))).toBe(false);
   });
 
+  it("keeps a narrated Reel's sound effects few, apart and fitting, and its pauses few (Thomas, 2026-11-20)", () => {
+    const news = { format: "explainer" as const, product: null };
+    const g = (shots: { start: number; sound?: string; pause?: boolean }[]) => gateFormat(news, { caption: "x", shots }, P).checks;
+    const named = (cs: ReturnType<typeof g>, n: string) => cs.find((c) => c.name.startsWith(n))!;
+    // The YouTube explainer: an effect on every shot, music and a wobbly sting.
+    const every = g(["Quick whoosh, upbeat music starts", "Wobbly sting", "Soft pop", "Stamp thunk", "Ding", "Tick"].map((sound, i) => ({ start: i * 3, sound })));
+    expect(named(every, "Sound effects:")).toMatchObject({ passed: false, detail: "6 shots have one" });
+    expect(named(every, "Sound effects fit")).toMatchObject({ passed: false, detail: 'says "music"' });
+    const fine = g([{ start: 0, sound: "none" }, { start: 3, sound: "soft ding", pause: true }, { start: 6, sound: "" }, { start: 9, sound: "paper stamp thud" }]);
+    expect(fine.filter((c) => /Sound|pauses/.test(c.name)).every((c) => c.passed)).toBe(true);
+    expect(named(g([{ start: 0, sound: "ding" }, { start: 3, sound: "tick" }]), "Sound effects:")).toMatchObject({ passed: false, detail: "shots 1 and 2 both have one" });
+    expect(named(g([{ start: 0, pause: true }]), "3 pauses")).toMatchObject({ passed: false });
+    // A physics Reel makes its own notes: no checks on its cues.
+    expect(gateFormat({ format: "satisfying", product: null }, { caption: "Made with AI", shots: [{ start: 0, sound: "music" }] }, P).checks.some((c) => c.name.startsWith("Sound effects"))).toBe(false);
+  });
+
   it("needs satisfying videos labelled as made with AI", () => {
     const s = { format: "satisfying" as const, product: null };
     expect(gateFormat(s, { caption: "Wait for the last one", shots: [] }, P).passed).toBe(false);
     expect(gateFormat(s, { caption: "Wait for the last one. Made with AI.", shots: [] }, P).passed).toBe(true);
+  });
+});
+
+describe("soundCues", () => {
+  it("plays real cues only, never two shots running, banned kinds dropped, 4 at most", async () => {
+    const { soundCues } = await import("../src/pipeline/gates.ts");
+    expect(soundCues([{ sound: "ding" }, { sound: "tick" }, { sound: "none" }, { sound: "upbeat music" }, { sound: "thud" }, { sound: "" }, { sound: "pop" }, { sound: "" }, { sound: "click" }, { sound: "" }, { sound: "rise" }])).toEqual([0, 4, 6, 8]);
   });
 });

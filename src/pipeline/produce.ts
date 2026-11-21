@@ -10,7 +10,7 @@ import type { Browser } from "playwright";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, MIN_SHOTS_SECONDS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
-import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
+import { check, END_CARD, gate, gateProduction, soundCues, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, physicsStory, USES_PHYSICS } from "./physics.ts";
@@ -340,12 +340,14 @@ export async function runProduce(d: {
   }
 
   // Sound effects for each shot's cue (a failed one is left out, not fatal).
+  // Only the cues soundCues allows: MAX_SFX at most, never two shots running, nothing banned.
   if (d.sfx && !physics) {
+    const played = new Set(soundCues(t));
     for (const [i, s] of t.entries()) {
       const cue = s.sound?.trim();
-      if (!cue || /^(none|silence|no sound)\b/i.test(cue)) continue;
+      if (!cue || !played.has(i)) continue;
       try {
-        const audio = await d.sfx(`${cue}. Cinematic, clean, no music, no voice.`, Math.min(4, Math.max(1, s.dur)));
+        const audio = await d.sfx(`${cue}. Cinematic, clean, no music, no voice.`, Math.min(2, Math.max(0.5, s.dur)));
         const file = join(work, `sfx-${String(i + 1).padStart(2, "0")}.mp3`);
         await writeFile(file, audio);
         effects.push({ file, at: s.at, cue });

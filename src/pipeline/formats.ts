@@ -13,7 +13,7 @@
 // The mix is code, not a promise: nextFormat picks from what was already
 // made, and gateFormat checks each script against its format.
 import type { Check, GateResult } from "./gates.ts";
-import { check, gate } from "./gates.ts";
+import { check, gate, soundChecks } from "./gates.ts";
 import { join } from "node:path";
 import type { Product } from "../vault.ts";
 import { fillPrompt, pipelineFile } from "./stages.ts";
@@ -93,7 +93,7 @@ export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fil
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
 export type FormatDraft = {
   caption: string;
-  shots: { onScreenText?: string; line?: string; start?: number; visual?: string }[];
+  shots: { onScreenText?: string; line?: string; start?: number; visual?: string; sound?: string; pause?: boolean }[];
   /** The script's two-sentence story and its payoff. */
   story?: string;
   payoff?: string;
@@ -138,6 +138,8 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const sell = all.match(SELLING)?.[0];
     checks.push(check("Entertainment doesn't sell", !sell && others.length === 0, sell ? `says "${sell}"` : others.length ? `names ${others.join(", ")}` : undefined));
   }
+  // Narrated Reels get their effects from the script's cues; a physics run makes its own notes.
+  if (NARRATED[c.format]) checks.push(...soundChecks([...d.shots].sort((a, b) => (a.start ?? 0) - (b.start ?? 0))));
   if (c.format === "satisfying") {
     checks.push(check("The caption says it was made with AI", MADE_WITH_AI.test(d.caption)));
     // The run decides who leads and wins, so later words can't say (test run 3: "PINK PULLS AHEAD", "WHOSE FLAG WINS?").

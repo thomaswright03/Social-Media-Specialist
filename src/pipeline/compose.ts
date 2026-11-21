@@ -41,6 +41,8 @@ export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null
 
 /** Shot time a Reel needs so that with the end card it runs at least 30 s (stage 6), with a little to spare. */
 export const MIN_SHOTS_SECONDS = 30 - END_CARD + 0.3;
+/** The beat of silence after a line the script marks `pause` (a hook question, before a twist, before the closing question). */
+export const BEAT = 0.45;
 /** The most breath added after each line to reach that. */
 export const MAX_PAD = 1;
 
@@ -58,7 +60,9 @@ export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[
   const durs = shots.map((s, i) => {
     const v = voices[i] ?? null;
     const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
-    return v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.length ?? v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const d = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.length ?? v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    // A one take runs line into line, so a marked pause is added after its line.
+    return d + (v && opts.oneTake && s.pause === true && i > 0 ? BEAT : 0);
   });
   const short = (opts.minSeconds ?? 0) - durs.reduce((a, b) => a + b, 0);
   const pad = shots.length && short > 0 ? Math.min(MAX_PAD, short / shots.length) : 0;
@@ -410,13 +414,14 @@ export async function mixAudio(t: TimedShot[], voiceFiles: (string | null)[], di
   const beatFrom = opts.continuous ? totalSeconds(t) + 1 : (t[1]?.at ?? 0);
   inputs.push("-f", "lavfi", "-i", `aevalsrc='if(gte(t,${beatFrom.toFixed(3)}),0.5*sin(2*PI*52*t)*exp(-9*mod(t-${beatFrom.toFixed(3)},0.82)),0)':s=44100:d=${total.toFixed(3)}`);
   filters.push(`[2:a]lowpass=f=160,volume=0.55,aformat=channel_layouts=stereo[beat]`);
-  const cuts = opts.continuous ? [] : t.slice(1).map((s) => s.at);
+  // A whoosh on each cut, except where a sound effect starts, so the two never stack.
+  const cuts = opts.continuous ? [] : t.slice(1).map((s) => s.at).filter((c) => !sfx.some((e) => Math.abs(e.at - c) < 0.3));
   const whooshes: string[] = [];
   cuts.forEach((c, i) => {
     const idx = 3 + i;
     inputs.push("-f", "lavfi", "-i", `anoisesrc=color=pink:amplitude=0.25:d=0.4:r=44100`);
     const ms = Math.max(0, Math.round((c - 0.18) * 1000));
-    filters.push(`[${idx}:a]highpass=f=900,lowpass=f=5000,afade=t=in:d=0.18,afade=t=out:st=0.18:d=0.22,volume=0.35,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[w${i}]`);
+    filters.push(`[${idx}:a]highpass=f=900,lowpass=f=5000,afade=t=in:d=0.18,afade=t=out:st=0.18:d=0.22,volume=0.25,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[w${i}]`);
     whooshes.push(`[w${i}]`);
   });
   const voices: string[] = [];

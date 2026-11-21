@@ -92,7 +92,7 @@ On-screen text:
 
 Sound:
 
-- A quiet music bed that suits the mood, plus a sound that belongs to the action where the action makes one: the key in the lock, the hum of the fridge. Nothing competes with the voice.
+- Code plays our own quiet bed under every shot, so `sound` never asks for music. It adds a sound that belongs to the action, only where the action makes one: the key in the lock, the hum of the fridge. Nothing competes with the voice.
 - Drop to near silence in the shot before the answer.
 
 The caption:

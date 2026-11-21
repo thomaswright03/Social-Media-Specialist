@@ -282,8 +282,41 @@ export function gateIdeas(x: Ideas | null, cold: ColdReads): GateResult {
 
 // --- Stage 3: The first 3 seconds ---------------------------------------------
 
-export type Shot = { start?: number; end?: number; place?: string; camera?: string; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string };
+export type Shot = { start?: number; end?: number; place?: string; camera?: string; visual?: string; kind?: string; onScreenText?: string; textAt?: number; audio?: string; line?: string; onScreen?: string; sound?: string; pause?: boolean };
 export type Opening = { intendedHook?: string; shots?: Shot[] };
+
+/**
+ * Sound effects and pauses (Thomas, 2026-11-20, on the YouTube explainer: "voice
+ * pacing rules ... and a sound effect section ... so they are not under or over
+ * used or used inappropriately"). That Reel had an effect on all 12 shots,
+ * including "upbeat music starts" and a "wobbly sting" on serious news.
+ */
+export const MAX_SFX = 4;
+export const MAX_PAUSES = 3;
+/** Kinds of sound that never fit our Reels: music (we have none we own), jokes, alarms, crowds. */
+export const BANNED_SFX = /\b(music|song|melody|jingle|boing|wobbl\w*|cartoon|slide whistle|record scratch|laugh\w*|applause|cheer\w*|crowd|siren|alarm|explosion|gunshot|scream\w*|fart|honk)\b/i;
+const isCue = (sound?: string) => Boolean(sound?.trim()) && !/^(none|silence|no sound|-)\b/i.test(sound!.trim());
+/** The shots (0-based) whose sound cue is played: real cues, banned kinds dropped, never two shots in a row, MAX_SFX at most. */
+export function soundCues(shots: Pick<Shot, "sound">[]): number[] {
+  const out: number[] = [];
+  shots.forEach((s, i) => {
+    if (!isCue(s.sound) || BANNED_SFX.test(s.sound!) || out.length >= MAX_SFX || out.at(-1) === i - 1) return;
+    out.push(i);
+  });
+  return out;
+}
+/** Stage 4's checks on a narrated script's sound effects and pauses. */
+export function soundChecks(shots: Pick<Shot, "sound" | "pause">[]): Check[] {
+  const cued = shots.map((s, i) => (isCue(s.sound) ? i : -1)).filter((i) => i >= 0);
+  const banned = shots.map((s) => (isCue(s.sound) ? s.sound!.match(BANNED_SFX)?.[0] : undefined)).find(Boolean);
+  const rows = cued.filter((i, k) => k > 0 && cued[k - 1] === i - 1).map((i) => i + 1);
+  const pauses = shots.filter((s) => s.pause === true).length;
+  return [
+    check(`Sound effects: ${MAX_SFX} at most, never two shots in a row`, cued.length <= MAX_SFX && rows.length === 0, cued.length > MAX_SFX ? `${cued.length} shots have one` : rows.length ? `shots ${rows.map((n) => `${n - 1} and ${n}`).join(", ")} both have one` : undefined),
+    check("Sound effects fit (no music, joke sounds, alarms or crowds)", !banned, banned ? `says "${banned}"` : undefined),
+    check(`${MAX_PAUSES} pauses at most, never in the first shot`, pauses <= MAX_PAUSES && shots[0]?.pause !== true, pauses > MAX_PAUSES ? `${pauses} pauses` : shots[0]?.pause ? "the first shot pauses" : undefined),
+  ];
+}
 /** Cold sound-off viewers: did each give a reason to keep watching that matches the intended hook? */
 export type SoundOffReads = boolean[];
 
