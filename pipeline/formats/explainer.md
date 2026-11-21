@@ -80,6 +80,7 @@ The narrator:
 - No initials, codes or insider names a stranger wouldn't know (say "a big tech consulting firm", not "FTI"). The voice never leans on the pictures: every "it", "they", "his" or "the staff" points to something the voice already named.
 - Say only what's true from the first line. Never state something a later line takes back ("It was solved twice. Well, claimed twice."): if it's a claim, the opening says claim.
 - Every step is plain. When a machine, a court or an official "accepted", "approved" or "checked" something, the same line says what that means for the story, in everyday words.
+- Every line is a whole sentence with its subject and its verb, the way you'd say it to a friend. Never a headline ("A Welsh host's clean takes four hours.") and never a question standing in for a sentence ("Refused but kept?"): say what happens ("If Airbnb says no and the host keeps the chore anyway, Airbnb warns guests before they book."). An idea that needs more words gets them, in its own shot of up to 3 seconds, rather than being cut short.
 - Before you answer, read only your lines, top to bottom, as someone who has never heard this news. Fix any line where they'd ask "who?", "which one?" or "why does that matter?".
 - Ears-only test: someone listening without looking learns what happened, why, and what it means for them. Code checks this: listeners who hear only the narration must say what it's about, who everyone is, and what happened, with nothing central confusing them.
 
