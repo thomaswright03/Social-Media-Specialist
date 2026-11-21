@@ -40,6 +40,11 @@ Skip:
 - News where the items disagree about the basic facts.
 - Deaths, disasters and anything where a light tone would be wrong.
 - Anything that can only be told by taking a side. Report what happened and what changes; the caption asks the viewer what they think.
+- A study or test with several findings (what hackers did, what middlemen did, what a lab did). Pitch one finding alone, or skip it.
+- A story whose "why" takes more than one step, or a paradox that needs an economics lesson ("the fabric got cheaper, so why do clothes cost more?").
+- A story that needs a technical word most people never use (API keys, hosts, middlemen, tokens) to be told at all.
+- A record or ranking across many things ("which movie ever came close?"). One number against one other number is fine.
+Before you offer a pitch, tell it out loud in four plain sentences to a friend who doesn't follow the news. If any sentence needs a word explained, or a second thread, skip it: listeners who only hear the narration must follow every line.
 <!-- /ideas -->
 
 <!-- script -->
