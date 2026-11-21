@@ -105,6 +105,32 @@ Instagram login instead (Instagram only): in the app, API setup with
 Instagram login → Generate access tokens → Add account, and paste that token.
 It lasts 60 days, and the specialist renews it every week on its own.
 
+### YouTube Shorts (once, about 15 minutes)
+
+Approved Reels also go to youtube.com/@WrightAISolutions as Shorts (Thomas,
+2026-11-21), under the same rule as the Page: only what he approved, once, and a
+refusal is logged and never retried. Until Google audits the API project,
+YouTube locks every upload private and it can't be made public by hand, so
+apply for the audit (YouTube API Services audit form) right after setup.
+
+1. Google Cloud console, signed in as the channel's account: in the project,
+   enable **YouTube Data API v3**.
+2. Google Auth Platform (OAuth consent screen): app name "Wright AI Social",
+   audience **External**, then **Publish app** so it's "In production"
+   (a refresh token from an app left in Testing stops working after 7 days).
+3. Clients → Create client → **Web application**, with the authorised
+   redirect URI `https://developers.google.com/oauthplayground`. Keep the
+   client ID and secret.
+4. developers.google.com/oauthplayground → the gear → "Use your own OAuth
+   credentials" with that ID and secret. In step 1 type the scopes
+   `https://www.googleapis.com/auth/youtube.upload` and
+   `https://www.googleapis.com/auth/youtube.readonly`, Authorize, sign in as
+   the channel (pick the channel if asked; Google warns the app isn't verified:
+   Advanced → continue). Step 2 → Exchange: copy the **refresh token**.
+5. Secrets `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`,
+   `YOUTUBE_REFRESH_TOKEN`, then run `youtube-test`: it prints the channel
+   and uploads nothing. The variable `YOUTUBE_CROSSPOST` = `off` stops uploads.
+
 ### Secrets
 
 Add these as Actions secrets in this repo (Settings → Secrets and variables →
@@ -120,6 +146,7 @@ Actions → New repository secret).
 | `INSTAGRAM_ACCESS_TOKEN` | The token from step 5 above |
 | `INSTAGRAM_USER_ID` | Optional; it finds the account itself |
 | `META_APP_SECRET` | Optional (step 5) |
+| `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | Optional: YouTube Shorts (above) |
 
 Then, from the Actions tab → Social Media Specialist → Run workflow:
 

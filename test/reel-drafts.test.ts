@@ -7,6 +7,7 @@ import { facebookPageClient, pageText, type FacebookPageClient } from "../src/fa
 import type { InstagramClient } from "../src/instagram.ts";
 import { addReelDrafts, parseReelDrafts, readReel, reelPath, REEL_DIR } from "../src/reel-drafts.ts";
 import { publishDue } from "../src/social.ts";
+import type { YouTubeClient } from "../src/youtube.ts";
 import { Vault, vaultNow } from "../src/vault.ts";
 
 const NOW = new Date("2026-11-20T21:00:00Z");
@@ -213,6 +214,60 @@ describe("posting an approved Reel", () => {
     expect(a.posts[0]).toMatchObject({ id: "p1", reactions: 3 });
     expect(a.reels[0]).toMatchObject({ permalink: "https://www.facebook.com/reel/v1", views: 42 });
     expect(a.insights.page_follows).toBe(7);
+  });
+
+  const fakeYt = (fail = false, privacy = "private") => {
+    const calls: { bytes: string; title: string; description: string; tags: string[] }[] = [];
+    const client: YouTubeClient = {
+      channel: async () => ({ id: "UC1", title: "Wright AI Solutions", handle: "@wrightaisolutions", subscribers: 0, videos: 0 }),
+      async uploadShort(video, meta) {
+        calls.push({ bytes: Buffer.from(video).toString(), ...meta });
+        if (fail) throw new Error("YouTube said: no");
+        return { videoId: "yt1", url: "https://www.youtube.com/shorts/yt1", privacy };
+      },
+    };
+    return { client, calls };
+  };
+
+  it("also uploads an approved Reel to YouTube as a Short, logs it, and never uploads it twice", async () => {
+    const { vault, read } = await reelPost("approved");
+    const yt = fakeYt();
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => null, youtube: () => yt.client, readReel: read, now: NOW });
+    expect(yt.calls).toEqual([{ bytes: "VIDEO-A", title: ENTRY.headline, description: "Pick yours.\n\n#satisfying\n\n👉 https://wright-ai-solutions.com", tags: ["#satisfying"] }]);
+    const yLog = (await vault.actions()).find((a) => /YouTube/.test(a.summary));
+    expect(yLog).toMatchObject({ kind: "posted", detail: "https://www.youtube.com/shorts/yt1" });
+    expect(yLog!.summary).toMatch(/kept it private/);
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => null, youtube: () => yt.client, readReel: read, now: NOW });
+    expect(yt.calls).toHaveLength(1);
+  });
+
+  it("keeps the Instagram Reel when YouTube refuses it, logs that, and never retries YouTube", async () => {
+    const { vault, post, read } = await reelPost("approved");
+    const yt = fakeYt(true);
+    const page = fakePage();
+    const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, youtube: () => yt.client, readReel: read, now: NOW });
+    expect(r.published).toHaveLength(1);
+    expect(page.calls).toHaveLength(1);
+    expect((await vault.post(post.id))!.state).toBe("published");
+    expect((await vault.actions()).find((a) => a.kind === "post_failed")?.summary).toMatch(/YouTube refused/);
+    await publishDue({ vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => page.client, youtube: () => yt.client, readReel: read, now: NOW });
+    expect(yt.calls).toHaveLength(1);
+  });
+
+  it("never sends a draft, a refused Instagram Reel, or anything with YOUTUBE_CROSSPOST off to YouTube", async () => {
+    const draft = await reelPost("draft");
+    const yt = fakeYt();
+    await publishDue({ vault: draft.vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => null, youtube: () => yt.client, readReel: draft.read, now: NOW });
+    const refused = await reelPost("approved");
+    await publishDue({ vault: refused.vault, hitta, log: () => {}, instagram: () => fakeIg(true).client, facebook: () => null, youtube: () => yt.client, readReel: refused.read, now: NOW });
+    process.env.YOUTUBE_CROSSPOST = "off";
+    try {
+      const off = await reelPost("approved");
+      await publishDue({ vault: off.vault, hitta, log: () => {}, instagram: () => fakeIg().client, facebook: () => null, youtube: () => yt.client, readReel: off.read, now: NOW });
+    } finally {
+      delete process.env.YOUTUBE_CROSSPOST;
+    }
+    expect(yt.calls).toHaveLength(0);
   });
 
   it("marks a refused Reel failed, logs it, and doesn't try again on its own", async () => {
