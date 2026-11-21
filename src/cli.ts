@@ -176,11 +176,18 @@ async function main() {
         log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
         return [];
       });
+      // REEL_PRODUCT (a run by hand) makes the ad for that product instead of the next in turn.
+      const only = (process.env.REEL_PRODUCT ?? "").trim().toLowerCase();
+      const chosen = only ? products.filter((p) => p.name.toLowerCase() === only) : products;
+      if (only && !chosen.length) {
+        console.error(`No product on the website is called "${process.env.REEL_PRODUCT}". There are: ${products.map((p) => p.name).join(", ")}.`);
+        process.exit(2);
+      }
       const token = await currentToken(vault, { log }).catch(() => null);
       const r = await runReel({
         vault,
         format,
-        products,
+        products: chosen,
         ask: askClaude,
         produce: (subject) => produce(vault, subject),
         client: token ? instagramClient(token.token) : null,
