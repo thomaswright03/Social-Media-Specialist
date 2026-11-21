@@ -36,7 +36,7 @@ import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, askClaudeReading, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
-import { DISCOVERY_USAGE_STOP, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
+import { DISCOVERY_USAGE_STOP, call, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
@@ -308,7 +308,9 @@ async function main() {
       }
       const a = await page.audit();
       const ig = await instagramClient(token!.token).account().catch(() => null);
-      console.log(`PAGE AUDIT\n${JSON.stringify({ ...a, instagram: ig }, null, 1)}`);
+      // The Instagram profile too, so the Page can match it (Thomas, 2026-11-21: "give me the same profile pic as my instagram").
+      const profile = ig ? await call(fetch, "GET", ig.id, token!.token, { fields: "name,biography,website,profile_picture_url" }).catch((err) => ({ error: err instanceof Error ? err.message : String(err) })) : null;
+      console.log(`PAGE AUDIT\n${JSON.stringify({ ...a, instagram: ig && { ...ig, profile } }, null, 1)}`);
     } finally {
       vault.close();
     }
