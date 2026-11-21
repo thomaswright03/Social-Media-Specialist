@@ -14,6 +14,7 @@
 // could post it twice); Thomas taps Try again.
 import { fullCaption, pickNext, readSite, screenDraft, buildDraftPrompt, type Subject } from "./draft.ts";
 import { crosspostOn, facebookPageClient, pageText, type FacebookPageClient } from "./facebook.ts";
+import { youtubeClient, youtubeCreds, type YouTubeClient } from "./youtube.ts";
 import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
@@ -36,6 +37,8 @@ export type Deps = {
   instagram?: (token: string) => InstagramClient;
   /** The Facebook Page for a token (null with an Instagram-login token); tests pass a fake. */
   facebook?: (token: string) => FacebookPageClient | null;
+  /** The YouTube channel (null until it's set up); tests pass a fake. */
+  youtube?: () => YouTubeClient | null;
   fetchImpl?: typeof fetch;
   /** A reel post's video bytes; the file in posts/reels unless a test passes its own. */
   readReel?: (sourceUrl: string | null) => Promise<Uint8Array>;
@@ -246,11 +249,12 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
   }
   const ig = (d.instagram ?? ((t) => instagramClient(t, { fetchImpl: d.fetchImpl })))(token!.token);
   const page = crosspostOn() ? (d.facebook ?? ((t) => facebookPageClient(t, { fetchImpl: d.fetchImpl })))(token!.token) : null;
+  const yt = youtubeCrosspost(d);
   for (const p of due) {
     if (!(await vault.claimForPublishing(p.id, now))) continue;
     try {
       if (p.kind === "reel") {
-        await publishApprovedReel(d, ig, page, p, now, result);
+        await publishApprovedReel(d, ig, page, yt, p, now, result);
         continue;
       }
       const url = mediaUrl(p)!;
@@ -291,9 +295,10 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
 /**
  * An approved Reel from posts/reels: uploads the video and posts it as a normal
  * Reel (Thomas approved it, so it isn't a Trial Reel), then the same video as a
- * Reel on the Facebook Page. A Page refusal is logged and never retried.
+ * Reel on the Facebook Page and as a YouTube Short. A refusal on the Page or
+ * YouTube is logged and never retried, and never undoes the Instagram post.
  */
-async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: InstagramClient, page: FacebookPageClient | null, p: Post, now: Date, result: PublishResult): Promise<void> {
+async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: InstagramClient, page: FacebookPageClient | null, yt: YouTubeClient | null, p: Post, now: Date, result: PublishResult): Promise<void> {
   if (!ig.publishReelFile) throw new Error("This Instagram client can't upload a video.");
   const video = await (d.readReel ?? readReel)(p.sourceUrl);
   const r = await ig.publishReelFile(video, fullCaption(p));
@@ -301,7 +306,32 @@ async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: Instag
   result.published.push({ ...p, state: "published", permalink: r.permalink });
   d.log(`Posted the Reel "${p.headline}"${r.permalink ? `: ${r.permalink}` : ""}.`);
   await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to Instagram.`, detail: r.permalink, target: p.id, onInstagram: true }, now);
-  if (!page) return;
+  if (page) await reelToPage(d, page, video, p, now);
+  if (yt) await reelToYouTube(d, yt, video, p, now);
+}
+
+/** YouTube for approved Reels: the test's fake, else the channel once it's set up; YOUTUBE_CROSSPOST=off stops it. */
+function youtubeCrosspost(d: Omit<Deps, "ask" | "renderer">): YouTubeClient | null {
+  if (process.env.YOUTUBE_CROSSPOST?.trim().toLowerCase() === "off") return null;
+  if (d.youtube) return d.youtube();
+  const creds = youtubeCreds();
+  return creds ? youtubeClient(creds, { fetchImpl: d.fetchImpl }) : null;
+}
+
+async function reelToYouTube(d: Omit<Deps, "ask" | "renderer">, yt: YouTubeClient, video: Uint8Array, p: Post, now: Date): Promise<void> {
+  try {
+    const r = await yt.uploadShort(video, { title: p.headline, description: pageText(fullCaption(p), SITE_URL()), tags: p.hashtags });
+    const locked = r.privacy && r.privacy !== "public" ? ` YouTube kept it ${r.privacy} (until Google's API audit passes, every upload is).` : "";
+    d.log(`Posted the Reel "${p.headline}" to YouTube as a Short: ${r.url}.${locked}`);
+    await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to YouTube as a Short.${locked}`, detail: r.url, target: p.id, onInstagram: true }, now);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    d.log(`Posted the Reel "${p.headline}" to Instagram, but YouTube refused it: ${error}`);
+    await d.vault.logAction({ kind: "post_failed", summary: `Posted the Reel "${p.headline}" to Instagram, but YouTube refused it.`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
+  }
+}
+
+async function reelToPage(d: Omit<Deps, "ask" | "renderer">, page: FacebookPageClient, video: Uint8Array, p: Post, now: Date): Promise<void> {
   try {
     if (!page.publishReelFile) throw new Error("This Facebook Page client can't upload a video.");
     const fb = await page.publishReelFile(video, pageText(fullCaption(p), SITE_URL()));

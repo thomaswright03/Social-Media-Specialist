@@ -10,6 +10,7 @@
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
 //   page-audit      reads the Facebook Page's profile, posts, Reels and insights for an audit; changes nothing
+//   youtube-test    signs in to YouTube and reads the channel; uploads nothing
 //   hitta-test      sends Hitta a low-urgency test report
 //   ideas           stage 2: picks the next Reel's format (80% entertainment, 20% ads) and keeps 3 ideas
 //                   (REEL_FORMAT or a format after the command picks one by hand)
@@ -36,6 +37,7 @@ import { buildDraftPrompt, fullCaption, pickNext, readSite, screenDraft } from "
 import { sendHittaReport, HITTA_PROJECT } from "./hitta.ts";
 import { askClaude, askClaudeReading, handleHittaRequests, libsqlQueryDb } from "./hitta-requests.ts";
 import { crosspostOn, facebookPageClient } from "./facebook.ts";
+import { youtubeClient, youtubeCreds, youtubeOn } from "./youtube.ts";
 import { DISCOVERY_USAGE_STOP, call, currentToken, instagramClient, type DiscoveryState } from "./instagram.ts";
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
@@ -296,6 +298,17 @@ async function main() {
     return;
   }
 
+  if (command === "youtube-test") {
+    const creds = youtubeCreds();
+    if (!creds) {
+      console.error("YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN must all be set (README, \"YouTube Shorts\").");
+      process.exit(2);
+    }
+    const c = await youtubeClient(creds).channel();
+    log(`YouTube: ${c.title}${c.handle ? ` (${c.handle})` : ""}, ${c.subscribers ?? "?"} subscribers, ${c.videos ?? "?"} videos. Approved Reels ${youtubeOn() ? "also go here as Shorts" : "stay off YouTube (YOUTUBE_CROSSPOST=off)"}.`);
+    return;
+  }
+
   // Thomas, 2026-11-21: "do an audit of the facebook page". Reads only; changes nothing on the Page.
   if (command === "page-audit") {
     const vault = connect();
@@ -472,7 +485,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit, youtube-test or hitta-test.`);
     process.exit(2);
   }
 

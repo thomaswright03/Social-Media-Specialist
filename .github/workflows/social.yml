@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, hitta-test, voice-test]
+        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, youtube-test, hitta-test, voice-test]
       format:
         description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research and accounts-test, the format to study; empty takes all four
         type: string
@@ -79,6 +79,12 @@ jobs:
       FACEBOOK_CROSSPOST: ${{ vars.FACEBOOK_CROSSPOST }}
       META_APP_ID: ${{ vars.META_APP_ID }}
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      # YouTube Shorts (README.md, "YouTube Shorts"): approved Reels also go to
+      # the channel once all three are set; the variable "off" stops that.
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_CROSSPOST: ${{ vars.YOUTUBE_CROSSPOST }}
       GITHUB_TOKEN: ${{ github.token }}
       # ElevenLabs on Thomas's account. The narrator is Liam (his pick,
       # 2026-11-19); ELEVENLABS_NARRATOR_VOICE picks another. His own voice
@@ -131,7 +137,7 @@ jobs:
       # Pasted secrets can pick up line breaks or spaces. Strip them.
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
@@ -223,7 +229,7 @@ jobs:
       # First, before anything long: Hitta waits on the phone for these
       # answers (src/hitta-requests.ts). A failure here never stops the run.
       - name: Answer Hitta's requests
-        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hitta-test' && env.COMMAND != 'instagram-test' && env.COMMAND != 'page-audit' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
+        if: steps.go.outputs.yes == 'true' && env.COMMAND != 'hitta-test' && env.COMMAND != 'instagram-test' && env.COMMAND != 'page-audit' && env.COMMAND != 'youtube-test' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
         continue-on-error: true
         run: npx social requests
 
