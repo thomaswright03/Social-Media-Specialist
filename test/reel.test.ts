@@ -123,6 +123,52 @@ describe("Instagram resumable upload", () => {
     await expect(ig.publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow(/bad video/);
     expect(urls.some((u) => u.includes("media_publish"))).toBe(false);
   });
+
+  // Thomas, 2026-11-21: "Instagram didn't take the video upload: Request processing failed".
+  it("sends the bytes to the same container again when Meta's side hiccups, then publishes once", async () => {
+    const urls: string[] = [];
+    let uploads = 0;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      urls.push(u);
+      if (u.startsWith("https://rupload.facebook.com/")) return ++uploads < 3 ? Response.json({ debug_info: { type: "ProcessingFailedError", message: "Request processing failed" } }, { status: 400 }) : Response.json({ success: true });
+      if (u.includes("/media_publish")) return Response.json({ id: "M1" });
+      if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
+      if (u.includes("/C1?")) return Response.json({ status_code: "FINISHED" });
+      return Response.json({});
+    }) as typeof fetch;
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0] });
+    const r = await ig.publishReelFile!(new Uint8Array([1]), "Hook");
+    expect(r.mediaId).toBe("M1");
+    expect(uploads).toBe(3);
+    expect(urls.filter((u) => u.includes("/media?") || (u.endsWith("/media") && !u.includes("publish"))).length).toBeLessThanOrEqual(1);
+    expect(urls.filter((u) => u.includes("media_publish"))).toHaveLength(1);
+  });
+
+  it("gives up after 4 sends without publishing, and never resends a refused token", async () => {
+    let uploads = 0;
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      urls.push(u);
+      if (u.startsWith("https://rupload.facebook.com/")) return (uploads++, Response.json({ debug_info: { message: "Request processing failed" } }, { status: 400 }));
+      if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
+      return Response.json({});
+    }) as typeof fetch;
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0] });
+    await expect(ig.publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow(/Request processing failed \(sent 4 times.*nothing was posted\)/);
+    expect(uploads).toBe(4);
+    expect(urls.some((u) => u.includes("media_publish"))).toBe(false);
+    uploads = 0;
+    const expired = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith("https://rupload.facebook.com/")) return (uploads++, Response.json({ error: { message: "Request processing failed", code: 190 } }, { status: 400 }));
+      if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
+      return Response.json({});
+    }) as typeof fetch;
+    await expect(instagramClient("EAAtok", { fetchImpl: expired, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0] }).publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow();
+    expect(uploads).toBe(1);
+  });
 });
 
 // --- The daily chain ---------------------------------------------------------

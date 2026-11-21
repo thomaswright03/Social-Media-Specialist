@@ -203,9 +203,19 @@ export async function call(fetchImpl: Fetch, method: "GET" | "POST", path: strin
 
 const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId?: string; pollMs?: number } = {}): InstagramClient {
+/**
+ * Waits before sending a Reel's bytes again when the upload itself hiccups (Thomas, 2026-11-21: "Instagram didn't
+ * take the video upload: Request processing failed, how can we resolve this reoccuring issue"). The bytes go to the
+ * same container, and nothing is published until one upload is taken, so this can't post anything twice.
+ */
+export const UPLOAD_RETRY_MS = [10_000, 30_000, 60_000];
+/** Upload refusals worth sending the bytes again for: Meta's side, not the video or the token. */
+const TRANSIENT_UPLOAD = /request processing failed|processing failed|try again|temporar|unexpected error|timeout|timed out|service unavailable/i;
+
+export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId?: string; pollMs?: number; uploadRetryMs?: number[] } = {}): InstagramClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const pollMs = opts.pollMs ?? 3_000;
+  const uploadWaits = opts.uploadRetryMs ?? UPLOAD_RETRY_MS;
   let userId = opts.userId ?? process.env.INSTAGRAM_USER_ID?.trim() ?? "";
 
   async function id(): Promise<string> {
@@ -347,15 +357,23 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       const containerId = String(container.id ?? "");
       if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
       const uri = typeof container.uri === "string" && container.uri.startsWith(`https://${RUPLOAD_HOST}/`) ? container.uri : `https://${RUPLOAD_HOST}/ig-api-upload/${GRAPH_VERSION}/${containerId}`;
-      let res: Response;
-      try {
-        res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
-      } catch (err) {
-        throw new InstagramError(`The video upload didn't reach Instagram: ${err instanceof Error ? err.message : String(err)}`, null, null);
-      }
-      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string; code?: number }; debug_info?: { message?: string } };
-      if (!res.ok || json.error || json.success === false) {
-        throw new InstagramError(`Instagram didn't take the video upload: ${json.error?.message || json.debug_info?.message || `HTTP ${res.status}`}`, res.status, typeof json.error?.code === "number" ? json.error.code : null);
+      const waits = uploadWaits;
+      for (let attempt = 0; ; attempt++) {
+        let problem: InstagramError;
+        try {
+          const res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
+          const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string; code?: number }; debug_info?: { message?: string } };
+          if (res.ok && !json.error && json.success !== false) break;
+          const why = json.error?.message || json.debug_info?.message || `HTTP ${res.status}`;
+          problem = new InstagramError(`Instagram didn't take the video upload: ${why}`, res.status, typeof json.error?.code === "number" ? json.error.code : null);
+          // A refused video or token won't change on a second send; Meta's own hiccups usually do.
+          if (problem.tokenProblem || !(res.status >= 500 || TRANSIENT_UPLOAD.test(why))) throw problem;
+        } catch (err) {
+          if (err instanceof InstagramError && (err.tokenProblem || (!TRANSIENT_UPLOAD.test(err.message) && !(err.status != null && err.status >= 500)))) throw err;
+          problem = err instanceof InstagramError ? err : new InstagramError(`The video upload didn't reach Instagram: ${err instanceof Error ? err.message : String(err)}`, null, null);
+        }
+        if (attempt >= waits.length) throw new InstagramError(`${problem.message} (sent ${attempt + 1} times over about ${Math.round(waits.reduce((a, b) => a + b, 0) / 1000)} s; nothing was posted)`, problem.status, problem.code);
+        await sleep(waits[attempt]!);
       }
       return finishReel(ig, containerId);
     },
