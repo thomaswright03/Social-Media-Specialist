@@ -22,7 +22,7 @@ leaves a reason to watch the next. Something new every 2 to 3 seconds.
 - a separate Claude review (Thomas's Low Tide checks) finds no problems:
   grammar, physics and timing plausible, nothing contradicts itself;
 - the format's own checks (`gateFormat`, see the README's content mix): an
-  ad sells one product plus our custom AI agents and software, entertainment
+  ad sells one product itself (never an offer to build software), entertainment
   doesn't sell, satisfying videos say they're made with AI, explainers cite 2+
   sources from the last 14 days;
 - every learned check for stage 4.

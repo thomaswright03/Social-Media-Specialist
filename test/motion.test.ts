@@ -112,6 +112,25 @@ describe("variety", () => {
     expect(pieceFigures({ kind: "split", parts: [{ name: "a", value: 5 }, { name: "b", value: 95 }] })).toEqual(["5", "95"]);
     expect(pieceFigures({ kind: "meter", value: 81.3, of: 156 })).toEqual(["81.3", "156"]);
   });
+
+  it("shows an ad's app screen up to 3 times, never the same screen twice (Thomas, 2026-11-20)", () => {
+    const s4 = [0, 1, 2, 3].map((i) => ({ start: i, end: i + 1, line: "x", visual: 'Today: "1,240 of 1,800 cal", "Oatmeal: 320 cal", "Salad: 450 cal"' }));
+    const screen = (n: number, extra: Record<string, unknown> = {}) => ({ shot: n, pieces: [{ kind: "app", name: "Free Calorie Counter", screen: "Today", ...extra }] });
+    const three: MotionPlan = { shots: [
+      screen(1, { button: "+ Add food" }),
+      screen(2, { rows: [{ label: "Oatmeal", value: "320 cal" }] }),
+      screen(3, { ring: { value: 1240, of: 1800, unit: "cal" }, rows: [{ label: "Oatmeal", value: "320 cal" }, { label: "Salad", value: "450 cal" }], highlight: 1 }),
+      { shot: 4, pieces: [{ kind: "title", text: "LINK IN BIO" }] },
+    ] };
+    expect(motionProblems(three, s4)).toEqual([]);
+    const four: MotionPlan = { shots: [three.shots[0]!, three.shots[1]!, three.shots[2]!, screen(4, { button: "Start" })] };
+    expect(motionProblems(four, s4).join(" ")).toMatch(/at most 3 times/);
+    const same: MotionPlan = { shots: [three.shots[0]!, screen(2, { button: "+ Add food" }), three.shots[3]!] };
+    expect(motionProblems(same, s4.slice(0, 3)).join(" ")).toMatch(/Shots 1 and 2 show the same app screen/);
+    expect(motionProblems({ shots: [screen(1, { rows: [{ label: "Pizza", value: "999 cal" }] })] }, s4.slice(0, 1)).join(" ")).toMatch(/shows 999, which the script never says/);
+    expect(motionProblems({ shots: [screen(1)] }, s4.slice(0, 1)).join(" ")).toMatch(/a ring, rows or a button/);
+    expect(pieceFigures({ kind: "app", ring: { value: 1240, of: 1800 }, rows: [{ label: "Oatmeal", value: "320 cal" }] })).toEqual(["1240", "1800", "320"]);
+  });
 });
 
 describe("one take", () => {

@@ -356,15 +356,17 @@ The pieces (every field not marked optional is required):
 - meter: {"kind":"meter","value":81.3,"of":156,"prefix":"$","unit":"B","label":"raised so far"} A thermometer that fills toward a goal. For progress toward a target.
 - chat: {"kind":"chat","title":"Messages","messages":["Wait, how much?","$156 billion."]} A phone with 1 to 3 text bubbles popping in (each at most 40 characters). For a question people are asking or a reaction.
 - stamp: {"kind":"stamp","text":"APPROVED","title":"IPO filing","color":"green"} A rubber stamp slams onto a document. text at most 12 characters; color red (default) or green. For a verdict, a ruling or a big yes or no.
+- app: {"kind":"app","name":"Free Calorie Counter","screen":"Today","ring":{"value":1240,"of":1800,"unit":"cal","label":"eaten today"},"rows":[{"label":"Oatmeal","value":"320 cal"},{"label":"Chicken salad","value":"450 cal"}],"highlight":1,"button":"+ Add food"} The product's own screen on a phone: its name at the top, then (all optional, at least one) a goal ring that fills, up to 3 rows that slide in (2 with a ring and a button, 4 with no ring; label at most 18 characters, value at most 10), and a button that gets tapped (at most 20 characters). highlight (optional) is the row the shot is about. Only in an ad, and only for what the product really shows. name is the product's exact name. It may appear up to 3 times, each time a different screen.
 
 How to choose:
 1. The picture proves what the voice says in that shot. A shot that says a number shows that number (counter, bars, line, compare). A shot that says who did what shows the news card or an icon of the thing. A shot that says what changes for the viewer shows a compare or a list.
 2. Every figure on screen comes from that shot's own visual or line, exactly as written there. Never round, never add a number the script doesn't say. Code checks this.
-3. One piece per shot, two only when the shot really needs both (a headline over a counter). Every kind of piece is used at most once in the whole video, so no picture repeats (there are 20 kinds; a video has at most 14 shots). Once a kind is used, pick the next best kind for the next shot: a percent can be a counter, a waffle, a split or people; money can be a counter, a stack, a meter, a ticker or a flow. Code checks this.
+3. One piece per shot, two only when the shot really needs both (a headline over a counter). Every kind of piece is used at most once in the whole video, so no picture repeats (there are 20 kinds; a video has at most 14 shots). The one exception is an ad's app screen, shown up to 3 times, each a different screen. Once a kind is used, pick the next best kind for the next shot: a percent can be a counter, a waffle, a split or people; money can be a counter, a stack, a meter, a ticker or a flow. Code checks this.
 4. The first shot grabs: its piece is the most surprising thing in the video, usually the number.
-5. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
-6. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.
-7. transition is how the shot comes in: whip (default, fast slide), zoom (a reveal or a big turn), flash (a shock), cut (the same idea continuing).
+5. In an ad, a shot whose visual is the product's screen is an app piece filled from that visual's words. Every other shot uses the other pieces to make its point (the everyday problem, the number, what changes), so the product's screen is the payoff, not every slide.
+6. Words on screen add to the voice; the voice is already captioned at the bottom. Labels are a few words, not sentences.
+7. bg sets the mood: navy (default), red (bad news, a warning), green (good news, money saved), gold (money, records), slate (serious). Change it only when the mood turns.
+8. transition is how the shot comes in: whip (default, fast slide), zoom (a reveal or a big turn), flash (a shock), cut (the same idea continuing).
 
 <last_refusal>
 {{PROBLEMS}}

@@ -6,9 +6,9 @@
 //     satisfying  a satisfying AI-made video
 //     explainer   a current event explained with bold graphics and transitions
 //   Ads
-//     ad          one product from wright-ai-solutions.com, plus Wright AI
-//                 Solutions itself: we build custom AI agents and software
-//                 for businesses
+//     ad          one product from wright-ai-solutions.com, told with bold
+//                 graphics and the product's own screens, to the people who
+//                 would use it (Thomas, 2026-11-20: not an offer to build apps)
 //
 // The mix is code, not a promise: nextFormat picks from what was already
 // made, and gateFormat checks each script against its format.
@@ -32,7 +32,7 @@ export type Made = { format: Format; productId?: string | null; at: string };
 export type Choice = { format: Format; product: Product | null };
 
 /** Characters drawn once and re-posed (the cast sheet) only in formats that have them. */
-export const HAS_CAST: Record<Format, boolean> = { story: true, ad: true, explainer: false, satisfying: false };
+export const HAS_CAST: Record<Format, boolean> = { story: true, ad: false, explainer: false, satisfying: false };
 /** Formats told by a narrator (stage 4 checks the voice runs through it). */
 export const NARRATED: Record<Format, boolean> = { story: true, ad: true, explainer: true, satisfying: false };
 /**
@@ -124,7 +124,9 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const p = c.product;
     checks.push(check("The ad names its one product", Boolean(p) && named(all, p!), p ? `"${p.name}" isn't in the script or caption` : "no product chosen"));
     checks.push(check("The ad markets only one product", others.length === 0, others.length ? `also names ${others.join(", ")}` : undefined));
-    checks.push(check("The ad says we build custom AI agents and software for businesses", CUSTOM_BUILD.test(all)));
+    // Thomas, 2026-11-20: "we are advertising people to use the calorie app. not offering to make apps."
+    const pitch = all.match(CUSTOM_BUILD)?.[0];
+    checks.push(check("The ad sells the product itself, not custom software", !pitch, pitch ? `says "${pitch}"` : undefined));
     checks.push(check("The ad ends on a call to action", CALL_TO_ACTION.test(all)));
   } else {
     const sell = all.match(SELLING)?.[0];

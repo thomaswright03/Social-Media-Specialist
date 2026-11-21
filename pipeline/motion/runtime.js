@@ -763,6 +763,85 @@
       };
     },
 
+    // The product's own screen, for ads (Thomas, 2026-11-20: ads are slides that
+    // inform people about the app, no stick figures). A light phone screen with
+    // the app's name, an optional goal ring, up to 3 rows sliding in, and an
+    // optional button that gets tapped.
+    app(p) {
+      const DARK = "#4d7c0f";
+      const ring = p.ring && Number(p.ring.of) > 0 ? p.ring : null;
+      const rows = (p.rows || []).slice(0, ring ? (p.button ? 2 : 3) : 4);
+      const el = h("div", "width:660px;height:880px;position:relative;border-radius:76px;background:#f8fafc;border:16px solid #111827;box-shadow:0 40px 100px rgba(0,0,0,.65);overflow:hidden");
+      el.appendChild(h("div", "position:absolute;left:230px;top:18px;width:200px;height:40px;border-radius:20px;background:#111827"));
+      const head = h("div", "position:absolute;left:44px;right:44px;top:80px;display:flex;align-items:center;gap:18px");
+      head.appendChild(h("div", `width:56px;height:56px;border-radius:16px;background:${LIME};flex:none`));
+      const names = h("div", "min-width:0");
+      names.appendChild(h("div", "font:900 36px/1.05 Montserrat,sans-serif;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", esc(p.name || "")));
+      if (p.screen) names.appendChild(h("div", "margin-top:4px;font:700 28px Montserrat,sans-serif;color:#64748b", esc(p.screen)));
+      head.appendChild(names);
+      el.appendChild(head);
+      let top = 190;
+      let arc = null, big = null, R = 128;
+      const rv = ring ? Number(ring.value) : 0, rof = ring ? Number(ring.of) : 1;
+      const rdec = ring ? decs([ring.value, ring.of], "", ring.unit) : 0;
+      if (ring) {
+        const box = h("div", "position:absolute;left:0;right:0;top:170px;height:290px;display:flex;flex-direction:column;align-items:center;justify-content:center");
+        const svg = s("svg", { width: 290, height: 290, viewBox: "0 0 290 290", style: "position:absolute;left:169px;top:0" });
+        svg.appendChild(s("circle", { cx: 145, cy: 145, r: R, fill: "none", stroke: "#e2e8f0", "stroke-width": 24 }));
+        arc = s("circle", { cx: 145, cy: 145, r: R, fill: "none", stroke: DARK, "stroke-width": 24, "stroke-linecap": "round", transform: "rotate(-90 145 145)", "stroke-dasharray": String(2 * Math.PI * R), "stroke-dashoffset": String(2 * Math.PI * R) });
+        svg.appendChild(arc);
+        box.appendChild(svg);
+        big = h("div", "position:relative;font:900 72px/1 Montserrat,sans-serif;color:#0f172a;letter-spacing:-.03em;font-variant-numeric:tabular-nums");
+        box.appendChild(big);
+        box.appendChild(h("div", "position:relative;margin-top:6px;font:800 30px Montserrat,sans-serif;color:#475569", `of ${esc(fmt(rof, rdec, "", ""))}${ring.unit ? ` ${esc(ring.unit)}` : ""}`));
+        if (ring.label) box.appendChild(h("div", "position:absolute;bottom:-46px;left:0;right:0;text-align:center;font:800 30px Montserrat,sans-serif;color:#0f172a;text-transform:uppercase;letter-spacing:.04em", esc(ring.label)));
+        el.appendChild(box);
+        top = p.button ? 500 : 520;
+      }
+      const hi = p.highlight == null ? -1 : Number(p.highlight);
+      const cards = rows.map((r, k) => {
+        const lit = k === hi;
+        const c = h("div", `position:absolute;left:40px;right:40px;top:${top + k * (p.button && ring ? 104 : 112)}px;height:92px;border-radius:26px;background:#fff;border:5px solid ${lit ? DARK : "#e2e8f0"};box-shadow:0 8px 20px rgba(15,23,42,.08);display:flex;align-items:center;justify-content:space-between;padding:0 30px;box-sizing:border-box`);
+        c.appendChild(h("span", "font:800 34px Montserrat,sans-serif;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px", esc(r.label)));
+        c.appendChild(h("span", `font:900 34px Montserrat,sans-serif;color:${lit ? DARK : "#334155"};white-space:nowrap`, esc(r.value ?? "")));
+        el.appendChild(c);
+        return { c, k, lit };
+      });
+      let btn = null, ripple = null;
+      if (p.button) {
+        btn = h("div", `position:absolute;left:60px;right:60px;bottom:30px;height:96px;border-radius:48px;background:${LIME};display:flex;align-items:center;justify-content:center;font:900 40px Montserrat,sans-serif;color:#0f172a;overflow:hidden`, esc(p.button));
+        ripple = h("div", "position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(255,255,255,.6);opacity:0");
+        btn.appendChild(ripple);
+        el.appendChild(btn);
+      }
+      return {
+        el,
+        update(l, d) {
+          const q = prog(l, 0, 0.35);
+          el.style.opacity = String(clamp(q * 3));
+          el.style.transform = `translateY(${(1 - outBack(q)) * 220}px) rotate(${Math.sin(l * 1.2) * 0.5}deg)`;
+          if (ring) {
+            const c = outCubic(prog(l, 0.2, Math.min(1.3, Math.max(0.5, d * 0.45))));
+            arc.setAttribute("stroke-dashoffset", String(2 * Math.PI * R * (1 - clamp(rv / rof) * c)));
+            big.textContent = fmt(rv * c, rdec, "", "");
+          }
+          const step = Math.min(0.35, Math.max(0.15, (d * 0.5) / Math.max(1, cards.length)));
+          for (const x of cards) {
+            const qc = prog(l, 0.25 + x.k * step, 0.3);
+            x.c.style.opacity = String(clamp(qc * 3));
+            x.c.style.transform = `translateX(${(1 - outCubic(qc)) * 120}px) scale(${x.lit ? 1 + 0.03 * Math.max(0, Math.sin((l - 0.6) * 5)) * (l > 0.6 ? 1 : 0) : 1})`;
+          }
+          if (btn) {
+            const tapAt = Math.min(1.1, d * 0.6);
+            const qt = prog(l, tapAt, 0.45);
+            btn.style.transform = `scale(${l >= tapAt && qt < 0.3 ? 0.95 : 1})`;
+            ripple.style.opacity = String(qt > 0 && qt < 1 ? 1 - qt : 0);
+            ripple.style.transform = `scale(${1 + qt * 14})`;
+          }
+        },
+      };
+    },
+
     stamp(p) {
       const RED = String(p.color || "") === "green" ? "#22c55e" : "#ef4444";
       const el = h("div", "width:900px;height:760px;position:relative");
