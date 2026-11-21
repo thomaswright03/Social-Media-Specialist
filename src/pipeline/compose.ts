@@ -296,7 +296,9 @@ window.render=(t)=>{
   if(s.grain){ document.getElementById('turb').setAttribute('seed',String(Math.floor(t*30)%97+1)); g.style.transform='translate('+(Math.floor(t*30)%7-3)+'px,'+(Math.floor(t*30*3)%7-3)+'px)'; }
   document.getElementById('flash').style.opacity=(s.tr==='flash'||s.flash)&&local<.1?String(.55*(1-local/.1)):'0';
   const label=document.getElementById('label');
-  if(labelText!==s.label){ label.innerHTML=s.label?'<span>'+esc(s.label)+'</span>':''; labelText=s.label; }
+  if(labelText!==s.label){ label.innerHTML=s.label?'<span>'+esc(s.label)+'</span>':''; labelText=s.label;
+    // Over a physics run the label stays on one line, so it never runs into the counter under it (test run 4: "CAN YOU FOLLOW ONE / BALL?" over "LAP 1 OF 3").
+    const sp=label.firstElementChild; if(sp&&document.getElementById('pcount')){ sp.style.whiteSpace='nowrap'; sp.style.maxWidth='none'; const w=sp.getBoundingClientRect().width; if(w>1000) sp.style.fontSize=(46*1000/w).toFixed(1)+'px'; } }
   label.style.opacity=s.label?String(i===0?1:Math.min(1,local/.18)):'0';
   const cap=document.getElementById('cap');
   const c=CHUNKS.find(c=>t>=c.from&&t<c.to);
