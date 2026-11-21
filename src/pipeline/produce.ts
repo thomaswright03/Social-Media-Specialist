@@ -295,6 +295,10 @@ export async function runProduce(d: {
       await d.vault.logAction({ kind: "stage", summary: "Stage 5, Production: stopped, the physics plan didn't pass its checks.", detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
       return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
     }
+    // The run, not the script, decides when it finishes, so a label scripted for
+    // after that moment ("SO CLOSE" under "FREE!", test run 44853965768) is dropped:
+    // the counter says how it ended.
+    for (const s of t) if (s.at >= ph.run.doneAt!) s.onScreenText = "";
     physics = physicsRuntime(ph.run);
     physicsWhat = physicsStory(ph.run);
     const notes = join(work, "collisions.wav");

@@ -372,8 +372,11 @@ export function physicsProblems(plan: PhysicsPlan | null): string[] {
   return p;
 }
 
-/** The finish has to land in this part of the video: late enough to build, early enough to be seen. */
-export const FINISH_WINDOW = [0.55, 0.9] as const;
+/**
+ * The finish has to land in this part of the video: late enough to build, early enough to be seen.
+ * From 0.7, not 0.55: test run 44853965768 escaped at 57% and left 13 s of an empty screen.
+ */
+export const FINISH_WINDOW = [0.7, 0.9] as const;
 
 /** Runs the plan with different seeds and tempos until the finish lands in FINISH_WINDOW. */
 export function tuneRun(plan: PhysicsPlan, seconds: number, tries = 24): { run: SimResult | null; problem: string | null } {
