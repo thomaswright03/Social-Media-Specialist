@@ -46,7 +46,8 @@ export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt
   const reels = reelsOf(await d.ig.listMedia(500));
   // Already sent: by this backfill (target ig:<id>), or by publishDue (target the Vault post that holds this Instagram id).
   const actions = await d.vault.actions(5000);
-  const ytDone = new Set(actions.filter((a) => /YouTube/.test(a.summary) && (a.kind === "posted" || a.kind === "post_failed") && a.target).map((a) => a.target!));
+  // The quoted title is left out: a Reel called "YouTube may pay schools" isn't on YouTube.
+  const ytDone = new Set(actions.filter((a) => /YouTube/.test(a.summary.replace(/"[^"]*"/g, "")) && (a.kind === "posted" || a.kind === "post_failed") && a.target).map((a) => a.target!));
   const posts = await d.vault.posts(`"igMediaId" IS NOT NULL`);
   const postByMedia = new Map(posts.map((p) => [p.igMediaId!, p.id]));
   const done = (m: Media) => ytDone.has(igTarget(m.id)) || (postByMedia.has(m.id) && ytDone.has(postByMedia.get(m.id)!));
