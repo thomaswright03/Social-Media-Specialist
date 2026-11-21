@@ -55,9 +55,10 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   says over it (`FOLLOW_VIEWERS`; one viewer was a coin toss, test run
   44837502299). 2 of 3 must retell the story right without being confused,
   and no shot may be named by 2 or more of them in their PICTURES line as a
-  picture that doesn't show what the voice says (in a drawn Reel, when that is
-  all that failed, those shots are redrawn once and the new video is judged
-  again by fresh viewers);
+  picture that doesn't show what the voice says (when that is all that
+  failed, those shots are redrawn once, or in a graphics Reel given new
+  motion-kit pieces with the rest of the plan kept, and the new video is
+  judged again by fresh viewers);
 - a separate judge (Claude looking at our key frames) scores art, text
   readability, voice and sound from 1 to 5 on our rubric (the levels in the
   prompt below), never against other accounts' Reels (Thomas, 2026-11-20:

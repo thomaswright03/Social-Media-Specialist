@@ -327,5 +327,25 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
   return best;
 }
 
+/**
+ * New pieces for the shots viewers said don't show what the voice says, every
+ * other shot kept exactly as it was (test run 44843234773: a stock ticker for
+ * "it's only agreed in principle"). Null when no new plan passes the checks.
+ */
+export async function replanShots(plan: MotionPlan, bad: number[], shots: Shot[], ask: Ask, style = "", log?: (m: string) => void): Promise<MotionPlan | null> {
+  const which = bad.map((n) => `shot ${n} ("${shots[n - 1]?.line ?? shots[n - 1]?.onScreenText ?? ""}")`).join(", ");
+  let problems: string[] = [];
+  for (let t = 1; t <= MOTION_TRIES; t++) {
+    const note = `This is the plan that was rendered: ${JSON.stringify(plan)} Viewers of the finished video said the picture for ${which} doesn't show what the voice says. Give those shots pieces that show exactly that, plainly, at a glance; keep every other shot exactly as it is. Reply with the whole plan.${problems.length ? ` Your last plan was refused: ${problems.join(" ")}` : ""}`;
+    const next = motionFrom(await ask(stagePrompt(5, { SHOTS: shotList(shots), STYLE: style, ICONS: ICONS.join(", "), PROBLEMS: note }, "motion")).catch(() => ""));
+    // Only the flagged shots may change.
+    const merged: MotionPlan | null = next ? { shots: plan.shots.map((s) => (bad.includes(s.shot) ? next.shots.find((x) => x.shot === s.shot) ?? s : s)) } : null;
+    problems = motionProblems(merged, shots);
+    if (merged && !problems.length) return merged;
+  }
+  log?.(`Re-planning shots ${bad.join(", ")} didn't pass the checks: ${problems.slice(0, 3).join(" ")}`);
+  return null;
+}
+
 /** One shot's motion, ready for the page, or null when a shot uses its drawing. */
 export const shotMotion = (plan: MotionPlan | null, i: number): ShotMotion | null => plan?.shots.find((s) => s.shot === i + 1) ?? null;
