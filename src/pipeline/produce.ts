@@ -13,7 +13,7 @@ import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOu
 import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, shotMotion, USES_MOTION, type ShotMotion } from "./motion.ts";
-import { collisionAudio, physicsPlan, physicsRuntime, USES_PHYSICS } from "./physics.ts";
+import { collisionAudio, physicsPlan, physicsRuntime, physicsStory, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { pipelinePath, runStage, stagePrompt } from "./stages.ts";
@@ -281,6 +281,7 @@ export async function runProduce(d: {
   let svgs: string[] = t.map(() => "");
   let motions: (ShotMotion | null)[] = [];
   let physics = "";
+  let physicsWhat = "";
   let cast: Cast = NO_CAST;
   const effects: { file: string; at: number; cue: string }[] = [];
   if (USES_PHYSICS[format]) {
@@ -294,6 +295,7 @@ export async function runProduce(d: {
       return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
     }
     physics = physicsRuntime(ph.run);
+    physicsWhat = physicsStory(ph.run);
     const notes = join(work, "collisions.wav");
     await writeFile(notes, collisionAudio(ph.run));
     effects.push({ file: notes, at: 0, cue: `our own notes, one per collision (${ph.run.events.length} events)` });
@@ -395,7 +397,8 @@ export async function runProduce(d: {
       await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
       watched.push(`${name}${s.line ? ` (you hear: "${spokenText(s.line)}")` : " (no voice)"}`);
     }
-    const intended = reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
+    // A physics run is matched against what it really shows; the run, not the script, decides what happens.
+    const intended = physicsWhat || reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
     const views = await Promise.all(
       Array.from({ length: FOLLOW_VIEWERS }, async () => {
         const retold = (await d.judge(followDir)(stagePrompt(5, { WATCHED: watched.join("\n") }, "follow")).catch(() => "")).trim();

@@ -394,7 +394,7 @@ The scenes (every field not marked optional is required):
 - escape-rings: {"kind":"escape-rings","rings":8,"gap":34,"balls":1,"counter":"{n} RINGS LEFT"} Spinning rings inside each other, each with a gap; a ball bounces inside and breaks out ring by ring. rings 3 to 14, gap in degrees 18 to 70 (smaller is harder), balls 1 to 4. The finish: the last ring breaks.
 - growing-ball: {"kind":"growing-ball","counter":"{n} BOUNCES"} One ball bounces inside a circle and grows a little on every bounce until it fills the circle. The finish: it fills it.
 - multiply: {"kind":"multiply","balls":150,"counter":"{n}% FULL"} One ball; every ball that hits the wall makes a new one, so the count doubles faster and faster until the balls fill the whole circle. balls 60 to 250 (more means smaller balls). The finish: the circle is full.
-- race: {"kind":"race","balls":4} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. The colours come from the palette (neon: green, pink, blue, yellow; sunset: orange, red, gold, purple; ocean: cyan, mint, white, blue; candy: pink, sky, lime, cream), and the counter shows the lap, then the winner by its colour. Pick the palette whose colours the script names.
+- race: {"kind":"race","balls":4} 2 to 4 coloured balls race down a field of pegs, three laps; the first to finish wins. A race is always neon (green, pink, blue, yellow; code sets it, the colours the script may name), and the counter shows the lap, then the winner by its colour. Stage 5's cold viewers are matched against what the run really shows (`physicsStory`), never the script's own story, because the run decides who wins.
 
 Every scene also takes palette (optional): neon (default), sunset, ocean or candy.
 
