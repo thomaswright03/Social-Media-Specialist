@@ -51,9 +51,13 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
 **Gate (code, `gateProduction`):**
 - the look sheet has its six headings and a SHOT BY SHOT line for every shot (asked again up to 3 times, then the best one is used);
 - every shot has a drawing that passed the checks, and every line was voiced;
-- the cold viewer's PICTURES line names no frame whose picture doesn't show what the voice says (in a drawn Reel, when that is all that failed, the shots it names are redrawn once and the new video is judged again by fresh viewers);
-- a cold viewer who sees one frame of every shot with what the voice says
-  over it retells the story right and isn't confused;
+- three cold viewers each see one frame of every shot with what the voice
+  says over it (`FOLLOW_VIEWERS`; one viewer was a coin toss, test run
+  44837502299). 2 of 3 must retell the story right without being confused,
+  and no shot may be named by 2 or more of them in their PICTURES line as a
+  picture that doesn't show what the voice says (in a drawn Reel, when that is
+  all that failed, those shots are redrawn once and the new video is judged
+  again by fresh viewers);
 - a separate judge (Claude looking at our key frames) scores art, text
   readability, voice and sound from 1 to 5 on our rubric (the levels in the
   prompt below), never against other accounts' Reels (Thomas, 2026-11-20:

@@ -41,7 +41,7 @@ What each scene does, and nothing more. Code draws only this, so a story, hook o
 - escape-rings: one ball bounces inside spinning rings, each with a gap; it slips out ring by ring until it's free. The counter is the rings left.
 - growing-ball: one ball bounces inside a circle and grows on every bounce until it fills it. The counter is the bounces.
 - multiply: every ball that hits the wall makes a new one, in a random colour, until they fill the circle. The counter is how full it is, in percent. Colours mean nothing and nothing "wins" or "survives": the bet is whether, or how fast, it fills.
-- race: 2 to 4 coloured balls drop through a field of pegs, three laps; the first to finish wins. This is the only scene with a winner, and the run decides it: never say in advance which colour wins, and never give a ball a role (underdog, leader, comeback). The story says "one colour wins"; the counter names it at the end. Name colours only from one set: green, pink, blue, yellow.
+- race: 2 to 4 coloured balls drop through a field of pegs, three laps; the first to finish wins. This is the only scene with a winner, and the run decides it: never say in advance which colour wins, and never give a ball a role (underdog, leader, comeback). The story says "one colour wins"; the counter names it at the end. Name colours only from one set: green, pink, blue, yellow. Every ball in the race is a racer: there are no grey or extra balls, and the story never asks the viewer to follow "one ball" without saying the viewer picks one ("Pick a colour before they drop").
 
 The run:
 - One scene, with a goal the viewer can see from the first frame.
