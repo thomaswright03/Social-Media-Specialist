@@ -222,7 +222,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #brand i{display:table;margin:2px auto 0;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85}
 #endcard{position:absolute;inset:0;z-index:20;opacity:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:260px;background:radial-gradient(circle at 30% 25%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 75% 70%,rgba(255,92,173,.28),transparent 55%),radial-gradient(circle at 50% 50%,rgba(92,225,255,.12),transparent 70%),#07070a;font-family:Montserrat,sans-serif;color:#f4f2ed;text-align:center}
 #endcard .mark{width:300px;height:300px}
-#endcard p{max-width:780px;margin-bottom:90px;font-weight:900;font-size:84px;line-height:1.06;letter-spacing:-.01em;text-transform:uppercase;color:#fff}
+#endcard p{max-width:750px;margin-bottom:90px;font-weight:900;font-size:84px;line-height:1.06;letter-spacing:-.01em;text-transform:uppercase;color:#fff}
 #endcard p em{font-style:normal;color:${LIME}}
 #endcard.q .mark{width:220px;height:220px}
 #endcard.q b{margin-top:40px;font-size:72px}

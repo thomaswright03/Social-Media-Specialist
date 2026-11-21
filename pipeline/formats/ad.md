@@ -13,18 +13,24 @@ use it. Thomas, 2026-11-20, after the first test ad:
 3. "We are advertising people to use the calorie app. not offering to make
    apps": the ad sells the product, never custom software (code checks this).
 
+Thomas, 2026-11-20, on the hook: "Maybe start a hook with 'Are you trying to be
+healthy, but don't want to pay for an expensive calorie tracking app? Good! Cus
+we made one for free. No sign up, no payment! Here's how it works...'". So the
+ad runs: the viewer's question, "Good, we made one", what it costs (only what
+the product's page says), then "here's how it works" on the product's screens.
+
 <!-- ideas -->
 Format: an ad. It advertises ONE product (below) to the people who would use it. It never offers to build software, apps or AI agents for anyone.
 
 Who it's for: read the product's description below and decide who really uses it. A calorie and weight tracker is for an ordinary person keeping an eye on what they eat each day, not a business. A lead finder is for the company that buys it. Pitch to that person, about their normal day.
 
 What you are pitching: a short, useful explainer, about 35 seconds, told with bold slides and transitions and the product's own screens, that informs the viewer about the product. It has to entertain first: a viewer who will never use it should still enjoy it, because a viewer who scrolls past never reaches the product. The pitches that win share a shape:
-- One everyday question the viewer already has ("Do you actually know what you ate today?"), in their words.
-- One real moment where it bites, the way it really happens (a normal lunch, a busy weekday, the evening snack), never something silly or extreme.
-- The product answering it with one or two real features, shown on its screen.
+- The question the viewer already asks themselves about this kind of product, in their words: what they want, and the catch that has stopped them ("Are you trying to be healthy, but don't want to pay for an expensive calorie tracking app?").
+- "Good! Because we made one": the product is the answer, with what it costs and what it doesn't ask for, only as the product's page says it ("It's free. No sign-up, no payment.").
+- "Here's how it works": one or two real features, shown on its screen, in a normal day (logging lunch, seeing the day's total).
 - What is easier for the viewer afterwards.
 
-A pitch's `sentence` works like any other stage 2 pitch: one sentence that sets up one everyday moment the viewer knows and leaves one specific thing open, without giving the ending away. It is not a feature list and not a description of the product working (cold readers skip those). Its `answer` is how the product settles it, with one real feature, naming the product by its exact name. Example, not to reuse: sentence "You stayed under your calories all week, so why did the scale go the other way?"; answer "Free Calorie Counter's daily log shows the weekend snacks you never wrote down."
+A pitch's `sentence` is that question, one sentence that a person the product is for would answer "yes" to, and that leaves open what comes next. Its `answer` is the product settling it, naming the product by its exact name and saying what it costs or doesn't ask for, only as its page says. For Free Calorie Counter, use Thomas's own hook, shortened only where it must fit: sentence "Are you trying to be healthy, but don't want to pay for an expensive calorie tracking app?"; answer "Good, because we made Free Calorie Counter: it's free, with no sign-up and no payment." For another product, write the same kind of question for its own users.
 
 Test every pitch before you offer it:
 1. Real-life test. This is how the product's real users live and use it. Nobody in it does something no real person would do (no one eats a tub of ice cream for lunch). If it only works as a joke, skip it.
@@ -59,18 +65,17 @@ Honesty. Breaking one of these makes the ad false:
 - Example entries on its screen (a meal and its calories, a weight) are ordinary and realistic, and are shown as an example of what you'd log, never as a fact about food or health.
 - No reviews, no testimonials, no customer quotes, no "#1", no guarantees, no health or weight-loss promises.
 
-The shape, in this order:
-1. The viewer's everyday question, in the first 3 seconds, in plain words. This is the opening.
-2. Why it's hard: the real moment it bites, said to "you".
-3. The product arrives, and the narrator names it.
-4. The product doing its real features, on its screen, in 2 or 3 shots, each showing something different.
-5. What is easier for you now. This is the `payoff`.
-6. The last shot is the call to action: what it costs if the page says (free), and "link in bio".
+The shape, in this order (Thomas's hook, 2026-11-20):
+1. The question, in the first shots, in plain words: what the viewer wants and the catch that stops them ("Are you trying to be healthy, but don't want to pay for an expensive calorie tracking app?"). The first 3 seconds hold about 9 spoken words, so split it across the first shots and shorten it where it has to fit, keeping what the viewer wants and the catch ("Trying to be healthy?" / "But calorie apps cost money?"). This is the opening.
+2. "Good!" and the answer: we made one, and the narrator names the product. What it costs and what it doesn't ask for, only as the product's page says ("It's free. No sign-up, no payment!").
+3. "Here's how it works": the product doing its real features, on its screen, in 2 or 3 shots, each showing a different step (add a food, see the day's total fill toward a goal, see progress over days).
+4. What is easier for you now. This is the `payoff`.
+5. The last shot is the call to action: what it costs if the page says (free), and "link in bio".
 
 The narrator:
 - A friendly, confident explainer talking to the viewer.
 - Speaks from the first second (the first shot has a line) and in every shot.
-- Says the product's name when it first appears. Says Wright AI Solutions at most once, only as who made it, never as an offer.
+- Says the product's name when it first appears. Speaks as the maker ("we made one") about this one product only. Says Wright AI Solutions at most once, only as who made it, never as an offer to make anything else.
 - Short plain words, short sentences, no jargon. Every line follows from the one before.
 - Ears-only test, checked by code: listeners who hear only the narration must say what it's about and what the product does.
 
