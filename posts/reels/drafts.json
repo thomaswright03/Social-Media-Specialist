@@ -110,5 +110,19 @@
       "#news",
       "#explained"
     ]
+  },
+  {
+    "file": "explainer-riemann-ai-proof.mp4",
+    "cover": "explainer-riemann-ai-proof.jpg",
+    "headline": "Two people say they solved it",
+    "caption": "A 167-year-old maths puzzle, and two people say they've solved it. One used AI. 🧮\n\nThe Riemann hypothesis asks whether prime numbers follow a hidden pattern, and it carries a $1 million prize. An Anthropic mathematician says Claude helped him prove it, and a Stanford mathematician says he did it alone over 12 years. Neither proof is confirmed yet.\n\nAI or human: who deserves the credit? 👇\n\nExplained in under a minute by Wright AI Solutions. Follow for a new one every day.",
+    "hashtags": [
+      "#math",
+      "#AI",
+      "#primenumbers",
+      "#science",
+      "#explained",
+      "#news"
+    ]
   }
 ]
