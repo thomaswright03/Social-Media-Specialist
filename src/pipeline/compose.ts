@@ -39,19 +39,33 @@ export const labelFor = (s: TimedShot) => (s.words.length && s.onScreenText?.tri
 export type Word = { word: string; start: number; end: number };
 export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null; words: Word[] };
 
+/** Shot time a Reel needs so that with the end card it runs at least 30 s (stage 6), with a little to spare. */
+export const MIN_SHOTS_SECONDS = 30 - END_CARD + 0.3;
+/** The most breath added after each line to reach that. */
+export const MAX_PAD = 1;
+
 /**
  * Where each shot starts and how long it lasts. A shot keeps its scripted
  * length unless its line needs longer; its words move to where they're heard.
+ * A one-take voice can run shorter than the script planned (calorie ad, test
+ * run 44850757174: 28.9 s with the end card), so a Reel short of
+ * `minSeconds` (MIN_SHOTS_SECONDS when producing) gets the missing time as an even pause after every shot.
  */
-export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[]; length?: number } | null)[], opts: { oneTake?: boolean } = {}): TimedShot[] {
+export function timeline(shots: Shot[], voices: ({ seconds: number; words: Word[]; length?: number } | null)[], opts: { oneTake?: boolean; minSeconds?: number } = {}): TimedShot[] {
+  // One take cut into lines already carries the narrator's own pauses, so a
+  // voiced shot lasts as long as its words (and a breath), not the script's guess.
+  const lead = opts.oneTake ? 0 : LEAD;
+  const durs = shots.map((s, i) => {
+    const v = voices[i] ?? null;
+    const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
+    return v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.length ?? v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+  });
+  const short = (opts.minSeconds ?? 0) - durs.reduce((a, b) => a + b, 0);
+  const pad = shots.length && short > 0 ? Math.min(MAX_PAD, short / shots.length) : 0;
   let at = 0;
   return shots.map((s, i) => {
     const v = voices[i] ?? null;
-    const scripted = Math.max(MIN_SHOT, (s.end ?? 0) - (s.start ?? 0));
-    // One take cut into lines already carries the narrator's own pauses, so a
-    // voiced shot lasts as long as its words (and a breath), not the script's guess.
-    const lead = opts.oneTake ? 0 : LEAD;
-    const dur = v && opts.oneTake ? Math.max(ONE_TAKE_MIN, v.length ?? v.seconds + ONE_TAKE_TAIL) : Math.max(scripted, v ? LEAD + v.seconds + TAIL : 0);
+    const dur = durs[i]! + pad;
     const voiceAt = v ? at + lead : null;
     const t: TimedShot = { ...s, at, dur, voiceAt, words: v ? v.words.map((w) => ({ word: w.word, start: w.start + voiceAt!, end: w.end + voiceAt! })) : [] };
     at += dur;

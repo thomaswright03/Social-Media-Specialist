@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
-import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
+import { audioSeconds, composeHtml, FPS, MIN_SHOTS_SECONDS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
@@ -267,7 +267,7 @@ export async function runProduce(d: {
     }
   }
   if (voiceProblem) return stop(voiceProblem, reel.subject);
-  const t = timeline(shots, voices, { oneTake: oneTake });
+  const t = timeline(shots, voices, { oneTake, minSeconds: MIN_SHOTS_SECONDS });
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
