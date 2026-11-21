@@ -24,7 +24,7 @@ What you are pitching: a short, useful explainer, about 35 seconds, told with bo
 - The product answering it with one or two real features, shown on its screen.
 - What is easier for the viewer afterwards.
 
-A pitch is ONE sentence, not a question and not two sentences: the viewer, their everyday moment, and the product doing its job in it, naming the product by its exact name ("When you grab a sandwich between meetings, Free Calorie Counter logs it and shows how much of your day is left". Don't reuse this example). The question for the opening comes later, in the script.
+A pitch's `sentence` works like any other stage 2 pitch: one sentence that sets up one everyday moment the viewer knows and leaves one specific thing open, without giving the ending away. It is not a feature list and not a description of the product working (cold readers skip those). Its `answer` is how the product settles it, with one real feature, naming the product by its exact name. Example, not to reuse: sentence "You stayed under your calories all week, so why did the scale go the other way?"; answer "Free Calorie Counter's daily log shows the weekend snacks you never wrote down."
 
 Test every pitch before you offer it:
 1. Real-life test. This is how the product's real users live and use it. Nobody in it does something no real person would do (no one eats a tub of ice cream for lunch). If it only works as a joke, skip it.
