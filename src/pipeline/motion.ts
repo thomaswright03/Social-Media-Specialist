@@ -15,12 +15,18 @@ type Ask = (p: string) => Promise<string>;
 
 export const MOTION_TRIES = 3;
 /** Formats made of graphics rather than drawn scenes. */
-export const USES_MOTION: Record<Format, boolean> = { explainer: true, story: false, satisfying: false, ad: false };
+// Ads too since 2026-11-20 (Thomas: "Ads should not have stickmen in them they should only be like the
+// informational entertainment ads with slides and transitions but it will inform people about the app").
+export const USES_MOTION: Record<Format, boolean> = { explainer: true, story: false, satisfying: false, ad: true };
 export const KINDS = [
   "title", "headline", "counter", "bars", "line", "compare", "quote", "list", "icon", "timeline",
   // Added 2026-11-20 so a Reel never repeats a picture (Thomas: "why is there green circles for nearly every slide").
   "waffle", "people", "stack", "flow", "split", "calendar", "ticker", "meter", "chat", "stamp",
+  // The product's own screen, for ads (2026-11-20).
+  "app",
 ] as const;
+/** The product's screen may show up to this many times in a Reel (each a different screen); every other kind once. */
+export const APP_SCREENS_MAX = 3;
 export const THEMES = ["navy", "red", "green", "gold", "slate"] as const;
 export const TRANSITIONS = ["cut", "whip", "zoom", "flash"] as const;
 export const ICONS = [
@@ -102,6 +108,18 @@ export function pieceFigures(p: Piece): string[] {
     case "stamp":
       add(p.text);
       break;
+    case "app": {
+      const r = p.ring as { value?: unknown; of?: unknown } | undefined;
+      add(r?.value);
+      add(r?.of);
+      for (const row of (p.rows as { label?: unknown; value?: unknown }[]) ?? []) {
+        add(row?.label);
+        add(row?.value);
+      }
+      add(p.button);
+      add(p.screen);
+      break;
+    }
   }
   // Numbers written inside the words (a title, a label, a headline) count too.
   const words = [p.text, p.label, p.title, p.who, ...(((p.items as unknown[]) ?? []).map((i) => (typeof i === "string" ? i : `${str((i as { name?: unknown; label?: unknown })?.name)} ${str((i as { label?: unknown })?.label)}`)))];
@@ -228,6 +246,21 @@ export function pieceProblems(p: Piece, where: string): string[] {
       need(!tooLong(p.title, 30), "a stamp's title is at most 30 characters");
       need(p.color == null || p.color === "red" || p.color === "green", 'a stamp\'s color is "red" or "green"');
       break;
+    case "app": {
+      const ring = p.ring as { value?: unknown; of?: unknown; unit?: unknown; label?: unknown } | undefined;
+      const rows = (p.rows as { label?: unknown; value?: unknown }[]) ?? [];
+      const maxRows = ring ? (str(p.button).trim() ? 2 : 3) : 4;
+      need(Boolean(str(p.name).trim()) && !tooLong(p.name, 24), "an app needs name, the product's name, at most 24 characters");
+      need(!tooLong(p.screen, 20), "an app's screen is at most 20 characters");
+      need(ring == null || (isNum(ring.value) && isNum(ring.of) && num(ring.of) > 0 && num(ring.value) >= 0), "an app's ring needs value and of, numbers with of above 0");
+      need(ring == null || (!tooLong(ring.unit, 6) && !tooLong(ring.label, 22)), "a ring's unit is at most 6 characters and its label at most 22");
+      need(Array.isArray(rows) && rows.length <= maxRows, `an app has at most ${maxRows} rows${ring ? (str(p.button).trim() ? " with a ring and a button" : " with a ring") : ""}`);
+      need(Array.isArray(rows) && rows.every((r) => str(r?.label).trim() && !tooLong(r?.label, 18) && !tooLong(r?.value, 10)), "each row has a label of at most 18 characters and a value of at most 10");
+      need(Boolean(ring) || rows.length > 0 || Boolean(str(p.button).trim()), "an app shows something: a ring, rows or a button");
+      need(!tooLong(p.button, 20), "an app's button is at most 20 characters");
+      need(p.highlight == null || (Number.isInteger(num(p.highlight)) && num(p.highlight) >= 0 && num(p.highlight) < rows.length), "highlight is a row's index from 0");
+      break;
+    }
   }
   return out;
 }
@@ -258,7 +291,19 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
   // reused for the video"): every kind of piece appears at most once a Reel.
   const used = new Map<string, number[]>();
   for (const sh of plan.shots) for (const x of sh.pieces) used.set(x.kind, [...(used.get(x.kind) ?? []), sh.shot]);
-  for (const [kind, at] of used) if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats.`);
+  for (const [kind, at] of used) {
+    if (kind === "app") continue;
+    if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats.`);
+  }
+  // An ad shows the product's screen more than once, but never the same screen twice.
+  const apps = plan.shots.flatMap((sh) => sh.pieces.filter((x) => x.kind === "app").map((x) => ({ shot: sh.shot, key: JSON.stringify([x.screen ?? "", x.ring ?? null, x.rows ?? [], x.button ?? ""]) })));
+  if (apps.length > APP_SCREENS_MAX) p.push(`The app piece is used ${apps.length} times (shots ${apps.map((a) => a.shot).join(", ")}); show the product's screen at most ${APP_SCREENS_MAX} times.`);
+  const seen = new Map<string, number>();
+  for (const a of apps) {
+    const first = seen.get(a.key);
+    if (first != null) p.push(`Shots ${first} and ${a.shot} show the same app screen; each app screen shows something new.`);
+    else seen.set(a.key, a.shot);
+  }
   const extra = plan.shots.filter((s) => !(s.shot >= 1 && s.shot <= shots.length));
   if (extra.length) p.push(`There are only ${shots.length} shots; drop ${extra.map((s) => s.shot).join(", ")}.`);
   return p;

@@ -45,27 +45,29 @@ describe("the content mix", () => {
     expect(formatPrompt("story", "style")).toMatch(/stick figures/);
     expect(formatPrompt("satisfying", "style")).toMatch(/physics/);
     expect(formatBrief({ format: "explainer", product: null }, "ideas")).toMatch(/Never use news from memory/);
-    expect([HAS_CAST.story, HAS_CAST.ad, HAS_CAST.satisfying, HAS_CAST.explainer]).toEqual([true, true, false, false]);
+    expect([HAS_CAST.story, HAS_CAST.ad, HAS_CAST.satisfying, HAS_CAST.explainer]).toEqual([true, false, false, false]);
+    expect(formatPrompt("ad", "style")).toMatch(/No characters and no stick figures/);
+    expect(formatPrompt("ad", "style")).not.toMatch(/White stick figures/);
     expect(NARRATED.satisfying).toBe(false);
   });
 
   it("puts the product in an ad's brief", () => {
     const b = formatBrief({ format: "ad", product: P[0]! });
     expect(b).toContain("AI Waste Bot");
-    expect(b).toContain("custom AI agents and software");
+    expect(b).toMatch(/Never offer to build/);
   });
 });
 
 describe("gateFormat", () => {
   const ad = { format: "ad" as const, product: P[0]! };
-  it("passes an ad for one product that pitches custom builds and asks for the click", () => {
-    const g = gateFormat(ad, { caption: "Missed leads cost haulers money. Link in bio.", shots: [{ line: "AI Waste Bot texts every new lead back in seconds." }, { onScreenText: "We build custom AI agents for your business too" }] }, P);
+  it("passes an ad for one product that asks for the click", () => {
+    const g = gateFormat(ad, { caption: "Missed leads cost haulers money. Link in bio.", shots: [{ line: "AI Waste Bot texts every new lead back in seconds." }, { onScreenText: "Try it free" }] }, P);
     expect(g.passed).toBe(true);
   });
 
-  it("fails an ad that names two products or skips the custom-build line", () => {
-    const g = gateFormat(ad, { caption: "Try AI Waste Bot and Room Designer 3D. Link in bio.", shots: [] }, P);
-    expect(g.checks.filter((c) => !c.passed).map((c) => c.name)).toEqual(["The ad markets only one product", "The ad says we build custom AI agents and software for businesses"]);
+  it("fails an ad that names two products or offers to build software (Thomas, 2026-11-20)", () => {
+    const g = gateFormat(ad, { caption: "Try AI Waste Bot and Room Designer 3D. Link in bio.", shots: [{ onScreenText: "We build custom AI agents for your business too" }] }, P);
+    expect(g.checks.filter((c) => !c.passed).map((c) => c.name)).toEqual(["The ad markets only one product", "The ad sells the product itself, not custom software"]);
   });
 
   it("fails entertainment that sells, but not news that mentions money", () => {

@@ -33,12 +33,12 @@ Each Reel is one of four formats, picked by code (`nextFormat` in
 | `story` | entertainment | a standalone stick-figure story (stage 1's patterns) |
 | `satisfying` | entertainment | a satisfying AI-made video |
 | `explainer` | entertainment | a current event explained with bold graphics and transitions |
-| `ad` | ad | one product from wright-ai-solutions.com, plus Wright AI Solutions itself: we build custom AI agents and software for businesses |
+| `ad` | ad | one product from wright-ai-solutions.com, shown with bold graphics and its own screens to the people who'd use it (no stick figures, no offer to build software; Thomas, 2026-11-20) |
 
 Each format has its own prompts in `pipeline/formats/<format>.md`: `ideas`
 (what to pitch, stage 2), `script` (how it's told: narration, shots, cameras,
 caption; stages 3 and 4) and `style` (how it's drawn, stage 5). Edit those
-files to change a format. Stories and ads have characters drawn once and
+files to change a format. Stories have characters drawn once and
 re-posed; the satisfying video has no narrator, so stage 4 doesn't ask for one.
 
 An ad is made only when it keeps ads at 2 of the last 10 Reels and at least 3
@@ -46,8 +46,8 @@ entertainment Reels came since the last one; ads take turns between the
 site's products. The entertainment formats take turns too. Each script also
 passes `gateFormat` with stage 4's gate:
 
-- an ad names its one product and no other, says we build custom AI agents
-  and software for businesses, and ends on a call to action;
+- an ad names its one product and no other, never offers to build custom
+  software, and ends on a call to action;
 - entertainment doesn't sell (no "link in bio", sign-up, discount, product
   or business names);
 - a satisfying video's caption says it was made with AI (Instagram expects AI
