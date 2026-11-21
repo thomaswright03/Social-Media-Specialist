@@ -247,7 +247,7 @@ ${physics ? `<script>${physics.replace(/<\/script/gi, "<\\/script")}</script>` :
 const SHOTS=${scriptJson(shots)};
 const WORLD=${scriptJson(world)};
 const MOUNTED=SHOTS.map(s=>s.motion&&window.MK?window.MK.mount(s.motion,document.getElementById('s'+s.i),{bg:!WORLD}):null);
-const WBG=WORLD&&window.MK?window.MK.world():null; if(WBG) document.getElementById('world').appendChild(WBG.el);
+const WBG=WORLD&&window.MK?window.MK.world((SHOTS[0]&&SHOTS[0].motion&&SHOTS[0].motion.backdrop)||'grid'):null; if(WBG) document.getElementById('world').appendChild(WBG.el);
 const FB=${FLY_BEFORE}, FA=${FLY_AFTER}, PY=${PIECE_Y};
 const io=(x)=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
 /** The camera at time t, and the shots it can see. */

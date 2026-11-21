@@ -24,7 +24,25 @@ export const KINDS = [
   "waffle", "people", "stack", "flow", "split", "calendar", "ticker", "meter", "chat", "stamp",
   // The product's own screen, for ads (2026-11-20).
   "app",
+  // A graphic designed for this one shot (Thomas, 2026-11-21: "I don't want the same eight cards getting used over
+  // and over for every video. I want it to be creative with every new info graphic").
+  "draw",
 ] as const;
+/**
+ * Shots in a Reel that may use a ready-made piece; every other shot gets a
+ * graphic of its own (draw). An ad's app screens don't count.
+ */
+export const KIT_MAX = 3;
+/** Kinds that may appear more than once: the product's screens and fresh drawings. */
+const REUSABLE = new Set(["app", "draw"]);
+/** The world's backdrop pattern, picked per Reel so every video looks different. */
+export const BACKDROPS = ["grid", "dots", "diagonal", "rings", "plain"] as const;
+/** How a part of a drawn graphic comes in (data-a); each finishes by 0.6 s into its shot plus its start. */
+export const DRAW_ANIMS = ["draw", "pop", "rise", "drop", "grow-up", "grow-right", "fade", "count", "pulse", "spin"] as const;
+/** The SVG elements a drawn graphic may use. */
+const DRAW_TAGS = new Set(["svg", "g", "defs", "lineargradient", "radialgradient", "stop", "clippath", "mask", "rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text", "tspan", "use", "pattern"]);
+export const DRAW_MAX_BYTES = 14_000;
+export const DRAW_MIN_FONT = 34;
 /** The product's screen may show up to this many times in a Reel (each a different screen); every other kind once. */
 export const APP_SCREENS_MAX = 3;
 export const THEMES = ["navy", "red", "green", "gold", "slate"] as const;
@@ -35,8 +53,8 @@ export const ICONS = [
 ] as const;
 
 export type Piece = { kind: string; [k: string]: unknown };
-export type ShotMotion = { shot: number; bg?: string; transition?: string; pieces: Piece[] };
-export type MotionPlan = { shots: ShotMotion[] };
+export type ShotMotion = { shot: number; bg?: string; transition?: string; pieces: Piece[]; backdrop?: string };
+export type MotionPlan = { shots: ShotMotion[]; backdrop?: string };
 
 /** The browser code that draws the pieces. */
 export const motionRuntime = () => pipelineFile("motion/runtime.js");
@@ -49,7 +67,58 @@ const isNum = (v: unknown) => Number.isFinite(num(v));
 export function motionFrom(answer: string): MotionPlan | null {
   const j = parseJson<MotionPlan>(answer);
   if (!j || !Array.isArray(j.shots)) return null;
-  return { shots: j.shots.filter((s) => s && typeof s === "object").map((s) => ({ ...s, shot: Number(s.shot), pieces: Array.isArray(s.pieces) ? s.pieces : [] })).sort((a, b) => a.shot - b.shot) };
+  const shots = j.shots.filter((s) => s && typeof s === "object").map((s) => ({ ...s, shot: Number(s.shot), pieces: Array.isArray(s.pieces) ? s.pieces : [] })).sort((a, b) => a.shot - b.shot);
+  return typeof j.backdrop === "string" ? { shots, backdrop: j.backdrop } : { shots };
+}
+
+/** The words a drawn graphic puts on screen, one entry per <text>. */
+export function drawTexts(svg: string): string[] {
+  return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)].map((m) => m[1]!.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
+const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, "i"))?.[2];
+
+/** What's wrong with a drawn graphic (Thomas, 2026-11-21); an empty list when it can be drawn. */
+export function drawProblems(svg: unknown): string[] {
+  const p: string[] = [];
+  const v = str(svg).trim();
+  if (!v.startsWith("<svg") || !v.endsWith("</svg>")) return ["a draw piece needs svg: one <svg …>…</svg>"];
+  const open = v.slice(0, v.indexOf(">") + 1);
+  if (!/viewBox\s*=\s*["']\s*0[\s,]+0[\s,]+820[\s,]+900\s*["']/.test(open)) p.push('a drawing\'s <svg> has viewBox="0 0 820 900"');
+  if (Buffer.byteLength(v) > DRAW_MAX_BYTES) p.push(`a drawing is ${Math.round(Buffer.byteLength(v) / 1000)} KB; keep it under ${DRAW_MAX_BYTES / 1000} KB`);
+  const tags = [...v.matchAll(/<([a-zA-Z][\w:-]*)\b/g)].map((m) => m[1]!.toLowerCase());
+  const odd = [...new Set(tags.filter((t) => !DRAW_TAGS.has(t)))];
+  if (odd.length) p.push(`a drawing uses only shapes, text and gradients, not <${odd.join(">, <")}>`);
+  if (/\son[a-z]+\s*=/i.test(v)) p.push("a drawing has no event handlers (on…=)");
+  if (/(href|src)\s*=\s*["']\s*(?!#)[^"']/i.test(v) || /@import|url\(\s*["']?(?!#)/i.test(v)) p.push("a drawing links to nothing outside itself (only #ids)");
+  const shapes = tags.filter((t) => ["rect", "circle", "ellipse", "line", "polyline", "polygon", "path"].includes(t)).length;
+  if (shapes < 4) p.push("a drawing is nearly empty: draw the thing the line is about, not just words");
+  const texts = drawTexts(v);
+  if (texts.length > 8) p.push(`a drawing has ${texts.length} bits of text; keep it to 8 at most`);
+  if (texts.some((t) => t.length > 28)) p.push("each bit of text in a drawing is at most 28 characters");
+  if (texts.join("").length > 90) p.push("a drawing has at most 90 characters of text in all; the voice says the rest");
+  for (const m of v.matchAll(/<text\b[^>]*>/gi)) {
+    const size = Number(attr(m[0], "font-size") ?? m[0].match(/font-size\s*:\s*([\d.]+)/i)?.[1] ?? NaN);
+    if (!(size >= DRAW_MIN_FONT)) {
+      p.push(`every <text> in a drawing sets font-size of at least ${DRAW_MIN_FONT}, so it reads on a phone`);
+      break;
+    }
+  }
+  const anims = [...v.matchAll(/<[a-z][^>]*\sdata-a\s*=\s*["']([^"']*)["'][^>]*>/gi)];
+  if (anims.length < 2) p.push('a drawing animates at least 2 of its parts with data-a (draw, pop, rise, grow-up, …)');
+  for (const m of anims) {
+    if (!(DRAW_ANIMS as readonly string[]).includes(m[1]!)) {
+      p.push(`data-a="${m[1]}" isn't one of ${DRAW_ANIMS.join(", ")}`);
+      continue;
+    }
+    const at = attr(m[0], "data-t");
+    if (at != null && !(Number(at) >= 0 && Number(at) <= 0.6)) p.push("data-t is a start time from 0 to 0.6 seconds, so the graphic reads by then");
+    if (m[1] === "count") {
+      if (!/^<text\b/i.test(m[0])) p.push('data-a="count" goes on a <text>');
+      if (!isNum(attr(m[0], "data-to"))) p.push('data-a="count" needs data-to, the number it counts to');
+    }
+  }
+  return [...new Set(p)];
 }
 
 /** Every number a piece puts on screen, as written. */
@@ -108,6 +177,11 @@ export function pieceFigures(p: Piece): string[] {
     case "stamp":
       add(p.text);
       break;
+    case "draw": {
+      for (const t of drawTexts(str(p.svg))) add(t);
+      for (const m of str(p.svg).matchAll(/data-to\s*=\s*["']([^"']*)["']/gi)) add(m[1]);
+      break;
+    }
     case "app": {
       const r = p.ring as { value?: unknown; of?: unknown } | undefined;
       add(r?.value);
@@ -243,6 +317,9 @@ export function pieceProblems(p: Piece, where: string): string[] {
       need(Array.isArray(m) && m.every((x) => typeof x === "string" && x.trim() && x.length <= 40), "each message is text of at most 40 characters");
       break;
     }
+    case "draw":
+      for (const x of drawProblems(p.svg)) need(false, x);
+      break;
     case "stamp":
       need(Boolean(str(p.text).trim()) && !tooLong(p.text, 12), "a stamp needs text, at most 12 characters");
       need(!tooLong(p.title, 30), "a stamp's title is at most 30 characters");
@@ -281,6 +358,7 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
     const s = byShot.get(i + 1);
     if (!s) return void p.push(`Shot ${i + 1} has no entry.`);
     if (!s.pieces.length || s.pieces.length > 2) p.push(`Shot ${i + 1} has ${s.pieces.length} pieces; give it 1 or 2.`);
+    if (s.pieces.length > 1 && s.pieces.some((x) => x.kind === "draw")) p.push(`Shot ${i + 1}: a drawing fills the shot on its own; give it no second piece.`);
     if (s.bg != null && !(THEMES as readonly string[]).includes(s.bg)) p.push(`Shot ${i + 1}: bg is one of ${THEMES.join(", ")}.`);
     if (s.transition != null && !(TRANSITIONS as readonly string[]).includes(s.transition)) p.push(`Shot ${i + 1}: transition is one of ${TRANSITIONS.join(", ")}.`);
     s.pieces.forEach((piece, k) => {
@@ -294,10 +372,10 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
   const used = new Map<string, number[]>();
   for (const sh of plan.shots) for (const x of sh.pieces) used.set(x.kind, [...(used.get(x.kind) ?? []), sh.shot]);
   for (const [kind, at] of used) {
-    if (kind === "app") continue;
+    if (REUSABLE.has(kind)) continue;
     if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) {
       // Name what's left, so the next try can swap without guessing (test run 44843858785 repeated icon three times running).
-      const free = KINDS.filter((k) => k !== "app" && !used.has(k));
+      const free = freeKinds(used);
       p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats. Keep it in shot ${at[0]} and give shot${at.length > 2 ? "s" : ""} ${at.slice(1).join(", ")} one of the kinds not used yet: ${free.join(", ")}.`);
     }
   }
@@ -310,10 +388,32 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
     if (first != null) p.push(`Shots ${first} and ${a.shot} show the same app screen; each app screen shows something new.`);
     else seen.set(a.key, a.shot);
   }
+  // Fresh graphics (Thomas, 2026-11-21): most shots draw their own, the ready-made kit only now and then.
+  const kit = plan.shots.filter((sh) => sh.pieces.some((x) => !REUSABLE.has(x.kind))).map((sh) => sh.shot);
+  if (kit.length > KIT_MAX) p.push(`${kit.length} shots use ready-made pieces (shots ${kit.join(", ")}); at most ${KIT_MAX} may, so every video's graphics are new. Draw the others as their own graphic (draw), designed for what that line says.`);
+  const drawn = new Map<string, number>();
+  for (const sh of plan.shots) for (const x of sh.pieces) if (x.kind === "draw") {
+    const k = str(x.svg).replace(/\s+/g, " ").trim();
+    const first = drawn.get(k);
+    if (first != null) p.push(`Shots ${first} and ${sh.shot} have the same drawing; each shot's drawing is its own.`);
+    else drawn.set(k, sh.shot);
+  }
+  if (plan.backdrop != null && !(BACKDROPS as readonly string[]).includes(plan.backdrop)) p.push(`backdrop is one of ${BACKDROPS.join(", ")}.`);
   const extra = plan.shots.filter((s) => !(s.shot >= 1 && s.shot <= shots.length));
   if (extra.length) p.push(`There are only ${shots.length} shots; drop ${extra.map((s) => s.shot).join(", ")}.`);
   return p;
 }
+
+/** Kinds a shot may still take: ready-made kinds not used yet, and always a fresh drawing. */
+function freeKinds(used: Map<string, unknown> | Set<string>): string[] {
+  return KINDS.filter((k) => k !== "app" && (k === "draw" || !used.has(k)));
+}
+
+/** A backdrop for this Reel, picked at random when the plan didn't choose one, so videos don't all look alike. */
+export function pickBackdrop(random = Math.random): (typeof BACKDROPS)[number] {
+  return BACKDROPS[Math.floor(random() * BACKDROPS.length) % BACKDROPS.length]!;
+}
+const withBackdrop = (plan: MotionPlan | null): MotionPlan | null => (plan && !plan.backdrop ? { ...plan, backdrop: pickBackdrop() } : plan);
 
 /** The plan, asked again with what was wrong; the one with the fewest problems after MOTION_TRIES. */
 export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => void, style = ""): Promise<{ plan: MotionPlan | null; problems: string[] }> {
@@ -326,7 +426,7 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
     if (!best.plan || problems.length < best.problems.length) best = { plan, problems };
     if (!problems.length) {
       if (t > 1) log?.(`Motion plan passed on try ${t}.`);
-      return { plan, problems };
+      return { plan: withBackdrop(plan), problems };
     }
   }
   // Whole new plans keep bringing a repeat back (calorie ad, test run
@@ -335,15 +435,15 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
   const again = best.plan ? repeatedShots(best.plan) : [];
   if (best.plan && again.length && best.problems.every((x) => REPEAT.test(x))) {
     const used = new Set(best.plan.shots.flatMap((sh) => sh.pieces.map((x) => x.kind)));
-    const free = KINDS.filter((k) => k !== "app" && !used.has(k));
+    const free = freeKinds(used);
     const fixed = await replanShots(best.plan, again, shots, ask, style, log, `This plan is right except that shot${again.length > 1 ? "s" : ""} ${again.join(", ")} repeat${again.length > 1 ? "" : "s"} a kind of piece another shot already uses, and every kind of piece may appear once. Give ${again.length > 1 ? "each of those shots a different one" : "that shot one"} of the kinds not used yet (${free.join(", ")}) that shows its line plainly; keep every other shot exactly as it is.`);
     if (fixed) {
       log?.(`Motion plan passed after swapping the repeated shots ${again.join(", ")}.`);
-      return { plan: fixed, problems: [] };
+      return { plan: withBackdrop(fixed), problems: [] };
     }
   }
   log?.(`The motion plan still has problems after ${MOTION_TRIES} tries: ${best.problems.slice(0, 4).join(" ")}`);
-  return best;
+  return { ...best, plan: best.plan && withBackdrop(best.plan) };
 }
 
 const REPEAT = /^The (?!app )\S+ piece is used \d+ times/;
@@ -353,7 +453,7 @@ export function repeatedShots(plan: MotionPlan): number[] {
   const seen = new Set<string>();
   const out: number[] = [];
   for (const sh of [...plan.shots].sort((a, b) => a.shot - b.shot)) {
-    const kinds = sh.pieces.map((x) => x.kind).filter((k) => k !== "app");
+    const kinds = sh.pieces.map((x) => x.kind).filter((k) => !REUSABLE.has(k));
     if (kinds.some((k) => seen.has(k))) out.push(sh.shot);
     for (const k of kinds) seen.add(k);
   }
@@ -373,7 +473,7 @@ export async function replanShots(plan: MotionPlan, bad: number[], shots: Shot[]
     const note = `This is the plan${why ? "" : " that was rendered"}: ${JSON.stringify(plan)} ${ask1} Reply with the whole plan.${problems.length ? ` Your last plan was refused: ${problems.join(" ")}` : ""}`;
     const next = motionFrom(await ask(stagePrompt(5, { SHOTS: shotList(shots), STYLE: style, ICONS: ICONS.join(", "), PROBLEMS: note }, "motion")).catch(() => ""));
     // Only the flagged shots may change.
-    const merged: MotionPlan | null = next ? { shots: plan.shots.map((s) => (bad.includes(s.shot) ? next.shots.find((x) => x.shot === s.shot) ?? s : s)) } : null;
+    const merged: MotionPlan | null = next ? { ...plan, shots: plan.shots.map((s) => (bad.includes(s.shot) ? next.shots.find((x) => x.shot === s.shot) ?? s : s)) } : null;
     problems = motionProblems(merged, shots);
     if (merged && !problems.length) return merged;
   }
@@ -382,4 +482,7 @@ export async function replanShots(plan: MotionPlan, bad: number[], shots: Shot[]
 }
 
 /** One shot's motion, ready for the page, or null when a shot uses its drawing. */
-export const shotMotion = (plan: MotionPlan | null, i: number): ShotMotion | null => plan?.shots.find((s) => s.shot === i + 1) ?? null;
+export const shotMotion = (plan: MotionPlan | null, i: number): ShotMotion | null => {
+  const s = plan?.shots.find((x) => x.shot === i + 1);
+  return s ? { ...s, ...(plan?.backdrop ? { backdrop: plan.backdrop } : {}) } : null;
+};

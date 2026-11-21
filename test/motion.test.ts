@@ -1,7 +1,7 @@
 // The motion kit (Thomas, 2026-11-19: "the animations are terrible").
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, repeatedShots, replanShots, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
+import { BACKDROPS, ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, repeatedShots, replanShots, shotMotion, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { BEAT, composeHtml, timeline, totalSeconds, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
@@ -262,5 +262,58 @@ describe("one world the camera flies through (Thomas, 2026-11-20)", async () => 
     const plain = composeHtml(t, ["", ""]);
     expect(plain).toContain('<div id="endcard"><svg class="mark"');
     expect(plain).toContain("SHOTS[SHOTS.length-1].at+(SHOTS[SHOTS.length-1].dur)");
+  });
+});
+
+// Fresh graphics (Thomas, 2026-11-21: "I don't want the same eight cards getting used over and over for every
+// video. I want it to be creative with every new info graphic").
+describe("drawn graphics", () => {
+  const chips = (n: number) =>
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 820 900'><g data-a='grow-up'>${Array.from({ length: n }, (_, k) => `<ellipse cx='260' cy='${700 - k * 40}' rx='110' ry='34' fill='#16a34a' stroke='#fff' stroke-width='8'/>`).join("")}</g><rect x='480' y='300' width='220' height='440' rx='20' fill='#facc15' data-a='grow-up' data-t='0.2'/><path d='M120 780 H700' stroke='#fff' stroke-width='10' data-a='draw'/><text x='410' y='200' font-size='120' font-family='Montserrat' font-weight='900' fill='#fff' text-anchor='middle' data-a='count' data-to='35' data-suffix='%'>35%</text><text x='410' y='860' font-size='40' fill='#fff' text-anchor='middle'>MORE PLAYERS</text></svg>`;
+  const s1 = [{ start: 0, end: 2, line: "Fenland pubs have 35% more players.", visual: "chips" }];
+  const one = (svg: string): MotionPlan => ({ shots: [{ shot: 1, pieces: [{ kind: "draw", svg }] }] });
+
+  it("passes a drawing made of the story's things, and reads its figures", () => {
+    expect(motionProblems(one(chips(5)), s1)).toEqual([]);
+    expect(pieceFigures({ kind: "draw", svg: chips(5) })).toContain("35");
+  });
+
+  it("refuses an unsafe, unreadable or invented drawing", () => {
+    const bad = (svg: string) => motionProblems(one(svg), s1).join(" ");
+    expect(bad(chips(5).replace("</svg>", "<script>alert(1)</script></svg>"))).toMatch(/not <script>/);
+    expect(bad(chips(5).replace("</svg>", "<image href='https://x.test/a.png'/></svg>"))).toMatch(/not <image>|outside itself/);
+    expect(bad(chips(5).replace("<rect", "<rect onclick='x()'"))).toMatch(/event handlers/);
+    expect(bad(chips(5).replace("font-size='40'", "font-size='20'"))).toMatch(/font-size of at least 34/);
+    expect(bad(chips(5).replace("viewBox='0 0 820 900'", "viewBox='0 0 1080 1920'"))).toMatch(/viewBox="0 0 820 900"/);
+    expect(bad(chips(5).replace(/data-to='35'/, "data-to='40'").replace(">35%<", ">40%<"))).toMatch(/shows 40, which the script never says/);
+    expect(bad(chips(5).replace(/ data-a='[^']*'/g, ""))).toMatch(/at least 2 of its parts/);
+    expect(bad(chips(5).replace("data-a='draw'", "data-a='wiggle'"))).toMatch(/isn't one of/);
+    expect(bad(chips(5).replace("data-t='0.2'", "data-t='2'"))).toMatch(/0 to 0.6 seconds/);
+    expect(bad(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 820 900'><text font-size='60' data-a='pop'>35%</text><text font-size='60' data-a='pop'>MORE</text></svg>`)).toMatch(/nearly empty/);
+    expect(motionProblems({ shots: [{ shot: 1, pieces: [{ kind: "draw", svg: chips(5) }, { kind: "title", text: "WOW" }] }] }, s1).join(" ")).toMatch(/a drawing fills the shot on its own/);
+  });
+
+  it("lets at most 3 shots use ready-made pieces, the app's screens aside, and no two drawings be the same", () => {
+    const sN = Array.from({ length: 5 }, (_, k) => ({ start: k * 2, end: k * 2 + 2, line: "Fenland pubs have 35% more players.", visual: "x" }));
+    const kit = ["title", "list", "icon", "quote"].map((kind, k) => ({ shot: k + 1, pieces: [kind === "title" ? { kind, text: "WAIT" } : kind === "list" ? { kind, items: ["a", "b"] } : kind === "icon" ? { kind, name: "phone", label: "x" } : { kind, text: "Fenland pubs have 35% more players.", who: "x" }] }));
+    const four = { shots: [...kit, { shot: 5, pieces: [{ kind: "draw", svg: chips(5) }] }] };
+    expect(motionProblems(four, sN).join(" ")).toMatch(/4 shots use ready-made pieces \(shots 1, 2, 3, 4\); at most 3/);
+    const fresh = { shots: [...kit.slice(0, 3), { shot: 4, pieces: [{ kind: "draw", svg: chips(4) }] }, { shot: 5, pieces: [{ kind: "draw", svg: chips(5) }] }] };
+    expect(motionProblems(fresh, sN)).toEqual([]);
+    const twins = { shots: [...kit.slice(0, 3), { shot: 4, pieces: [{ kind: "draw", svg: chips(5) }] }, { shot: 5, pieces: [{ kind: "draw", svg: chips(5) }] }] };
+    expect(motionProblems(twins, sN).join(" ")).toMatch(/Shots 4 and 5 have the same drawing/);
+    expect(repeatedShots(twins)).toEqual([]);
+  });
+
+  it("gives every Reel a backdrop, the plan's own or one at random", async () => {
+    expect(motionProblems({ ...one(chips(5)), backdrop: "stripes" }, s1).join(" ")).toMatch(/backdrop is one of/);
+    const r = await motionPlan(s1, async () => JSON.stringify(one(chips(5))));
+    expect(BACKDROPS).toContain(r.plan?.backdrop);
+    const own = await motionPlan(s1, async () => JSON.stringify({ ...one(chips(5)), backdrop: "rings" }));
+    expect(own.plan?.backdrop).toBe("rings");
+    expect(shotMotion(own.plan, 0)?.backdrop).toBe("rings");
+    const js = readFileSync(new URL("../pipeline/motion/runtime.js", import.meta.url), "utf8");
+    const block = js.slice(js.indexOf("const BACKDROPS = {"), js.indexOf("\n  };", js.indexOf("const BACKDROPS = {")));
+    expect([...block.matchAll(/^\s{4}([a-z]+):/gm)].map((m) => m[1]).sort()).toEqual([...BACKDROPS].sort());
   });
 });
