@@ -1,7 +1,7 @@
 // The motion kit (Thomas, 2026-11-19: "the animations are terrible").
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, replanShots, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
+import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, repeatedShots, replanShots, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { composeHtml, timeline, totalSeconds, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
@@ -19,6 +19,11 @@ const good: MotionPlan = {
 describe("motion plan", () => {
   it("passes a plan whose figures the script says", () => {
     expect(motionProblems(good, shots)).toEqual([]);
+  });
+
+  it("keeps a ticker to a price or a market move (test run 44859311055)", () => {
+    const feel: MotionPlan = { shots: [good.shots[0]!, { shot: 2, pieces: [{ kind: "ticker", name: "CLAUDE", value: "Doubt", change: "-August" }] }] };
+    expect(motionProblems(feel, shots).join(" ")).toMatch(/only for a price or a market move/);
   });
 
   it("refuses an invented figure, a missing shot and a broken piece", () => {
@@ -53,6 +58,22 @@ describe("motion plan", () => {
     expect(keys(block("ICONS")).sort()).toEqual([...ICONS].sort());
     expect(keys(block("THEMES")).sort()).toEqual([...THEMES].sort());
     expect([...block("PIECES").matchAll(/^\s{4}([a-z]+)\(p\)/gm)].map((m) => m[1]).sort()).toEqual([...KINDS].sort());
+  });
+});
+
+describe("repeated pieces", () => {
+  it("keeps the plan and swaps only the repeated shots when repeats are all that's wrong (test run 44856457525)", async () => {
+    const three = [...shots, { start: 4, end: 6, line: "Eggs cost more now.", visual: "an egg" }];
+    const twice: MotionPlan = { shots: [good.shots[0]!, { shot: 2, pieces: [{ kind: "icon", name: "heart", label: "" }] }, { shot: 3, pieces: [{ kind: "icon", name: "fire", label: "" }] }] };
+    expect(repeatedShots(twice)).toEqual([3]);
+    const swapped: MotionPlan = { shots: [{ shot: 1, pieces: [{ kind: "title", text: "IGNORED" }] }, twice.shots[1]!, { shot: 3, pieces: [{ kind: "title", text: "EGGS COST MORE" }] }] };
+    const answers = [twice, twice, twice, swapped].map((x) => JSON.stringify(x));
+    const seen: string[] = [];
+    const r = await motionPlan(three, async (p) => (seen.push(p), answers.shift() ?? ""));
+    expect(r.problems).toEqual([]);
+    expect(r.plan!.shots[0]).toEqual(good.shots[0]);
+    expect(r.plan!.shots[2]!.pieces[0]!.kind).toBe("title");
+    expect(seen[3]).toMatch(/shot 3 repeats a kind of piece/);
   });
 });
 

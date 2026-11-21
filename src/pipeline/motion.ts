@@ -227,6 +227,8 @@ export function pieceProblems(p: Piece, where: string): string[] {
     case "ticker":
       need(Boolean(str(p.name).trim()) && !tooLong(p.name, 14), "a ticker needs name, at most 14 characters");
       need(Boolean(str(p.value).trim()) && !tooLong(p.value, 9), "a ticker needs value, at most 9 characters");
+      // A ticker is for a price or a market move, never a feeling (test run 44859311055: "Doubt", "-August").
+      need(/\d/.test(str(p.value)) && (!str(p.change).trim() || /\d/.test(str(p.change))), "a ticker is only for a price or a market move: its value and change are numbers, like $156B and +12%");
       need(!tooLong(p.change, 8), "a ticker's change is at most 8 characters, like +12%");
       need(!tooLong(p.label, 24), "a ticker's label is at most 24 characters");
       break;
@@ -327,8 +329,35 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
       return { plan, problems };
     }
   }
+  // Whole new plans keep bringing a repeat back (calorie ad, test run
+  // 44856457525: icon in shots 2, 6 and 11 on all three tries). When repeats
+  // are all that's wrong, keep the plan and swap only the repeated shots.
+  const again = best.plan ? repeatedShots(best.plan) : [];
+  if (best.plan && again.length && best.problems.every((x) => REPEAT.test(x))) {
+    const used = new Set(best.plan.shots.flatMap((sh) => sh.pieces.map((x) => x.kind)));
+    const free = KINDS.filter((k) => k !== "app" && !used.has(k));
+    const fixed = await replanShots(best.plan, again, shots, ask, style, log, `This plan is right except that shot${again.length > 1 ? "s" : ""} ${again.join(", ")} repeat${again.length > 1 ? "" : "s"} a kind of piece another shot already uses, and every kind of piece may appear once. Give ${again.length > 1 ? "each of those shots a different one" : "that shot one"} of the kinds not used yet (${free.join(", ")}) that shows its line plainly; keep every other shot exactly as it is.`);
+    if (fixed) {
+      log?.(`Motion plan passed after swapping the repeated shots ${again.join(", ")}.`);
+      return { plan: fixed, problems: [] };
+    }
+  }
   log?.(`The motion plan still has problems after ${MOTION_TRIES} tries: ${best.problems.slice(0, 4).join(" ")}`);
   return best;
+}
+
+const REPEAT = /^The (?!app )\S+ piece is used \d+ times/;
+
+/** Every shot that uses a kind of piece an earlier shot already used (the product's screen aside). */
+export function repeatedShots(plan: MotionPlan): number[] {
+  const seen = new Set<string>();
+  const out: number[] = [];
+  for (const sh of [...plan.shots].sort((a, b) => a.shot - b.shot)) {
+    const kinds = sh.pieces.map((x) => x.kind).filter((k) => k !== "app");
+    if (kinds.some((k) => seen.has(k))) out.push(sh.shot);
+    for (const k of kinds) seen.add(k);
+  }
+  return out;
 }
 
 /**
@@ -336,11 +365,12 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
  * other shot kept exactly as it was (test run 44843234773: a stock ticker for
  * "it's only agreed in principle"). Null when no new plan passes the checks.
  */
-export async function replanShots(plan: MotionPlan, bad: number[], shots: Shot[], ask: Ask, style = "", log?: (m: string) => void): Promise<MotionPlan | null> {
+export async function replanShots(plan: MotionPlan, bad: number[], shots: Shot[], ask: Ask, style = "", log?: (m: string) => void, why?: string): Promise<MotionPlan | null> {
   const which = bad.map((n) => `shot ${n} ("${shots[n - 1]?.line ?? shots[n - 1]?.onScreenText ?? ""}")`).join(", ");
   let problems: string[] = [];
   for (let t = 1; t <= MOTION_TRIES; t++) {
-    const note = `This is the plan that was rendered: ${JSON.stringify(plan)} Viewers of the finished video said the picture for ${which} doesn't show what the voice says. Give those shots pieces that show exactly that, plainly, at a glance; keep every other shot exactly as it is. Reply with the whole plan.${problems.length ? ` Your last plan was refused: ${problems.join(" ")}` : ""}`;
+    const ask1 = why ?? `Viewers of the finished video said the picture for ${which} doesn't show what the voice says. Give those shots pieces that show exactly that, plainly, at a glance; keep every other shot exactly as it is.`;
+    const note = `This is the plan${why ? "" : " that was rendered"}: ${JSON.stringify(plan)} ${ask1} Reply with the whole plan.${problems.length ? ` Your last plan was refused: ${problems.join(" ")}` : ""}`;
     const next = motionFrom(await ask(stagePrompt(5, { SHOTS: shotList(shots), STYLE: style, ICONS: ICONS.join(", "), PROBLEMS: note }, "motion")).catch(() => ""));
     // Only the flagged shots may change.
     const merged: MotionPlan | null = next ? { shots: plan.shots.map((s) => (bad.includes(s.shot) ? next.shots.find((x) => x.shot === s.shot) ?? s : s)) } : null;

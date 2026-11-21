@@ -56,7 +56,7 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   44837502299). 2 of 3 must retell the story right without being confused,
   and no shot may be named by 2 or more of them in their PICTURES line as a
   picture that doesn't show what the voice says (when that is all that
-  failed, those shots are redrawn once, or in a graphics Reel given new
+  failed, those shots are redrawn, up to twice, or in a graphics Reel given new
   motion-kit pieces with the rest of the plan kept, and the new video is
   judged again by fresh viewers);
 - a separate judge (Claude looking at our key frames) scores art, text
@@ -357,7 +357,7 @@ The pieces (every field not marked optional is required):
 - flow: {"kind":"flow","from":"Anthropic staff","to":"Charity","value":"$80B"} Money or things pour from one name down into another. value (optional) at most 9 characters, names at most 22. For who gives what to whom.
 - split: {"kind":"split","title":"…","parts":[{"name":"The fund","value":5},{"name":"Everyone else","value":95}],"unit":"%","highlight":0} One long bar that splits into 2 to 4 coloured parts, with a legend. For how something is divided.
 - calendar: {"kind":"calendar","month":"Nov","day":"20","weekday":"Thursday","label":"IPO day"} A desk calendar flips to the date. Give day or weekday (or both). For when something happens.
-- ticker: {"kind":"ticker","name":"ANTHROPIC","value":"$156B","change":"+12%","label":"valuation"} A stock-market card with a chart that draws itself and a scrolling tape; change starting with - turns it red. For a price, a valuation or a market move.
+- ticker: {"kind":"ticker","name":"ANTHROPIC","value":"$156B","change":"+12%","label":"valuation"} A stock-market card with a chart that draws itself and a scrolling tape; change starting with - turns it red. Only for a price, a valuation or a market move: value and change are numbers (code checks this).
 - meter: {"kind":"meter","value":81.3,"of":156,"prefix":"$","unit":"B","label":"raised so far"} A thermometer that fills toward a goal. For progress toward a target.
 - chat: {"kind":"chat","title":"Messages","messages":["Wait, how much?","$156 billion."]} A phone with 1 to 3 text bubbles popping in (each at most 40 characters). For a question people are asking or a reaction.
 - stamp: {"kind":"stamp","text":"APPROVED","title":"IPO filing","color":"green"} A rubber stamp slams onto a document. text at most 12 characters; color red (default) or green. For a verdict, a ruling or a big yes or no.
