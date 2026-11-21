@@ -284,11 +284,27 @@ const POST_COLUMNS = `"id","platform","productId","productName","ideaId","kind",
 
 export type NewPost = Pick<Post, "productId" | "productName" | "ideaId" | "kind" | "angle" | "headline" | "subline" | "caption" | "hashtags" | "theme" | "sourceUrl">;
 
-// The key that seals the Instagram token in the database: only the
-// specialist's run (which has the database's own token) can open it.
-function sealKey(): Buffer {
+// The key that seals the Instagram token in the database. SOCIAL_SEAL_KEY is
+// the specialist's own secret (security check, 2026-11-21): with it set, the
+// shared Vault database token alone no longer opens the stored Instagram token.
+// Without it, the old key (made from the database token) keeps working.
+export function legacySealKey(): Buffer {
   const secret = process.env.VAULT_DATABASE_AUTH_TOKEN?.trim() || process.env.VAULT_DATABASE_URL?.trim() || "";
   return createHash("sha256").update(`social-media-specialist:${secret}`).digest();
+}
+
+export function sealKey(): Buffer {
+  const own = process.env.SOCIAL_SEAL_KEY?.trim();
+  return own ? createHash("sha256").update(`social-seal:${own}`).digest() : legacySealKey();
+}
+
+/** Opens a stored token with the current key, or the old one; says when it needs sealing again. */
+export function unsealStored(sealed: string): { token: string; reseal: boolean } | null {
+  const token = unseal(sealed);
+  if (token !== null) return { token, reseal: false };
+  if (!process.env.SOCIAL_SEAL_KEY?.trim()) return null;
+  const old = unseal(sealed, legacySealKey());
+  return old === null ? null : { token: old, reseal: true };
 }
 
 export function seal(text: string, key = sealKey()): string {
@@ -465,6 +481,21 @@ export class Vault {
     });
   }
 
+  /**
+   * The Latest Update box on the specialist's Vault page (security check, 2026-11-21): the repo's
+   * LATEST_UPDATE.json, kept in SocialStatus under its own id. Writes only when it changed.
+   */
+  async saveLatestUpdate(json: string, now = new Date()): Promise<boolean> {
+    await this.ensureTables();
+    const rs = await this.db.execute(`SELECT "snapshot" FROM "SocialStatus" WHERE "id" = 'latest-update'`);
+    if (rs.rows[0] && String(rs.rows[0].snapshot) === json) return false;
+    await this.db.execute({
+      sql: `INSERT INTO "SocialStatus" ("id","ok","snapshot","updatedAt") VALUES ('latest-update',1,?,?) ON CONFLICT("id") DO UPDATE SET "snapshot" = excluded."snapshot", "updatedAt" = excluded."updatedAt"`,
+      args: [json, vaultNow(now)],
+    });
+    return true;
+  }
+
   async latestStatus(): Promise<{ ok: boolean; snapshot: SocialSnapshot; updatedAt: string } | null> {
     await this.ensureTables();
     const rs = await this.db.execute(`SELECT * FROM "SocialStatus" WHERE "id" = 'social'`);
@@ -610,8 +641,13 @@ export class Vault {
     const rs = await this.db.execute(`SELECT * FROM "SocialToken" WHERE "id" = 'instagram'`);
     const r = rs.rows[0];
     if (!r) return null;
-    const token = unseal(String(r.sealed));
-    return token ? { token, seed: String(r.seed), expiresAt: iso(r.expiresAt), refreshedAt: iso(r.refreshedAt) ?? "" } : null;
+    const opened = unsealStored(String(r.sealed));
+    if (!opened) return null;
+    if (opened.reseal) {
+      // Sealed with the old key: lock it again with SOCIAL_SEAL_KEY.
+      await this.db.execute({ sql: `UPDATE "SocialToken" SET "sealed" = ? WHERE "id" = 'instagram'`, args: [seal(opened.token)] });
+    }
+    return { token: opened.token, seed: String(r.seed), expiresAt: iso(r.expiresAt), refreshedAt: iso(r.refreshedAt) ?? "" };
   }
 
   async saveToken(token: string, seed: string, expiresAt: Date | null, now = new Date()): Promise<void> {

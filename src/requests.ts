@@ -11,11 +11,15 @@ import { vaultNow, type Post, type Vault } from "./vault.ts";
 const ROLE = [
   "You are the Social Media Specialist of Wright AI Solutions, Thomas's AI employee that runs his business Instagram account.",
   "Every morning you draft Instagram posts about his products (from the Vault's Product table) or about ideas he gave you: a caption, hashtags, and an image with a headline and a screenshot of the product's own site. Each draft waits for Thomas on the Social Media Specialist page in the Vault. When he approves one there, it's scheduled on his posting days at his posting time (Arizona), and the hourly run posts it through Instagram's API.",
-  "You never post anything he didn't approve on the Vault page, and you can't approve by phone: he needs to see the image. If he asks you to approve or post one, tell him to tap Approve on the page.",
+  "The one exception is the Reels pipeline's own Reels: five a day (7, 10, 13, 16 and 19 Arizona time; explainers, satisfying clips and one ad), each posted on its own to Instagram and the Facebook Page only when it passed every quality check. Thomas lifted his approval for those on 2026-11-21. Pausing stops them too.",
+  "Drafts on the Vault page still need him: you can't approve or post one by phone, because he needs to see it. If he asks you to approve or post one, tell him to tap Approve on the page.",
   "Posts are in the Vault table SocialPost: state (draft = waiting for him, approved = scheduled for scheduledFor, published, failed = Instagram refused it, error says why, rejected = he turned it down, note says why), productName, headline, caption, likes, comments, reach after it's out. Ideas he asked for are in SocialIdea. Settings (postsPerWeek, postDays 0 = Sunday, postTime Arizona, brief, paused) in SocialSettings.",
   "There's also the Reels content pipeline (stages 0 to 8, each with a gate of checks). SocialStage has each stage's output and gate result (stage 0 is the Insights diagnosis: three reasons the posts underperformed, with numbers). SocialLesson has what it learned (pattern, avoid, check). SocialAction is the History of everything it did (kind, summary, onInstagram, ok, createdAt).",
   "When you read posts to Thomas, say the product and the headline in one sentence each, without links or ids. Times are Arizona time.",
 ].join("\n");
+
+/** Thomas asking, in his own words, for it to start again after a pause. */
+export const ASKS_TO_RESUME = /\b(resume|unpause|un-pause|turn (it |that |posting )?(back )?on|back on|start (it |posting |again|back)|restart|keep posting|carry on)\b/i;
 
 export const VAULT_TABLES = ["SocialPost", "SocialIdea", "SocialSettings", "SocialStatus", "SocialStage", "SocialLesson", "SocialAction"];
 
@@ -89,7 +93,9 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
     },
     resume: {
       description: "Resumes it after a pause. Only when he asks to resume.",
-      async run() {
+      async run(_args, request) {
+        // Only Thomas's own words turn it back on, never text Claude read (security check, 2026-11-21).
+        if (request !== undefined && !ASKS_TO_RESUME.test(request)) throw new Error("only you can turn it back on, so ask me to resume it in those words");
         await vault.saveSettings({ paused: false }, now());
         return "Back on. Approved posts go out at their times, and new drafts come tomorrow morning.";
       },
@@ -109,8 +115,8 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
   // Everything done for Thomas through Hitta goes into the History too.
   for (const [name, action] of Object.entries(actions)) {
     const run = action.run.bind(action);
-    action.run = async (args) => {
-      const done = await run(args);
+    action.run = async (args, request) => {
+      const done = await run(args, request);
       await vault.logAction({ kind: name === "request_post" ? "idea" : name === "turn_down" ? "turned_down" : "settings", summary: `Through Hitta: ${done}`, detail: JSON.stringify(args ?? {}).slice(0, 500) }, now());
       return done;
     };

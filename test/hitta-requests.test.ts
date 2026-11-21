@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createClient } from "@libsql/client";
 import {
   checkReadOnly,
+  checkTables,
   claudeAnswerer,
+  libsqlQueryDb,
   handleHittaRequests,
   spokenAnswer,
   type HittaRequest,
@@ -110,6 +113,30 @@ describe("read-only queries", () => {
   });
 });
 
+describe("tables Hitta may read (security check, 2026-11-21)", () => {
+  const all = ["SocialPost", "SocialToken", "_secret"];
+  it("refuses a table outside the list however it's written", () => {
+    expect(() => checkTables(`SELECT * FROM "SocialPost"`, all, ["SocialPost"])).not.toThrow();
+    expect(() => checkTables(`SELECT * FROM SocialToken`, all, ["SocialPost"])).toThrow(/SocialToken/);
+    expect(() => checkTables(`SELECT * FROM 'SocialToken'`, all, ["SocialPost"])).toThrow(/SocialToken/);
+    expect(() => checkTables(`SELECT * FROM [_secret]`, all, ["SocialPost"])).toThrow(/_secret/);
+    expect(() => checkTables(`SELECT * FROM pragma_table_list`, all, ["SocialPost"])).toThrow();
+    expect(() => checkTables(`SELECT name FROM pragma_table_info('SocialPost')`, all, ["SocialPost"])).toThrow();
+  });
+
+  it("knows the tables whose names start with _ too", async () => {
+    const client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE "SocialPost" ("id" TEXT)`);
+    await client.execute(`CREATE TABLE "_secret" ("v" TEXT)`);
+    await client.execute(`INSERT INTO "_secret" VALUES ('x')`);
+    const db = libsqlQueryDb(client, ["SocialPost"], "");
+    await db.load();
+    await expect(db.query(`SELECT * FROM "_secret"`)).rejects.toThrow(/_secret/);
+    await expect(db.query(`SELECT * FROM 'SocialPost'`)).resolves.toEqual([]);
+    expect(db.describe).not.toContain("_secret");
+  });
+});
+
 describe("answering with Claude", () => {
   const request = req("req_1", "How many emails did you send today?", "2026-10-15T18:00:00Z");
 
@@ -183,5 +210,21 @@ describe("answering with Claude", () => {
   it("gives up when Claude never answers", async () => {
     const answerer = claudeAnswerer({ role: "r", facts: async () => ({}), databases: {}, actions: {}, ask: async () => "no json here" });
     await expect(answerer(request)).rejects.toThrow("couldn't work out an answer");
+  });
+});
+
+describe("Claude subprocesses (security check, 2026-11-21)", () => {
+  it("get only what the CLI needs, never the run's secrets", async () => {
+    const { claudeEnv, claudeArgs } = await import("../src/hitta-requests.ts");
+    const env = claudeEnv({
+      PATH: "/bin", HOME: "/home/runner", CLAUDE_CODE_OAUTH_TOKEN: "oauth", LANG: "C.UTF-8",
+      VAULT_DATABASE_AUTH_TOKEN: "v", VAULT_DATABASE_URL: "u", INSTAGRAM_ACCESS_TOKEN: "i", HITTA_API_KEY: "h", YOUTUBE_REFRESH_TOKEN: "y",
+      YOUTUBE_CLIENT_SECRET: "c", META_APP_SECRET: "m", ELEVENLABS_API_KEY: "e", GITHUB_TOKEN: "g", ACTIONS_RUNTIME_TOKEN: "a", SOCIAL_SEAL_KEY: "s",
+    });
+    expect(Object.keys(env).sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "HOME", "LANG", "PATH"]);
+    // No tools unless named; Read never reaches the process files.
+    expect(claudeArgs({ model: "sonnet" })).toEqual(expect.arrayContaining(["--tools", ""]));
+    const read = claudeArgs({ model: "sonnet", tools: ["Read"], maxTurns: 40 });
+    expect(read.join(" ")).toMatch(/--tools Read --allowedTools Read --disallowedTools Read\(\/\/proc\/\*\*\)/);
   });
 });

@@ -64,6 +64,12 @@ export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt
   d.log(`${reels.length} Reels on Instagram; ${result.planned.length} to upload to YouTube, ${result.already} already there, ${reels.length - result.planned.length - result.already} skipped as asked.`);
   for (const m of result.planned) d.log(`  ${m.timestamp.slice(0, 10)}  ${m.id}  ${m.permalink ?? ""}  "${titleFromCaption(m.caption).slice(0, 70)}"`);
   if (!d.go) return result;
+  // The Vault's Pause stops this too (security check, 2026-11-21).
+  if ((await d.vault.settings()).paused) {
+    d.log("Paused on the Vault page, so nothing was uploaded. Resume it there first.");
+    result.planned = [];
+    return result;
+  }
 
   for (const m of result.planned) {
     const title = titleFromCaption(m.caption);

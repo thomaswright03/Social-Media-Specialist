@@ -59,6 +59,7 @@ jobs:
     env:
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
       VAULT_DATABASE_AUTH_TOKEN: ${{ secrets.VAULT_DATABASE_AUTH_TOKEN }}
+      SOCIAL_SEAL_KEY: ${{ secrets.SOCIAL_SEAL_KEY }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       HITTA_API_KEY: ${{ secrets.HITTA_API_KEY }}
       INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
@@ -80,25 +81,27 @@ jobs:
       # Scheduled runs post; a run by hand posts only when asked.
       REEL_POST: ${{ (github.event_name == 'schedule' || inputs.post) && 'on' || 'off' }}
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN SOCIAL_SEAL_KEY CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
           done
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # Installs run other people's code: none of the secrets, no install scripts (security check, 2026-11-21).
+      - run: env -i PATH="$PATH" HOME="$HOME" npm ci --ignore-scripts
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: env -i PATH="$PATH" HOME="$HOME" npm install -g @anthropic-ai/claude-code@2.1.330
 
       # First, before anything long: Hitta waits on the phone for these
       # answers (CLAUDE.md). A failure here never stops the Reel.
@@ -109,7 +112,7 @@ jobs:
       - name: Check ffmpeg
         run: command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -119,11 +122,11 @@ jobs:
       - name: Install WhisperX
         continue-on-error: true
         run: |
-          pip install --quiet -r pipeline/align/requirements.txt
-          python -m nltk.downloader -q punkt_tab
+          env -i PATH="$PATH" HOME="$HOME" pip install --quiet -r pipeline/align/requirements.txt
+          env -i PATH="$PATH" HOME="$HOME" python -m nltk.downloader -q punkt_tab
 
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: env -i PATH="$PATH" HOME="$HOME" npx playwright install --with-deps chromium
 
       - name: social reel ${{ matrix.format }}
         id: reel
@@ -132,7 +135,7 @@ jobs:
       # The Reel and what the judge saw, posted or not, so Thomas can watch it.
       - name: Keep the Reel
         if: always() && steps.reel.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reel-${{ matrix.format }}
           path: |

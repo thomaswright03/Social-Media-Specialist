@@ -175,8 +175,8 @@ export type Action = {
   description: string;
   /** Arguments it takes, for Claude, e.g. `{"project": "name"}`. */
   args?: string;
-  /** Does it and returns a short sentence on what happened. Throws if it can't. */
-  run(args: Record<string, unknown>): Promise<string>;
+  /** Does it and returns a short sentence on what happened. Throws if it can't. `request` is what Thomas asked, word for word. */
+  run(args: Record<string, unknown>, request?: string): Promise<string>;
 };
 
 export type QueryDb = {
@@ -252,12 +252,14 @@ export function checkReadOnly(sql: string): string {
 /** Refuses a query that names any table outside `allowed` (e.g. credentials or sign-in sessions). */
 export function checkTables(sql: string, allTables: string[], allowed: string[]): void {
   const ok = new Set(allowed.map((t) => t.toLowerCase()));
-  const code = sql.replace(/'(?:[^']|'')*'/g, "''");
-  if (/sqlite_|information_schema|pg_catalog/i.test(code)) throw new Error("system tables aren't available");
+  // The whole text, quoted parts included: SQLite reads FROM 'SocialToken' as
+  // the table SocialToken (security check, 2026-11-21).
+  if (/sqlite_|information_schema|pg_catalog/i.test(sql)) throw new Error("system tables aren't available");
+  if (/\bpragma_\w+/i.test(sql)) throw new Error("that function isn't allowed");
   for (const table of allTables) {
     if (ok.has(table.toLowerCase())) continue;
     const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`(^|[^\\w])${escaped}($|[^\\w])`, "i").test(code)) throw new Error(`the table ${table} isn't available to me`);
+    if (new RegExp(`(^|[^\\w])${escaped}($|[^\\w])`, "i").test(sql)) throw new Error(`the table ${table} isn't available to me`);
   }
 }
 
@@ -281,7 +283,7 @@ export function libsqlQueryDb(client: Client, allowed: string[] | "all", note: s
     },
     // Tables and columns, read from the database itself so they never drift.
     async load() {
-      const rs = await client.execute(`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_%' ESCAPE '\\' ORDER BY name`);
+      const rs = await client.execute(`SELECT name, sql FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name`);
       allTables = rs.rows.map((r) => String(r.name));
       const shown = rs.rows.filter((r) => allowed === "all" || allowed.some((a) => a.toLowerCase() === String(r.name).toLowerCase()));
       self.describe = [
@@ -368,7 +370,7 @@ export function claudeAnswerer(opts: ClaudeAnswererOptions): Answerer {
       const action = opts.actions[step.action.name];
       if (!action) return `Sorry, I didn't do that, because ${ACTION_NOT_ALLOWED}.`;
       try {
-        const done = await action.run(step.action.args ?? {});
+        const done = await action.run(step.action.args ?? {}, request.request);
         return step.answer.trim() ? step.answer : done;
       } catch (err) {
         return `I tried, but it didn't work: ${reason(err)}.`;
@@ -391,17 +393,35 @@ export function askClaudeReading(dir: string): (prompt: string) => Promise<strin
   return (prompt) => runClaude(prompt, { model: process.env.PIPELINE_CLAUDE_MODEL || "sonnet", cwd: dir, maxTurns: 40, tools: ["Read"], timeoutMs: 15 * 60_000 });
 }
 
-const NO_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task,Agent,NotebookEdit,TodoWrite";
+/**
+ * What a Claude subprocess may see of the environment: what the CLI needs to
+ * run and sign in, nothing else. The run's own secrets (the Vault database,
+ * Instagram, Hitta, YouTube, Meta, ElevenLabs, GitHub) never reach a model that
+ * reads other people's text (security check, 2026-11-21).
+ */
+const CLAUDE_ENV = /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LC_[A-Z]+|TERM|TZ|TMPDIR|TMP|TEMP|CI|XDG_[A-Z_]+|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR|ANTHROPIC_[A-Z_]+|CLAUDE_CODE_[A-Z_]+|DISABLE_[A-Z_]+)$/;
+const SECRET_NAME = /(VAULT_|INSTAGRAM_|FACEBOOK_|META_|YOUTUBE_|HITTA_|ELEVENLABS_|GITHUB_|GH_|ACTIONS_)/;
+export function claudeEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([k, v]) => v !== undefined && CLAUDE_ENV.test(k) && !SECRET_NAME.test(k)));
+}
+
+/** Read stays inside the folder it was given: never the process files, where the parent's environment is. */
+export const READ_DENY = "Read(//proc/**),Read(//sys/**),Read(//dev/**)";
+
+/** The CLI's arguments: only the tools named (none by default), by allow-list. */
+export function claudeArgs(o: { model: string; maxTurns?: number; tools?: string[] }): string[] {
+  const tools = o.tools?.length ? ["--tools", o.tools.join(","), "--allowedTools", o.tools.join(","), "--disallowedTools", READ_DENY] : ["--tools", ""];
+  return ["-p", "--model", o.model, "--output-format", "json", "--max-turns", String(o.maxTurns ?? 1), ...tools, "--strict-mcp-config", "--no-session-persistence"];
+}
 
 function runClaude(prompt: string, o: { model: string; cwd?: string; maxTurns?: number; tools?: string[]; timeoutMs?: number }): Promise<string> {
   const bin = process.env.HITTA_CLAUDE_BIN || "claude";
-  // With no tools wanted, none are offered: a one-turn call that reaches for a
-  // tool ends without an answer (error_max_turns).
-  const tools = o.tools?.length ? ["--allowedTools", o.tools.join(",")] : ["--disallowedTools", NO_TOOLS];
-  const args = ["-p", "--model", o.model, "--output-format", "json", "--max-turns", String(o.maxTurns ?? 1), ...tools, "--no-session-persistence"];
+  // With no tools wanted, none are offered (--tools ""), so the model can only answer.
+  const args = claudeArgs(o);
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       cwd: o.cwd ?? tmpdir(),
+      env: claudeEnv(),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";

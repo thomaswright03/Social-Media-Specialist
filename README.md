@@ -148,6 +148,7 @@ Actions → New repository secret).
 |---|---|
 | `VAULT_DATABASE_URL` | The Vault's Turso URL (the same value as in the other employees' repos) |
 | `VAULT_DATABASE_AUTH_TOKEN` | The Vault's Turso token (the same value as in the other employees' repos) |
+| `SOCIAL_SEAL_KEY` | Any long random string, used only here. It locks the Instagram and Page token the specialist keeps in the Vault database, so the shared Vault token alone can't open it. Until it's set, the old lock (made from `VAULT_DATABASE_AUTH_TOKEN`) is used; the first run with it locks the token again. Keep it: without it the token is fetched again from `INSTAGRAM_ACCESS_TOKEN`. |
 | `VAULT_PUBLIC_URL` | The Vault's own web address, like `https://your-vault.vercel.app`. Instagram fetches each image from it. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token` on your computer |
 | `HITTA_API_KEY` | A new key for a "Social Media Specialist" employee in Hitta |

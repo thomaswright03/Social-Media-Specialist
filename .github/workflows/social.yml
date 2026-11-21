@@ -58,6 +58,7 @@ jobs:
       # The Vault's Turso database (the same values as the other employees').
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
       VAULT_DATABASE_AUTH_TOKEN: ${{ secrets.VAULT_DATABASE_AUTH_TOKEN }}
+      SOCIAL_SEAL_KEY: ${{ secrets.SOCIAL_SEAL_KEY }}
       # The Vault's public address, like https://your-vault.vercel.app. Instagram
       # fetches each post's image from it.
       VAULT_PUBLIC_URL: ${{ secrets.VAULT_PUBLIC_URL }}
@@ -109,8 +110,9 @@ jobs:
       # one into the morning run. A run by hand does what it was asked.
       COMMAND: ${{ github.event_name == 'schedule' && 'hourly' || inputs.command || 'run' }}
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       # One marker per UTC day, saved after the day's morning run (even a
       # failed one, so a broken run tells Thomas once a day, not every hour).
       - name: Today's date
@@ -122,7 +124,7 @@ jobs:
       - name: Has today's morning run happened?
         id: marker
         if: github.event_name == 'schedule'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .social-daily-marker
           key: social-daily-${{ steps.today.outputs.date }}
@@ -137,7 +139,7 @@ jobs:
       # Pasted secrets can pick up line breaks or spaces. Strip them.
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN SOCIAL_SEAL_KEY VAULT_PUBLIC_URL CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
@@ -183,13 +185,14 @@ jobs:
             echo "yes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.go.outputs.yes == 'true'
         with:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # Installs run other people's code: none of the secrets, no install scripts (security check, 2026-11-21).
+      - run: env -i PATH="$PATH" HOME="$HOME" npm ci --ignore-scripts
         if: steps.go.outputs.yes == 'true'
 
       # Reads the length of each video for the diagnosis and the research,
@@ -201,7 +204,7 @@ jobs:
       # WhisperX times the narrator's words from the audio itself (forced
       # alignment, pipeline/align); without it stage 5 uses the speech
       # service's own stamps, so a failed install never stops the run.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         if: steps.go.outputs.yes == 'true' && env.COMMAND == 'produce'
         with:
           python-version: "3.12"
@@ -212,19 +215,19 @@ jobs:
         if: steps.go.outputs.yes == 'true' && env.COMMAND == 'produce'
         continue-on-error: true
         run: |
-          pip install --quiet -r pipeline/align/requirements.txt
-          python -m nltk.downloader -q punkt_tab
+          env -i PATH="$PATH" HOME="$HOME" pip install --quiet -r pipeline/align/requirements.txt
+          env -i PATH="$PATH" HOME="$HOME" python -m nltk.downloader -q punkt_tab
 
       # Writes the drafts and answers Hitta's requests.
       - name: Install Claude Code
         if: steps.go.outputs.yes == 'true' && (env.COMMAND != 'hourly' || steps.work.outputs.requests != '0')
-        run: npm install -g @anthropic-ai/claude-code
+        run: env -i PATH="$PATH" HOME="$HOME" npm install -g @anthropic-ai/claude-code@2.1.330
 
       # Makes the post images (a screenshot of the product's site, then the
       # post itself) and draws the Reel's frames.
       - name: Install the browser
         if: steps.go.outputs.yes == 'true' && (env.COMMAND == 'run' || env.COMMAND == 'preview' || env.COMMAND == 'produce')
-        run: npx playwright install --with-deps chromium
+        run: env -i PATH="$PATH" HOME="$HOME" npx playwright install --with-deps chromium
 
       # First, before anything long: Hitta waits on the phone for these
       # answers (src/hitta-requests.ts). A failure here never stops the run.
@@ -244,7 +247,7 @@ jobs:
 
       - name: Keep the preview
         if: env.COMMAND == 'preview' && steps.social.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: preview
           path: preview.jpg
@@ -252,7 +255,7 @@ jobs:
       # Stage 1's report for each format studied, even when a gate failed.
       - name: Keep the research
         if: always() && env.COMMAND == 'research' && steps.social.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: research
           path: research/
@@ -262,7 +265,7 @@ jobs:
       # failed, so Thomas can watch it either way.
       - name: Keep the Reel
         if: always() && env.COMMAND == 'produce' && steps.social.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reel
           path: |
@@ -277,7 +280,7 @@ jobs:
 
       - name: Keep the voice test
         if: env.COMMAND == 'voice-test' && steps.social.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: voice-test
           path: voice-test/
@@ -288,7 +291,7 @@ jobs:
 
       - name: Save the marker
         if: always() && env.COMMAND == 'run' && steps.social.outcome != 'skipped'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .social-daily-marker
           key: social-daily-${{ steps.today.outputs.date }}

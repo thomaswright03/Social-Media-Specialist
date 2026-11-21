@@ -16,6 +16,7 @@
 // token pasted into the INSTAGRAM_ACCESS_TOKEN secret wins over the stored
 // one as soon as it changes.
 import { seedOf, type Vault } from "./vault.ts";
+import { maskInLogs } from "./mask.ts";
 import { DAY_MS } from "./time.ts";
 
 export const GRAPH_VERSION = "v23.0";
@@ -571,6 +572,12 @@ export type TokenState = { token: string; expiresAt: string | null; refreshed: b
  * so it never reaches its 60 days. Null when no token is set up.
  */
 export async function currentToken(vault: Vault, opts: { fetchImpl?: Fetch; now?: Date; log?: (m: string) => void } = {}): Promise<TokenState | null> {
+  const state = await currentTokenUnmasked(vault, opts);
+  maskInLogs(state?.token);
+  return state;
+}
+
+async function currentTokenUnmasked(vault: Vault, opts: { fetchImpl?: Fetch; now?: Date; log?: (m: string) => void }): Promise<TokenState | null> {
   const pasted = process.env.INSTAGRAM_ACCESS_TOKEN?.trim();
   if (!pasted) return null;
   const now = opts.now ?? new Date();

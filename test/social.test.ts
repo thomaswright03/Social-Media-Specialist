@@ -5,12 +5,12 @@ import type { HittaReport } from "../src/hitta.ts";
 import type { FacebookPageClient } from "../src/facebook.ts";
 import { currentToken, graphHost, instagramClient, type InstagramClient } from "../src/instagram.ts";
 import type { Renderer } from "../src/render.ts";
-import { pickPost } from "../src/requests.ts";
+import { pickPost, socialAnswerer } from "../src/requests.ts";
 import { nextSlot } from "../src/schedule.ts";
 import { publishDue, runDaily } from "../src/social.ts";
 import { parseSiteProducts, siteProducts } from "../src/site.ts";
 import { call, setRetryMs } from "../src/instagram.ts";
-import { DEFAULT_SETTINGS, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
+import { DEFAULT_SETTINGS, legacySealKey, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
 
 // These tests cover the image posts, which are off by default (Reels only).
 process.env.FEED_IMAGE_POSTS = "on";
@@ -451,6 +451,26 @@ describe("the Instagram token", () => {
     expect(unseal(sealed, Buffer.alloc(32, 8))).toBeNull();
   });
 
+  it("uses its own seal key when set, opens tokens sealed with the old key, and seals them again (security check, 2026-11-21)", async () => {
+    const vault = await memoryVault();
+    process.env.VAULT_DATABASE_AUTH_TOKEN = "db-token";
+    try {
+      await vault.saveToken("ig-token", "seed1", null);
+      process.env.SOCIAL_SEAL_KEY = "own-key";
+      expect((await vault.storedToken())?.token).toBe("ig-token");
+      const db = (vault as unknown as { db: { execute(sql: string): Promise<{ rows: Record<string, unknown>[] }> } }).db;
+      const rs = await db.execute(`SELECT "sealed" FROM "SocialToken"`);
+      // Sealed again with the new key: the database token alone can't open it now.
+      expect(unseal(String(rs.rows[0]?.sealed), legacySealKey())).toBeNull();
+      expect((await vault.storedToken())?.token).toBe("ig-token");
+      delete process.env.SOCIAL_SEAL_KEY;
+      expect(await vault.storedToken()).toBeNull();
+    } finally {
+      delete process.env.SOCIAL_SEAL_KEY;
+      delete process.env.VAULT_DATABASE_AUTH_TOKEN;
+    }
+  });
+
   it("refreshes a week-old token, keeps using the refreshed one, and switches when a new one is pasted", async () => {
     const vault = await memoryVault();
     process.env.INSTAGRAM_ACCESS_TOKEN = "first";
@@ -479,6 +499,22 @@ describe("Hitta", () => {
     expect(pickPost(posts, "the lead finder one")!.id).toBe("b");
     expect(pickPost(posts, "show it before you build it")!.id).toBe("a");
     expect(pickPost(posts, "zzz")).toBeNull();
+  });
+});
+
+describe("Hitta resuming (security check, 2026-11-21)", () => {
+  const resumeStep = async () => JSON.stringify({ answer: "", action: { name: "resume", args: {} } });
+  const noDb = { query: async () => [], describe: "" };
+  const req = (request: string) => ({ id: "req_1", kind: "task" as const, request, asked_at: "2026-11-21T20:00:00Z" });
+
+  it("turns posting back on only when Thomas asks for that himself", async () => {
+    const vault = await memoryVault();
+    await vault.saveSettings({ paused: true });
+    const answer = socialAnswerer({ vault, vaultQueryDb: noDb, ask: resumeStep });
+    expect(await answer(req("what did the last reel say?"))).toMatch(/only you can turn it back on/);
+    expect((await vault.settings()).paused).toBe(true);
+    await answer(req("resume posting please"));
+    expect((await vault.settings()).paused).toBe(false);
   });
 });
 

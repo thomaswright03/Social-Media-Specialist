@@ -15,7 +15,7 @@ import { SITE_URL } from "../site.ts";
 import type { YouTubeClient } from "../youtube.ts";
 import type { Product, Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
-import { CTA, captionLines, check, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
+import { CTA, captionLines, check, contentChecks, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
 import { runIdeas, type IdeasResult } from "./ideas.ts";
 import type { ProduceResult } from "./produce.ts";
 import { learnedChecks, runScript, type ScriptResult } from "./script.ts";
@@ -90,7 +90,9 @@ export async function runPrepublish(d: { vault: Vault; ask: Ask; produced: Produ
   }
   const packaging = packageReel({ format: p.format, caption: p.script?.caption ?? "", shots: p.shots, assets: p.assets });
   const learned = await learnedChecks(d.vault, 6, { caption: packaging.caption, coverText: packaging.coverText, keywords: packaging.keywords }, d.ask);
-  const g = gatePrepublish(p.facts, p.boxes, packaging, learned);
+  // Every word that goes out, checked by code: no person reads it first (contentChecks).
+  const words = [packaging.caption, packaging.coverText, p.script?.caption, ...(p.script?.shots ?? []).flatMap((s) => [s.line, s.onScreenText, s.onScreen]), ...p.shots.map((s) => s.onScreenText), ...p.boxes.map((b) => b.text)];
+  const g = gatePrepublish(p.facts, p.boxes, packaging, [...learned, ...contentChecks(words)]);
   const recordId = await d.vault.saveStage({ stage: 6, subject: p.subject, attempt: 1, passed: g.passed, output: packaging, gate: g, input: { facts: p.facts, boxes: p.boxes.length } }, now());
   const failed = g.checks.filter((c) => !c.passed);
   d.log?.(`Stage 6 (Pre-publish): ${g.passed ? "every check passed" : `${failed.length} checks failed (${failed.map((c) => `${c.name}${c.detail ? `: ${c.detail}` : ""}`).join("; ")})`}.`);

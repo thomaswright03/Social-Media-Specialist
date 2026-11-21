@@ -57,6 +57,7 @@ import { runScript } from "./pipeline/script.ts";
 import { DAILY_FORMATS, runReel, slotFormat } from "./pipeline/reel.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
+import { syncLatestUpdate } from "./latest-update.ts";
 import { Vault } from "./vault.ts";
 import { soundEffect, speak } from "./voice.ts";
 
@@ -277,6 +278,8 @@ async function main() {
       const result = await handleHittaRequests({ answerer: socialAnswerer({ vault, vaultQueryDb, runNow }), log });
       if (result.fetchError) await reportRequestsFailure(vault, result.fetchError);
       if (result.unanswered.length > 0) process.exitCode = 1;
+      // After the requests: the Latest Update box on the Vault page follows LATEST_UPDATE.json.
+      await syncLatestUpdate(vault).catch((err) => log(`Couldn't update the Latest Update box: ${err instanceof Error ? err.message : err}`));
     } finally {
       vault.close();
     }
@@ -316,6 +319,10 @@ async function main() {
       process.exit(2);
     }
     const arg = (process.argv[3] ?? "").trim();
+    if (/^go\b/i.test(arg) && !youtubeOn()) {
+      console.error("YouTube is still off: set the variable YOUTUBE_CROSSPOST to on first (README, \"YouTube Shorts\").");
+      process.exit(2);
+    }
     const skip = (/skip:\s*(.*)$/i.exec(arg)?.[1] ?? "").split(/[\s,]+/).filter(Boolean);
     const vault = connect();
     try {
