@@ -87,6 +87,16 @@ describe("past Instagram Reels onto YouTube", () => {
     expect(yt.calls).toHaveLength(2);
   });
 
+  it("uploads nothing while the specialist is paused (security check, 2026-11-21)", async () => {
+    const vault = await memoryVault();
+    await vault.saveSettings({ paused: true });
+    const yt = fakeYt();
+    const r = await backfillYouTube({ vault, ig: fakeIg(), yt: yt.client, log: () => {}, skip: [], go: true, fetchImpl: cdn, now: NOW });
+    expect(r.uploaded).toHaveLength(0);
+    expect(yt.calls).toHaveLength(0);
+    expect(await vault.actions()).toHaveLength(0);
+  });
+
   it("skips a Reel publishDue already sent to YouTube", async () => {
     const vault = await memoryVault();
     const post = await vault.addPost({ productId: null, productName: null, ideaId: null, kind: "reel", angle: "Reel", headline: "Robots", subline: null, caption: "c", hashtags: [], theme: "ink", sourceUrl: "repo:posts/reels/a.mp4" }, Buffer.from([1]), NOW);

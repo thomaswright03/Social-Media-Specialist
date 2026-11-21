@@ -12,6 +12,7 @@
 // Nothing here writes to Instagram. A passed run replaces the format's
 // earlier patterns in the Vault and is recorded in the History.
 import { spawn } from "node:child_process";
+import { claudeArgs, claudeEnv } from "../hitta-requests.ts";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -71,7 +72,8 @@ export function askClaudeWithFiles(dir: string): (prompt: string) => Promise<str
   return (prompt) =>
     new Promise((resolve, reject) => {
       const bin = process.env.HITTA_CLAUDE_BIN || "claude";
-      const child = spawn(bin, ["-p", "--model", process.env.PIPELINE_CLAUDE_MODEL || "sonnet", "--output-format", "json", "--max-turns", "40", "--allowedTools", "Read", "--no-session-persistence"], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
+      // Only Read, inside `dir`, and none of the run's secrets (claudeEnv): this model reads other creators' posts.
+      const child = spawn(bin, claudeArgs({ model: process.env.PIPELINE_CLAUDE_MODEL || "sonnet", maxTurns: 40, tools: ["Read"] }), { cwd: dir, env: claudeEnv(), stdio: ["pipe", "pipe", "pipe"] });
       let out = "";
       let err = "";
       const timer = setTimeout(() => child.kill("SIGTERM"), 15 * 60_000);
@@ -292,6 +294,23 @@ export function reportText(f: Findings, gate: GateResult): string {
  * follow clearly more often, the patterns kept, and what a few winners were
  * about. Rules winners break stay out of it: those are Thomas's to decide.
  */
+/**
+ * A line that came from other people's Reels, made safe to put in a prompt
+ * (security check, 2026-11-21): one line, no tags or brackets, no links or
+ * handles, and short. A creator's caption can carry instructions; what's left
+ * is a description, not a place to hide one.
+ */
+export function outsideLine(s: string, max: number): string {
+  const one = s
+    .replace(/[<>{}\[\]`]/g, " ")
+    .replace(/\b(https?:\/\/|www\.)\S+/gi, " ")
+    .replace(/\b[a-z0-9][a-z0-9-]*\.(com|net|org|io|ai|co|app|xyz|me|ly|gg|tv|us|link)\b\S*/gi, " ")
+    .replace(/(^|[^a-z0-9._])@[a-z0-9._]{2,30}/gi, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return one.length > max ? `${one.slice(0, max - 1).replace(/\s+\S*$/, "")}…` : one;
+}
+
 export async function researchBrief(vault: Vault, format: Format): Promise<string> {
   const row = await vault.latestStage(1, { subject: subjectOf(format), passedOnly: true });
   const f = row?.output as Findings | null | undefined;
@@ -299,7 +318,7 @@ export async function researchBrief(vault: Vault, format: Format): Promise<strin
   if (!f?.reels) {
     // Until this format has been studied: the story patterns from the first version, for stories only.
     const legacy = format === "story" ? lessons.filter((l) => l.source === LEGACY_SOURCE) : [];
-    return legacy.map((l) => `- ${l.text}`).join("\n") || "(none yet)";
+    return legacy.map((l) => `- ${outsideLine(l.text, 240)}`).join("\n") || "(none yet)";
   }
   const patterns = lessons.filter((l) => l.source === patternSource(format));
   const backed = verdictRows(f, "backed");
@@ -309,9 +328,9 @@ export async function researchBrief(vault: Vault, format: Format): Promise<strin
   const parts = [
     head,
     backed.length ? `Rules of ours that winners follow clearly more often than average Reels:\n${backed.map((r) => `- ${rowText(r)}`).join("\n")}` : "",
-    patterns.length ? `Leads from a small blind check (winners showed these more often than average Reels; worth trying, not rules):\n${patterns.map((l) => `- ${l.text}${l.evidence ? ` (${l.evidence})` : ""}`).join("\n")}` : "",
+    patterns.length ? `Leads from a small blind check (winners showed these more often than average Reels; worth trying, not rules):\n${patterns.map((l) => `- ${outsideLine(l.text, 240)}${l.evidence ? ` (${outsideLine(l.evidence, 200)})` : ""}`).join("\n")}` : "",
     !backed.length && !patterns.length ? "It found no clear difference between winners and average Reels yet, so there is no pattern to lean on." : "",
-    about.length ? `What some of the winners were about (to show the kind of thing, never to copy):\n${about.map((r) => `- ${r.labels!.premise!.trim()} (${r.lift} times its account's usual)`).join("\n")}` : "",
+    about.length ? `What some of the winners were about (to show the kind of thing, never to copy):\n${about.map((r) => `- ${outsideLine(r.labels!.premise!, 140)} (${r.lift} times its account's usual)`).join("\n")}` : "",
   ];
   return parts.filter(Boolean).join("\n\n");
 }

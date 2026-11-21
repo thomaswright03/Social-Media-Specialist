@@ -11,6 +11,8 @@
 
 type Fetch = typeof fetch;
 
+import { maskInLogs } from "./mask.ts";
+
 export const YT_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const YT_UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos";
 export const YT_API = "https://www.googleapis.com/youtube/v3";
@@ -95,6 +97,7 @@ export function youtubeClient(creds: YouTubeCreds, opts: { fetchImpl?: Fetch } =
     if (!res.ok) throw new YouTubeError(`Google refused the YouTube sign-in: ${await errorText(res)}. The refresh token may need replacing (README, "YouTube").`, res.status);
     const json = (await res.json()) as { access_token?: string; expires_in?: number };
     if (!json.access_token) throw new YouTubeError("Google gave no YouTube access token.", res.status);
+    maskInLogs(json.access_token);
     access = { token: json.access_token, until: Date.now() + (json.expires_in ?? 3600) * 1000 };
     return access.token;
   }

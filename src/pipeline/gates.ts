@@ -568,6 +568,44 @@ export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, le
   ]);
 }
 
+/**
+ * What an automatic post may say (security check, 2026-11-21). Since Thomas
+ * lifted his approval, no person reads a Reel before it goes out, and its words
+ * are partly shaped by text other people wrote (news articles, other creators'
+ * captions). So code, not a prompt, refuses a link, a web address, an @handle,
+ * an email, a phone number or a "DM us/me" anywhere in the caption, the cover,
+ * the on-screen text or the narration, apart from the company's own site and
+ * accounts. A Reel that fails it doesn't post that slot.
+ */
+const CONTACT: { what: string; re: RegExp }[] = [
+  { what: "a link", re: /\b(https?:\/\/|www\.)\S+/i },
+  { what: "a web address", re: /\b[a-z0-9][a-z0-9-]*\.(com|net|org|io|ai|co|app|xyz|me|info|biz|ly|gg|tv|us|link|site|online|shop|store|dev)\b(\/\S*)?/i },
+  { what: "an email address", re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i },
+  { what: "an @handle", re: /(^|[^a-z0-9._])@[a-z0-9._]{2,30}/i },
+  { what: "a phone number", re: /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/ },
+  { what: "a DM ask", re: /\b(dm|direct message|message|text|whatsapp|telegram)\s+(us|me)\b/i },
+];
+/** The company's own site and accounts, which posts may name. */
+const OURS = /\b(https?:\/\/)?(www\.)?wright-ai-solutions\.com(\/\S*)?|@wright_?ai_?solutions(_?llc)?\b/gi;
+
+/** Every outside link, address, handle, email, phone number or DM ask in these texts. */
+export function outsideContacts(texts: (string | null | undefined)[]): string[] {
+  const found: string[] = [];
+  for (const raw of texts) {
+    const t = (raw ?? "").replace(OURS, " ");
+    for (const c of CONTACT) {
+      const m = t.match(c.re);
+      if (m) found.push(`${c.what}: "${m[0].trim().slice(0, 40)}"`);
+    }
+  }
+  return [...new Set(found)];
+}
+
+export function contentChecks(texts: (string | null | undefined)[]): Check[] {
+  const found = outsideContacts(texts);
+  return [check("No outside links, web addresses, @handles, emails, phone numbers or DM asks", found.length === 0, found.slice(0, 4).join("; ") || undefined)];
+}
+
 // --- Stage 7: Test small ------------------------------------------------------
 
 export type Variant = { id: string; postedAt: string; durationSeconds: number; reach: number | null; skipRate: number | null; avgWatchSeconds: number | null; shares: number | null };

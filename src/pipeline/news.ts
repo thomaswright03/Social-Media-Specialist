@@ -32,15 +32,20 @@ type Fetch = (url: string) => Promise<string>;
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”", mdash: "—", ndash: "–", hellip: "…" };
 
-/** Tags and entities out, whitespace squeezed. */
-export function plainText(html: string): string {
-  return html
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+const decode = (s: string) =>
+  s
     .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&([a-z]+);/gi, (all, e: string) => ENTITIES[e.toLowerCase()] ?? all)
+    .replace(/&([a-z]+);/gi, (all, e: string) => ENTITIES[e.toLowerCase()] ?? all);
+
+/**
+ * Tags and entities out, whitespace squeezed. Entities are decoded before tags
+ * are stripped (twice, for double encoding), so an encoded tag like
+ * &lt;/sources&gt; in an article can't come out as a real tag in a prompt.
+ */
+export function plainText(html: string): string {
+  const stripTags = (s: string) => s.replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ").replace(/<\/?[a-z!?/][^>]*>/gi, " ");
+  return stripTags(decode(stripTags(decode(stripTags(html.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1"))))))
     .replace(/\s+/g, " ")
     .trim();
 }

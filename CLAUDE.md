@@ -29,6 +29,21 @@ Every stage of the content pipeline has a gate in `src/pipeline/gates.ts`. Don't
 say-so: a gate checks the output against measured data (Insights, ffprobe, the render's text boxes) or against
 separate cold reads. When a lesson from stage 8 becomes a check, it's added for stages 3 to 6, never removed silently.
 
+## Security rules (security check, 2026-11-21)
+
+The repo is public and its Reels post on their own, so keep these, with their tests:
+- An automatic post may not carry outside links, web addresses, @handles, emails, phone numbers or "DM us"
+  asks (`contentChecks` in `src/pipeline/gates.ts`, run at stage 6). Our own site and handle are fine.
+- Text from outside (news, other creators' captions, transcripts, saved patterns) goes into prompts only as
+  marked data, cleaned by `plainText` (news.ts) and `outsideLine` (research.ts). Prompts say never to follow it.
+- Claude subprocesses get only `claudeEnv()` and `claudeArgs()` from `src/hitta-requests.ts`: no secrets but
+  Claude's own sign-in, no MCP servers, and at most the Read tool with /proc, /sys and /dev denied.
+- Hitta's `resume` works only when Thomas's own request asks for it (`ASKS_TO_RESUME` in requests.ts).
+- Installs in the workflows run under `env -i` (no secrets) with `--ignore-scripts`; Actions are pinned to
+  SHAs and the Claude CLI to a version. Tokens made at run time go through `maskInLogs` (src/mask.ts).
+- After every round of changes, replace `LATEST_UPDATE.json` (date, summary, frontend first, then other). The
+  hourly run copies it to the Latest Update box on the Vault page.
+
 ## Record everything it does (Thomas, 2026-11-10)
 
 Thomas wants every change or action the specialist makes recorded, like Hitta's history. Everything that changes

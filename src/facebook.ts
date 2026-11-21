@@ -4,6 +4,7 @@
 // (FACEBOOK_CROSSPOST=off turns that off), a Reel as a Page Reel. Every write is logged by its
 // caller through vault.logAction.
 import { call, FB_HOST, findPage, GRAPH_VERSION, graphHost, InstagramError, RUPLOAD_HOST } from "./instagram.ts";
+import { maskInLogs } from "./mask.ts";
 
 type Fetch = typeof fetch;
 
@@ -83,7 +84,10 @@ export function facebookPageClient(token: string, opts: { fetchImpl?: Fetch; pag
     if (!page) throw new InstagramError("The Facebook token doesn't reach any Page.", null, null);
     if (!pageId) pageId = page.id;
     // Page writes need the Page's own token.
-    if (page.id === pageId && page.accessToken) pageToken = page.accessToken;
+    if (page.id === pageId && page.accessToken) {
+      pageToken = page.accessToken;
+      maskInLogs(pageToken);
+    }
     resolved = true;
     return pageId;
   }
