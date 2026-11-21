@@ -5,12 +5,14 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const creds = { clientId: "cid", clientSecret: "secret", refreshToken: "rt" };
 
 describe("YouTube Shorts", () => {
-  it("is off until the client id, secret and refresh token are all set, and YOUTUBE_CROSSPOST=off stops it", () => {
+  it("is off until the client id, secret and refresh token are all set and YOUTUBE_CROSSPOST is on (waiting for Google's audit)", () => {
     expect(youtubeCreds({ YOUTUBE_CLIENT_ID: "a", YOUTUBE_CLIENT_SECRET: "b" })).toBeNull();
     const env = { YOUTUBE_CLIENT_ID: " a ", YOUTUBE_CLIENT_SECRET: "b", YOUTUBE_REFRESH_TOKEN: "c\n" };
     expect(youtubeCreds(env)).toEqual({ clientId: "a", clientSecret: "b", refreshToken: "c" });
-    expect(youtubeOn(env)).toBe(true);
+    expect(youtubeOn(env)).toBe(false);
+    expect(youtubeOn({ ...env, YOUTUBE_CROSSPOST: " On " })).toBe(true);
     expect(youtubeOn({ ...env, YOUTUBE_CROSSPOST: "off" })).toBe(false);
+    expect(youtubeOn({ YOUTUBE_CROSSPOST: "on" })).toBe(false);
   });
 
   it("titles a Short with its headline and #Shorts, within 100 characters, and tags it with the hashtags", () => {

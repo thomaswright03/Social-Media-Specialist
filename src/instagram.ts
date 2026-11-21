@@ -2,8 +2,9 @@
 // Facebook Login when INSTAGRAM_GRAPH_HOST is graph.facebook.com). It only
 // posts what Thomas approved on the Vault page: social.ts calls publishImage
 // for an approved post whose time has come. The one exception is the content
-// pipeline's Trial Reels (CLAUDE.md): src/pipeline/reel.ts calls
-// publishReelFile only when mayAutoPost says yes.
+// pipeline's own Reels (CLAUDE.md; Thomas lifted the approval gate for them on
+// 2026-11-21): src/pipeline/reel.ts calls publishReelFile only when
+// mayAutoPost says yes.
 //
 // Publishing is two steps: make a media container from the image's public
 // URL and the caption, wait until Instagram has fetched the image, then

@@ -647,13 +647,14 @@ export function gateLearn(l: Learning | null, resultsLogged: boolean, expected?:
 // --- Posting -------------------------------------------------------------------
 
 /**
- * Thomas chose automatic Trial Reels only (2026-11-10): a pipeline video may
- * go out without his OK only as a Trial Reel (non-followers), and only when
- * every stage-6 check passed. Anything else waits for him on the Vault page.
+ * Thomas lifted the approval gate for the pipeline's own Reels (2026-11-21:
+ * "I want the AI to post 5 times a day with variety of content. It can start
+ * doing so without my approval. I am lifting that gate."). A pipeline Reel
+ * goes out on its own as a normal Reel, but only when every stage-6 check
+ * passed and the specialist isn't paused (the pause on the Vault page stops it).
  */
-export function mayAutoPost(v: { trial: boolean; prepublish: GateResult | null; paused: boolean }): { ok: boolean; why: string } {
+export function mayAutoPost(v: { prepublish: GateResult | null; paused: boolean }): { ok: boolean; why: string } {
   if (v.paused) return { ok: false, why: "the specialist is paused" };
-  if (!v.trial) return { ok: false, why: "only Trial Reels go out on their own; this one waits for Thomas" };
   if (!v.prepublish) return { ok: false, why: "the pre-publish checks haven't run" };
   if (!v.prepublish.passed) return { ok: false, why: `pre-publish checks failed: ${v.prepublish.checks.filter((c) => !c.passed).map((c) => c.name).join("; ")}` };
   return { ok: true, why: "every pre-publish check passed" };

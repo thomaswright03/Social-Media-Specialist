@@ -64,9 +64,9 @@ Never urgent. Normal:
 
 Thomas wants it to make the Reels and post them for him, performance first:
 nine stages with gates (`pipeline/README.md`). Stage 0, the Insights
-diagnosis, runs today (`social diagnose`). A finished Reel goes out on its own
-only as a Trial Reel (non-followers), and only when every pre-publish check
-passes; showing it to followers stays his call in the Instagram app.
+diagnosis, runs today (`social diagnose`). Five finished Reels a day go out
+on their own (Thomas lifted his approval for them on 2026-11-21) as normal
+Reels and on the Facebook Page, each only when every pre-publish check passes.
 
 What it learns from (stage 1, `social research`): for each format, two or
 three other accounts (`pipeline/research/accounts.json`). It compares each

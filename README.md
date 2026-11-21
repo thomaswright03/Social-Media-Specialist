@@ -2,10 +2,11 @@
 
 Thomas's AI employee that runs his business Instagram. Every morning it
 drafts posts about his products (a caption, hashtags, and an image with a
-headline and a real screenshot of the product's own site). **Nothing goes
-out until Thomas approves it** on the Vault's AI Employees → Social Media
-Specialist page; then it's posted through Instagram's own API at his posting
-time. What it does and doesn't do is in [docs/ROLE.md](docs/ROLE.md).
+headline and a real screenshot of the product's own site). **Those drafts
+don't go out until Thomas approves them** on the Vault's AI Employees → Social
+Media Specialist page; then they're posted through Instagram's own API at his
+posting time. Its own Reels, five a day, post on their own when they pass
+every check (Thomas lifted his approval for them on 2026-11-21). What it does and doesn't do is in [docs/ROLE.md](docs/ROLE.md).
 
 It runs on GitHub Actions (`.github/workflows/social.yml`), so it works with
 Thomas's computer off.
@@ -38,6 +39,12 @@ Thomas's computer off.
    added as a draft by `social reel-drafts`) is approved the same way; its video
    is uploaded from the repo as a normal Reel, and the same video goes up as a
    Reel on the Facebook Page (a Page refusal is logged, never retried).
+4. **Five Reels a day, on their own** (`.github/workflows/reels.yml`,
+   `social reel slot`; Thomas lifted his approval for these on 2026-11-21):
+   7am explainer, 10am satisfying, 1pm ad, 4pm explainer, 7pm satisfying
+   (Arizona). Each goes through the pipeline's gates (`pipeline/README.md`)
+   and posts as a normal Reel, then to the Facebook Page, only if every check
+   passes. Pause on the Vault page stops them.
 
 Approving on the page puts the post on the next posting day (Monday,
 Wednesday and Friday by default) at the posting time (11:30 Arizona by
@@ -129,7 +136,8 @@ apply for the audit (YouTube API Services audit form) right after setup.
    Advanced → continue). Step 2 → Exchange: copy the **refresh token**.
 5. Secrets `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`,
    `YOUTUBE_REFRESH_TOKEN`, then run `youtube-test`: it prints the channel
-   and uploads nothing. The variable `YOUTUBE_CROSSPOST` = `off` stops uploads.
+   and uploads nothing. Nothing uploads until the variable `YOUTUBE_CROSSPOST`
+   is `on` (Thomas is waiting for Google's audit first); `off` stops it again.
 
 ### Secrets
 

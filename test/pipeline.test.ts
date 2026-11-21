@@ -92,14 +92,13 @@ describe("Instagram reels", () => {
   });
 });
 
-describe("only Trial Reels go out on their own", () => {
+describe("a pipeline Reel goes out on its own only when it passed (Thomas lifted the approval gate, 2026-11-21)", () => {
   const passed = { passed: true, checks: [{ name: "x", passed: true }] };
-  it("needs a trial, every pre-publish check, and not paused", () => {
-    expect(mayAutoPost({ trial: true, prepublish: passed, paused: false }).ok).toBe(true);
-    expect(mayAutoPost({ trial: false, prepublish: passed, paused: false }).ok).toBe(false);
-    expect(mayAutoPost({ trial: true, prepublish: null, paused: false }).ok).toBe(false);
-    expect(mayAutoPost({ trial: true, prepublish: { passed: false, checks: [{ name: "Loudness", passed: false }] }, paused: false }).why).toContain("Loudness");
-    expect(mayAutoPost({ trial: true, prepublish: passed, paused: true }).ok).toBe(false);
+  it("needs every pre-publish check, and not paused", () => {
+    expect(mayAutoPost({ prepublish: passed, paused: false }).ok).toBe(true);
+    expect(mayAutoPost({ prepublish: null, paused: false }).ok).toBe(false);
+    expect(mayAutoPost({ prepublish: { passed: false, checks: [{ name: "Loudness", passed: false }] }, paused: false }).why).toContain("Loudness");
+    expect(mayAutoPost({ prepublish: passed, paused: true }).ok).toBe(false);
   });
 });
 

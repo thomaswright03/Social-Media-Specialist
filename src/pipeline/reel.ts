@@ -1,14 +1,18 @@
-// One Reel from idea to Instagram, with no one in the loop (Thomas,
-// 2026-11-20: "1 explainer and 1 satisfying and 1 ad per day"). Stages 2
-// to 6 run in a row, each behind its own gate; a stage that doesn't pass
-// stops the Reel for the day. It posts only as a Trial Reel (non-followers;
-// graduation_strategy MANUAL, so followers see it only when Thomas says so
-// in the app) and only when mayAutoPost says yes (CLAUDE.md). A failed post
-// is logged, never retried. Every step goes on the History, with the Claude
-// tokens the Reel used.
+// One Reel from idea to Instagram, with no one in the loop. Thomas,
+// 2026-11-21: "I want the AI to post 5 times a day with variety of content.
+// It can start doing so without my approval. I am lifting that gate." Five
+// slots a day (DAILY_SLOTS), each its own format. Stages 2 to 6 run in a row,
+// each behind its own gate; a stage that doesn't pass stops that slot's Reel.
+// It posts as a normal Reel, then the same video to the Facebook Page (and to
+// YouTube once that's on), only when mayAutoPost says yes (CLAUDE.md). A failed
+// post is logged, never retried. Every step goes on the History, with the
+// Claude tokens the Reel used.
 import { readFile } from "node:fs/promises";
 import { usageMark, usageSince, usageText, type ClaudeUsage } from "../claude-usage.ts";
+import { pageText, type FacebookPageClient } from "../facebook.ts";
 import type { InstagramClient } from "../instagram.ts";
+import { SITE_URL } from "../site.ts";
+import type { YouTubeClient } from "../youtube.ts";
 import type { Product, Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
 import { CTA, captionLines, check, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
@@ -18,8 +22,32 @@ import { learnedChecks, runScript, type ScriptResult } from "./script.ts";
 
 type Ask = (prompt: string) => Promise<string>;
 
-/** The formats made every day, in the order they run. */
+/** The formats the daily runs make. */
 export const DAILY_FORMATS = ["explainer", "satisfying", "ad"] as const satisfies readonly Format[];
+
+/**
+ * The five posts a day (Thomas, 2026-11-21), at these Arizona hours, mixed so
+ * no two in a row are the same and one in five is an ad (the 80/20 mix in
+ * formats.ts). reels.yml starts one run a few minutes after each hour.
+ */
+export const DAILY_SLOTS = [
+  { hour: 7, format: "explainer" },
+  { hour: 10, format: "satisfying" },
+  { hour: 13, format: "ad" },
+  { hour: 16, format: "explainer" },
+  { hour: 19, format: "satisfying" },
+] as const satisfies readonly { hour: number; format: Format }[];
+
+/**
+ * The slot a scheduled run is for: the latest one that has started in Arizona
+ * (UTC-7 all year), so a run GitHub starts late still makes its own slot's
+ * format. Before the first slot it's the evening one from the day before.
+ */
+export function slotFormat(now: Date): Format {
+  const hour = new Date(now.getTime() - 7 * 3600_000).getUTCHours();
+  const started = DAILY_SLOTS.filter((s) => s.hour <= hour);
+  return (started.at(-1) ?? DAILY_SLOTS.at(-1)!).format;
+}
 
 /** A call to action for captions that have none (Instagram's gate wants one). */
 export const CTA_LINE: Record<Format, string> = {
@@ -105,6 +133,10 @@ export async function runReel(d: {
   produce: (subject: string) => Promise<ProduceResult>;
   /** Null: nothing can post (no token); the Reel is still made and checked. */
   client: InstagramClient | null;
+  /** The Facebook Page the same Reel goes to after Instagram (null: off or no Page). */
+  page?: FacebookPageClient | null;
+  /** YouTube, once it's on (null until then). */
+  youtube?: YouTubeClient | null;
   /** False: make and check the Reel but post nothing (a test run). */
   post: boolean;
   ideas?: typeof runIdeas;
@@ -119,10 +151,10 @@ export async function runReel(d: {
   const name = d.format === "ad" ? "ad" : d.format;
   const done = async (r: Omit<ReelRun, "usage" | "format">): Promise<ReelRun> => {
     const usage = usageSince(mark);
-    const outcome = r.posted ? `posted as a Trial Reel${r.posted.permalink ? ` (${r.posted.permalink})` : ""}` : `not posted: ${r.problem}`;
+    const outcome = r.posted ? `posted${r.posted.permalink ? ` (${r.posted.permalink})` : ""}` : `not posted: ${r.problem}`;
     log(`Daily ${name}: ${outcome}. Used ${usageText(usage)}.`);
     await d.vault
-      .logAction({ kind: "stage", summary: `Daily ${name} Reel: ${r.posted ? "posted as a Trial Reel" : `stopped at stage ${r.stage}`}. Used ${usageText(usage)}.`, detail: r.problem, target: r.subject, ok: Boolean(r.posted) || !d.post }, now())
+      .logAction({ kind: "stage", summary: `Daily ${name} Reel: ${r.posted ? "posted" : `stopped at stage ${r.stage}`}. Used ${usageText(usage)}.`, detail: r.problem, target: r.subject, ok: Boolean(r.posted) || !d.post }, now())
       .catch(() => {});
     return { ...r, format: d.format, usage };
   };
@@ -145,20 +177,50 @@ export async function runReel(d: {
   // Stage 6: the pre-publish checks.
   const pre = await runPrepublish({ vault: d.vault, ask: d.ask, produced, log, now });
   const paused = (await d.vault.settings()).paused;
-  const may = mayAutoPost({ trial: true, prepublish: pre.gate, paused });
+  const may = mayAutoPost({ prepublish: pre.gate, paused });
   if (!may.ok || !pre.packaging) return done({ subject: ideas.subject, stage: 6, posted: null, problem: may.why });
   if (!d.post) return done({ subject: ideas.subject, stage: 6, posted: null, problem: "a test run: every check passed, nothing was posted" });
   if (!d.client?.publishReelFile) return done({ subject: ideas.subject, stage: 6, posted: null, problem: "no Instagram token to post with" });
 
-  // Post once, as a Trial Reel. A failure is logged and never retried.
+  // Post once, as a normal Reel. A failure is logged and never retried.
+  let video: Uint8Array;
+  let posted: { mediaId: string; permalink: string | null };
   try {
-    const video = await (d.readVideo ?? ((f) => readFile(f)))(produced.video);
-    const r = await d.client.publishReelFile(video, pre.packaging.caption, { trial: "MANUAL", ...(pre.packaging.thumbOffsetMs !== null ? { thumbOffsetMs: pre.packaging.thumbOffsetMs } : {}) });
-    await d.vault.logAction({ kind: "posted", summary: `Posted a ${name} Trial Reel to Instagram. Only non-followers see it until you share it with your followers in the app.`, detail: r.permalink ?? r.mediaId, target: ideas.subject, onInstagram: true }, now());
-    return done({ subject: ideas.subject, stage: 6, posted: { mediaId: r.mediaId, permalink: r.permalink }, problem: null });
+    video = await (d.readVideo ?? ((f) => readFile(f)))(produced.video);
+    const r = await d.client.publishReelFile(video, pre.packaging.caption, pre.packaging.thumbOffsetMs !== null ? { thumbOffsetMs: pre.packaging.thumbOffsetMs } : {});
+    posted = { mediaId: r.mediaId, permalink: r.permalink };
+    await d.vault.logAction({ kind: "posted", summary: `Posted a ${name} Reel to Instagram (it passed every check; you lifted the approval step on Nov 21).`, detail: r.permalink ?? r.mediaId, target: ideas.subject, onInstagram: true }, now());
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Trial Reel; Instagram refused it. It won't be tried again.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
+    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Reel; Instagram refused it. It won't be tried again.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
     return done({ subject: ideas.subject, stage: 6, posted: null, problem: `Instagram refused it: ${error}` });
   }
+
+  // The same video on the Facebook Page and YouTube. A refusal there is logged, never retried, and never undoes Instagram.
+  const text = pageText(pre.packaging.caption, SITE_URL());
+  const title = pre.packaging.caption.split("\n")[0]!.replace(/#[\p{L}\p{N}_]+/gu, "").trim() || "Wright AI Solutions";
+  const elsewhere: [string, () => Promise<string | null>][] = [];
+  if (d.page?.publishReelFile) {
+    const page = d.page;
+    elsewhere.push(["the Facebook Page", async () => {
+      const fb = await page.publishReelFile!(video, text);
+      return fb.permalink ?? fb.videoId;
+    }]);
+  }
+  if (d.youtube) {
+    const yt = d.youtube;
+    elsewhere.push(["YouTube as a Short", async () => (await yt.uploadShort(video, { title, description: text, tags: pre.packaging!.keywords })).url]);
+  }
+  for (const [where, send] of elsewhere) {
+    try {
+      const at = await send();
+      log(`Posted the ${name} Reel to ${where}${at ? `: ${at}` : ""}.`);
+      await d.vault.logAction({ kind: "posted", summary: `Posted the ${name} Reel to ${where}.`, detail: at, target: ideas.subject, onInstagram: true }, now());
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      log(`Posted the ${name} Reel to Instagram, but ${where.replace(/ as a Short$/, "")} refused it: ${error}`);
+      await d.vault.logAction({ kind: "post_failed", summary: `Posted the ${name} Reel to Instagram, but ${where.replace(/ as a Short$/, "")} refused it.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
+    }
+  }
+  return done({ subject: ideas.subject, stage: 6, posted, problem: null });
 }
