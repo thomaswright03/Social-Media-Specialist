@@ -80,6 +80,8 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
   it("counts toward the finish, then names it", () => {
     expect(counterText({ kind: "escape-rings" }, 5, null, false)).toBe("5 RINGS LEFT");
     expect(counterText({ kind: "escape-rings" }, 0, null, true)).toBe("FREE!");
+    expect(counterText({ kind: "growing-ball" }, 1, null, false)).toBe("1 BOUNCE");
+    expect(counterText({ kind: "escape-rings" }, 1, null, false)).toBe("1 RING LEFT");
     expect(counterText({ kind: "race" }, 0, null, false)).toBe("LAP 1 OF 3");
     expect(counterText({ kind: "race" }, 1, null, false)).toBe("LAP 2 OF 3");
     // The winner is named by the colour actually drawn, whatever names the plan gave (test run 3 said "PURPLE WINS!" on neon).
