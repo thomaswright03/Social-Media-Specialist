@@ -231,5 +231,6 @@ describe("the Page's website link", () => {
   it("adds the website once, at the bottom", () => {
     expect(pageText("Hi\n\n#a ", "https://wright-ai-solutions.com/")).toBe("Hi\n\n#a\n\n👉 https://wright-ai-solutions.com");
     expect(pageText("See wright-ai-solutions.com", "https://wright-ai-solutions.com/")).toBe("See wright-ai-solutions.com");
+    expect(pageText("Link in bio to try it free.", "https://wright-ai-solutions.com")).toBe("Link below to try it free.\n\n👉 https://wright-ai-solutions.com");
   });
 });
