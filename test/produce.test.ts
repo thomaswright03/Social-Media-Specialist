@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cameraFor, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
+import { cameraFor, CAP_MAX_HEIGHT, CAPTION_TOP, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
 import { endQuestionText, keyFrameNumbers, mismatchedShots, picturesLine, picturesVote } from "../src/pipeline/produce.ts";
 import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
+import { SAFE } from "../src/pipeline/gates.ts";
 
 const shapes = '<rect width="1080" height="1920" fill="#0b0d12"/><circle cx="540" cy="900" r="40"/><line x1="0" y1="0" x2="1" y2="1"/><path d="M0 0"/><rect x="1" y="1" width="2" height="2"/><ellipse cx="1" cy="1" rx="1" ry="1"/>';
 const good = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">${shapes}</svg>`;
@@ -164,6 +165,14 @@ describe("timeline", () => {
     expect(html).toContain(good);
     expect(html).not.toContain("<WHO'S");
     expect(html).toContain("window.render");
+  });
+
+  it("shrinks a long caption so it stays above Instagram's bottom buttons", () => {
+    expect(CAPTION_TOP + CAP_MAX_HEIGHT).toBe(1920 - SAFE.bottom);
+    const t = timeline([{ start: 0, end: 2, line: "Police database reportedly" }], [{ seconds: 1, words: [{ word: "Police", start: 0, end: 0.3 }] }]);
+    const html = composeHtml(t, [good]);
+    expect(html).toContain(`cap.offsetHeight>${CAP_MAX_HEIGHT}`);
+    expect(html).toContain("fitCap(cap,");
   });
 
   it("takes key frames from the first shot and spread through the rest", () => {

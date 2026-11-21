@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
-import { END_CARD, type Shot, type TextBox } from "./gates.ts";
+import { END_CARD, SAFE, type Shot, type TextBox } from "./gates.ts";
 import { motionRuntime, type ShotMotion } from "./motion.ts";
 
 export const W = 1080;
@@ -23,6 +23,10 @@ export const ONE_TAKE_TAIL = 0.18;
 export const LIME = "#a3e635";
 /** The one caption band: below the action, above Instagram's bottom UI (the art keeps faces and the action out of it). */
 export const CAPTION_TOP = 1290;
+/** The caption's own size, the smallest it shrinks to, and the most it may fill: down to Instagram's bottom UI (1920 - SAFE.bottom). */
+export const CAP_FONT = 88;
+export const CAP_MIN_FONT = 56;
+export const CAP_MAX_HEIGHT = 1920 - SAFE.bottom - CAPTION_TOP;
 /** The small label for on-screen text that adds something the voice doesn't say (a name, a time). */
 /** The brand header on every Reel (Thomas, 2026-11-20): the name, the site under it. */
 export const BRAND = { name: "Wright AI Solutions", site: "wright-ai-solutions.com" } as const;
@@ -214,7 +218,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #flash{position:absolute;inset:0;z-index:6;background:#fff;opacity:0}
 #label{position:absolute;z-index:7;left:0;right:0;top:${LABEL_TOP}px;text-align:center;opacity:0}
 #label span{display:inline-block;max-width:820px;font-family:Montserrat,sans-serif;font-weight:800;font-size:46px;line-height:1.15;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:rgba(10,12,18,.72);padding:10px 26px;border-radius:14px}
-#cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:88px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
+#cap{position:absolute;z-index:7;left:80px;right:160px;top:${CAPTION_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:${CAP_FONT}px;line-height:1.08;color:#fff;text-transform:uppercase;letter-spacing:-.01em;-webkit-text-stroke:2px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.85),0 2px 0 rgba(0,0,0,.5)}
 #cap b{color:${LIME};font-weight:900}
 #phys{position:absolute;inset:0;z-index:3}
 #pcount{position:absolute;z-index:7;left:0;right:0;top:${PHYS_COUNTER_TOP}px;text-align:center;font-family:Montserrat,sans-serif;font-weight:900;font-size:60px;color:#fff;letter-spacing:.02em;text-shadow:0 4px 14px rgba(0,0,0,.85)}
@@ -289,7 +293,9 @@ const TR=${TRANSITION};
 const CHUNKS=${scriptJson(chunks)};
 const ease=(x)=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
 const esc=(s)=>s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
-let shown=-1, capKey=null, labelText=null;
+let shown=-1, capKey=null, capFrom=null, labelText=null;
+// A caption chunk shrinks until it fits two lines inside the band, so it never reaches Instagram's buttons and caption (test run 44940643406: "POLICE DATABASE REPORTEDLY" wrapped to 3 lines).
+function fitCap(cap,html){ cap.innerHTML=html; let f=${CAP_FONT}; cap.style.fontSize=f+'px'; while(f>${CAP_MIN_FONT}&&(cap.offsetHeight>${CAP_MAX_HEIGHT}||cap.scrollWidth>cap.clientWidth+1)){ f-=4; cap.style.fontSize=f+'px'; } }
 window.render=(t)=>{
   let i=SHOTS.findIndex(s=>t>=s.at&&t<s.at+s.dur); if(i<0) i=SHOTS.length-1;
   const s=SHOTS[i], local=t-s.at, p=Math.min(1,local/s.dur);
@@ -323,7 +329,7 @@ window.render=(t)=>{
   const cap=document.getElementById('cap');
   const c=CHUNKS.find(c=>t>=c.from&&t<c.to);
   if(!c){ if(capKey!==null){ cap.innerHTML=''; capKey=null; } }
-  else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
+  else { let cur=-1; c.words.forEach((w,k)=>{ if(t>=w.s) cur=k; }); const key=c.from+':'+cur; if(key!==capKey){ if(capFrom!==c.from){ capFrom=c.from; fitCap(cap,c.words.map(w=>esc(w.w)).join(' ')); } cap.innerHTML=c.words.map((w,k)=>k===cur?'<b>'+esc(w.w)+'</b>':esc(w.w)).join(' '); capKey=key; }
     const cp=Math.min(1,(t-c.from)/.12); cap.style.transform='scale('+(0.9+0.1*ease(cp))+')'; }
   const pc=document.getElementById('pcount'); if(pc&&window.physRender){ const ct=window.physRender(t); if(pc.dataset.k!==ct){ pc.innerHTML=ct?'<span>'+esc(ct)+'</span>':''; pc.dataset.k=ct; } }
   const END_AT=SHOTS.length?SHOTS[SHOTS.length-1].at+(${endQuestion ? "0" : "SHOTS[SHOTS.length-1].dur"}):0, ec=document.getElementById('endcard');
