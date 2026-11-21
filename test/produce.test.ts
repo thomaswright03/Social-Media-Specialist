@@ -200,3 +200,14 @@ describe("redrawing the shots a viewer says don't match the voice", () => {
     expect(picturesVote(["PICTURES: fine", "PICTURES: fine", "PICTURES: fine"], 13)).toEqual({ ok: true, shots: [] });
   });
 });
+
+describe("the judge's answer", () => {
+  it("counts only an answer with a score for every axis (test run 44871794672)", async () => {
+    const { hasScores } = await import("../src/pipeline/produce.ts");
+    expect(hasScores({ ours: { art: 4, readability: 4, voice: 3, sound: 3 } })).toBe(true);
+    expect(hasScores({ ours: { art: 4, readability: 4, sound: 3 } })).toBe(true);
+    expect(hasScores({ seen: { ours: "x" } })).toBe(false);
+    expect(hasScores(null)).toBe(false);
+  });
+});
+

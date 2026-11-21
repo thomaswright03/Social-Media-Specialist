@@ -21,6 +21,8 @@ describe("stage 2: ideas", () => {
     expect(isYes("Yes, definitely")).toBe(true);
     expect(isYes("No")).toBe(false);
     expect(coldPrompt("A man wakes up as a stick figure.")).toContain("A man wakes up");
+    expect(coldPrompt("A man wakes up as a stick figure.")).not.toMatch(/audience|product is for/);
+    expect(coldPrompt("Trying to be healthy?", { id: "x", name: "Free Calorie Counter", description: "A free calorie tracker.", url: "https://x.example/" })).toMatch(/one of the people this product is for.*Free Calorie Counter, A free calorie tracker\./s);
   });
 
   it("starts with a story, keeps 3 that pass the cold reads, and records the format", async () => {
