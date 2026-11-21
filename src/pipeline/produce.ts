@@ -10,13 +10,13 @@ import type { Browser } from "playwright";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
 import { audioSeconds, composeHtml, FPS, MIN_SHOTS_SECONDS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
-import { check, END_CARD, gate, gateProduction, soundCues, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
+import { check, END_CARD, gate, gateProduction, PRODUCTION_AXES, soundCues, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, physicsStory, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
-import { pipelinePath, runStage, stagePrompt } from "./stages.ts";
+import { parseJson, pipelinePath, runStage, stagePrompt } from "./stages.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const KEY_FRAMES = 4;
@@ -57,6 +57,9 @@ export function picturesVote(answers: string[], total: number): { ok: boolean; d
   if (ok) return { ok, shots, ...(fine < lines.length ? { detail: `${fine} of ${lines.length} viewers said every picture fits; no shot was flagged by 2` } : {}) };
   return { ok, shots, detail: shots.length ? `doesn't match the voice: ${shots.join(", ")} (each flagged by 2+ of ${lines.length} viewers)` : `${lines.length - fine} of ${lines.length} viewers said pictures don't fit: ${lines.filter((l) => !l.ok).map((l) => l.detail).join("; ").slice(0, 200)}` };
 }
+
+/** A judgement with a number for every rubric axis (voice may be left out of a Reel with no narrator). */
+export const hasScores = (j: ProductionJudgement | null) => Boolean(j?.ours) && PRODUCTION_AXES.filter((a) => a !== "voice").every((a) => typeof j!.ours![a] === "number");
 
 /**
  * Rounds of redrawing the shots a viewer said don't show what the voice says, before stage 5 gives up.
@@ -438,7 +441,14 @@ export async function runProduce(d: {
       vault: d.vault,
       stage: 5,
       subject: reel.subject,
-      ask: d.judge(judgeDir),
+      // An answer without the scores isn't a verdict: ask once more (test run
+      // 44871794672 failed every rubric line on "?" when the judge's JSON came back in another shape).
+      ask: async (p) => {
+        const first = await d.judge(judgeDir)(p).catch(() => "");
+        if (hasScores(parseJson<ProductionJudgement>(first))) return first;
+        log("The judge's answer had no scores; asking once more.");
+        return d.judge(judgeDir)(p).catch(() => "");
+      },
       prompt: () => stagePrompt(5, { FRAMES: `${ours.join(", ")} (all in this folder; read every one)`, AUDIO_NOTES: notes }),
       gate: (j) => {
         if (j?.seen) log(`The judge saw: ${j.seen.ours ?? "?"}`);

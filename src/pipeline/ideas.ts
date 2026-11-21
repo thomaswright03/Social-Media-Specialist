@@ -16,18 +16,24 @@ import { runStage, stagePrompt, testerPrompt } from "./stages.ts";
 export const COLD_READS = 3;
 export const IDEAS_TRIES = 5;
 
-export const coldPrompt = (sentence: string) => testerPrompt("cold-read", { SENTENCE: sentence });
+/**
+ * An ad is read cold by the people it's for (Thomas's calorie hook, test run
+ * 44871500709: general scrollers said no to "Are you trying to be healthy, but
+ * don't want to pay for an expensive calorie tracking app?").
+ */
+export const coldPrompt = (sentence: string, product?: Product | null) =>
+  testerPrompt("cold-read", { SENTENCE: sentence, AUDIENCE: product ? `It's an ad, and you're one of the people this product is for, the kind of person who would really use it: ${product.name}${product.description ? `, ${product.description.trim().replace(/\.$/, "")}` : ""}. Judge it as that person.` : "" });
 
 export const isYes = (answer: string) => /^\W*yes\b/i.test(answer.trim());
 
 /** Each finalist read cold by COLD_READS separate calls. */
-export async function coldReads(x: Ideas | null, ask: (p: string) => Promise<string>): Promise<ColdReads> {
+export async function coldReads(x: Ideas | null, ask: (p: string) => Promise<string>, product?: Product | null): Promise<ColdReads> {
   const out: ColdReads = {};
   for (const id of new Set(x?.finalists ?? [])) {
     const s = x?.pitches?.find((p) => p.id === id)?.sentence;
     if (!s) continue;
     out[id] = [];
-    for (let i = 0; i < COLD_READS; i++) out[id]!.push(isYes(await ask(coldPrompt(s)).catch(() => "")));
+    for (let i = 0; i < COLD_READS; i++) out[id]!.push(isYes(await ask(coldPrompt(s, product)).catch(() => "")));
   }
   return out;
 }
@@ -98,7 +104,7 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
         LESSONS: lessons.length ? `What earlier stages learned:\n${lessons.map((l) => `- (${l.kind}) ${l.text}`).join("\n")}` : "",
         GATE_FAILURES: failures,
       }),
-    gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask), news),
+    gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask, choice.format === "ad" ? choice.product : null), news),
     input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null, ...(news.length ? { news } : {}) },
     // A try is cheap (one call and 9 cold reads) next to a lost day, so 5.
     tries: IDEAS_TRIES,
