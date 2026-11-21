@@ -26,7 +26,7 @@ What you are pitching: one specific, surprising piece of news that changes somet
 - One number carries it.
 - It is framed as the question the viewer would ask themselves: "Why is your grocery bill about to go up?"
 
-A pitch is one sentence that states the news and the open question, with no jargon and no initials a stranger wouldn't know. With each pitch, give `news`: the numbers of the list items it is built on.
+A pitch is one sentence that states the news and the open question, with no jargon and no initials a stranger wouldn't know. Every pitch in your JSON has a `news` field: the numbers of the list items it is built on, at least two from different publishers (`{"id": 1, "sentence": "...", "answer": "...", "news": [3, 7], "hook": 4, ...}`). A pitch without `news` is refused.
 
 Test every pitch before you offer it:
 1. Two-source test. At least two items in the list, from different publishers, report it, and both are dated within the last 14 days. If it has one source, or you can't date it, skip it.
