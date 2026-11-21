@@ -293,7 +293,11 @@ export function motionProblems(plan: MotionPlan | null, shots: Shot[]): string[]
   for (const sh of plan.shots) for (const x of sh.pieces) used.set(x.kind, [...(used.get(x.kind) ?? []), sh.shot]);
   for (const [kind, at] of used) {
     if (kind === "app") continue;
-    if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats.`);
+    if (at.length > 1 && (KINDS as readonly string[]).includes(kind)) {
+      // Name what's left, so the next try can swap without guessing (test run 44843858785 repeated icon three times running).
+      const free = KINDS.filter((k) => k !== "app" && !used.has(k));
+      p.push(`The ${kind} piece is used ${at.length} times (shots ${at.join(", ")}); use each kind of piece once, so no picture repeats. Keep it in shot ${at[0]} and give shot${at.length > 2 ? "s" : ""} ${at.slice(1).join(", ")} one of the kinds not used yet: ${free.join(", ")}.`);
+    }
   }
   // An ad shows the product's screen more than once, but never the same screen twice.
   const apps = plan.shots.flatMap((sh) => sh.pieces.filter((x) => x.kind === "app").map((x) => ({ shot: sh.shot, key: JSON.stringify([x.screen ?? "", x.ring ?? null, x.rows ?? [], x.button ?? ""]) })));

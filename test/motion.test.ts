@@ -91,6 +91,8 @@ describe("variety", () => {
     const s3 = [0, 1, 2].map((i) => ({ start: i, end: i + 1, line: "x", visual: "y" }));
     const icons: MotionPlan = { shots: [1, 2, 3].map((n) => ({ shot: n, pieces: [{ kind: "icon", name: ["heart", "fire", "globe"][n - 1], label: "" }] })) };
     expect(motionProblems(icons, s3).join(" ")).toMatch(/The icon piece is used 3 times \(shots 1, 2, 3\)/);
+    expect(motionProblems(icons, s3).join(" ")).toMatch(/Keep it in shot 1 and give shots 2, 3 one of the kinds not used yet: title, headline, counter/);
+    expect(motionProblems(icons, s3).join(" ")).not.toMatch(/not used yet:[^.]*\bicon\b/);
     const mixed: MotionPlan = { shots: [
       { shot: 1, pieces: [{ kind: "title", text: "WAIT" }] },
       { shot: 2, pieces: [{ kind: "icon", name: "heart", label: "" }, { kind: "title", text: "WHAT" }] },
