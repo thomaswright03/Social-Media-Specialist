@@ -58,8 +58,10 @@ const total = (v: unknown) => n((v as { summary?: { total_count?: unknown } } | 
 export function pageText(caption: string, site: string): string {
   const link = site.replace(/\/+$/, "");
   const bare = link.replace(/^https?:\/\//, "");
-  if (caption.includes(bare)) return caption;
-  return `${caption.trimEnd()}\n\n👉 ${link}`;
+  // A Page has no bio to point at (the 2026-11-21 audit): its "Link in bio" points at the link below instead.
+  const text = caption.replace(/\blink in (?:the |our )?bio\b/gi, (m) => (m[0] === "L" ? "Link below" : "link below"));
+  if (text.includes(bare)) return text;
+  return `${text.trimEnd()}\n\n👉 ${link}`;
 }
 
 /** Cross-posting approved posts to the Page is on unless FACEBOOK_CROSSPOST is "off". */
