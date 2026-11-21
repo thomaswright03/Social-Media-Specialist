@@ -89,6 +89,26 @@ The narrator reads the whole script in one take, with ElevenLabs v3, so write th
 
 Write the narration first, as one piece, before you split it into shots: 80 to 110 words, the way a sharp creator would tell it to a friend who hasn't heard. Full sentences with their verbs, contractions, one turn of phrase that sounds like a person ("Here's the thing", "and that's where it gets weird"). Never a headline fragment ("Metacritic average: 99 out of 100.") and never a sentence missing its noun ("She called it the most explicit."). Then cut it into shots at natural breaks, one beat per shot, so each `line` is a real piece of a sentence someone would say. Read it out loud in your head: if it sounds like a news ticker, rewrite it. The narrator is upbeat (Thomas, 2026-11-19): an energetic creator who can't wait to tell you this, never bored or flat. Give the lines that energy with exclamation points where they're earned, short punchy sentences next to longer ones, and direct talk to the viewer ("you", "okay, picture this"). v3 follows audio tags in square brackets at the start of a line: [curious], [excited], [serious], [whispers], [sighs], [laughs]. Open the first line with an upbeat tag ([excited], [cheerfully], [playfully]), then use one where the delivery should turn, about one every two or three lines, never two in a row of the same. Use [serious] or [whispers] only for a real turn, and come back up after it. Tags aren't counted as words and never appear on screen.
 
+## Voice pacing
+
+The narrator plays a little fast on purpose (Thomas: a quick voice keeps people from scrolling), and the take runs line into line. So the pace comes from how you write the lines and where you leave a beat:
+
+- Mix the lengths. A short punch (3 to 5 words) after a longer line that explains. Never three long lines in a row, and never three short ones in a row, or it sounds like a list.
+- One idea per line. A number gets a line to itself, or ends its line, so it lands ("It now costs $379.99."). Never two numbers in one line.
+- Questions sound like questions: the line ends with "?" and the question is short.
+- `pause`: true after a line where the viewer needs a beat to take it in. Use it in these places only: after the hook's question, right before the twist or the payoff, and before the closing question. 3 at most, and never on the first shot. Code adds a short silence after that line, and checks the count.
+- The energy rises toward the payoff and settles for the closing question. Use the audio tags to show that (an [excited] near the payoff, a [curious] or plain read for the closing question).
+
+## Sound effects
+
+Our own quiet bed (a low pad, room tone) and a soft whoosh on cuts play under every Reel, made by code. A shot's `sound` adds one extra effect on top. Most shots have none: write "none".
+
+- 2 to 4 effects in the whole video, never on two shots in a row. Code checks this, and plays only the first 4.
+- Only where something on screen would really make a sound, and at the moment it happens: a number landing (a soft tick, a ding), a stamp landing (a paper thud), a button tapped (a light click), the reveal or the twist (a soft rise), the product appearing in an ad (a bright pop).
+- Never under a line where nothing happens on screen, never to fill a gap, and never on the closing question: let the voice land.
+- It matches the tone. Serious news gets subtle sounds. No music or jingles (we have none we own), no joke sounds (boing, wobble, cartoon, slide whistle, record scratch), no laughter, applause or crowds, no sirens, alarms or explosions. Code refuses these.
+- Describe it in 2 to 5 plain words ("soft ding", "paper stamp thud", "light phone tap"). It's short, under 2 seconds.
+
 ## The ending
 
 - The story finishes inside this video. `payoff` states the ending that actually happens in the shots, and `caption` never contradicts it.
@@ -115,5 +135,5 @@ Check your own script the way the gate will:
 
 Reply with only JSON: no code fence and no commentary. Write `story` first and make every shot serve it. Include `sources` only for an explainer.
 
-{"story": "what happens, in two plain sentences, exactly as a viewer should understand it", "payoff": "...", "shots": [{"start": 0, "end": 2.5, "place": "the shop", "camera": "wide", "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "sfx or music cue"}], "nextHook": "...", "caption": "...", "sources": [{"url": "https://...", "published": "YYYY-MM-DD", "title": "..."}]}
+{"story": "what happens, in two plain sentences, exactly as a viewer should understand it", "payoff": "...", "shots": [{"start": 0, "end": 2.5, "place": "the shop", "camera": "wide", "visual": "...", "onScreenText": "...", "line": "spoken words or empty", "onScreen": "how the spoken claim is shown, or empty when no line", "sound": "none, or a short effect like soft ding", "pause": false}], "nextHook": "...", "caption": "...", "sources": [{"url": "https://...", "published": "YYYY-MM-DD", "title": "..."}]}
 <!-- /prompt -->

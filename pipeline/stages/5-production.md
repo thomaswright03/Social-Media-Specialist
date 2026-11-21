@@ -41,9 +41,11 @@ How a Reel is made (`social produce`, `src/pipeline/produce.ts`):
   how two people are related) is a small label near the top (y 240). The art
   keeps faces and the action between the label and the caption. All inside
   Instagram's safe area.
-- **Sound:** a sound effect per shot from the script's cue, made by
+- **Sound:** up to 4 sound effects from the script's cues (never two shots
+  running, no music or joke sounds: `soundCues`, Thomas 2026-11-20), made by
   Thomas's ElevenLabs account (REEL_SFX=off skips them), over our own pad,
-  room tone, a slow pulse and whooshes on the cuts made by ffmpeg, ducked
+  room tone, a slow pulse and soft whooshes on the cuts (none where an effect
+  starts) made by ffmpeg; a line marked `pause` gets a short beat after it; ducked
   under the voice and mixed to -14 LUFS. No music anyone else owns.
 - **Render:** headless Chromium draws each frame at 30 fps, ffmpeg makes an
   H.264/AAC mp4.
