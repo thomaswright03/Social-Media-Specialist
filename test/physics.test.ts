@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collisionAudio, counterText, FINISH_WINDOW, physicsPlan, physicsProblems, physicsRuntime, PHYSICS_KINDS, simulate, tuneRun, type PhysicsPlan } from "../src/pipeline/physics.ts";
+import { collisionAudio, counterText, FINISH_WINDOW, physicsPlan, physicsProblems, physicsRuntime, physicsStory, PHYSICS_KINDS, simulate, tuneRun, type PhysicsPlan } from "../src/pipeline/physics.ts";
 import { composeHtml, timeline } from "../src/pipeline/compose.ts";
 
 describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
@@ -106,5 +106,15 @@ describe("satisfying videos as physics (Thomas, 2026-11-20)", () => {
     expect(html).not.toContain('"tr":"whip"');
     // Shown once, as the label: no caption chunks repeating it over the arena (test run 3 printed the hook twice).
     expect(html).toContain("const CHUNKS=[];");
+  });
+
+  it("tells stage 5 what the run really shows, and races are always neon (test run 44841594624)", async () => {
+    const run = simulate({ kind: "race", balls: 4, palette: "neon" }, 20);
+    const story = physicsStory(run);
+    expect(story).toMatch(/^4 glowing balls \(green, pink, blue, yellow\) race/);
+    if (run.winner != null) expect(story).toContain(`${["GREEN", "PINK", "BLUE", "YELLOW"][run.winner]} WINS!`);
+    expect(physicsStory(simulate({ kind: "escape-rings", rings: 5 }, 10))).toMatch(/5 spinning rings/);
+    const r = await physicsPlan([{ start: 0, end: 30, visual: "race" }], "a race", 30, async () => '{"kind":"race","balls":4,"palette":"sunset"}');
+    expect(r.plan?.palette).toBe("neon");
   });
 });

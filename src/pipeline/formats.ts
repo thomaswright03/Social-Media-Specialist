@@ -93,7 +93,10 @@ export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fil
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
 export type FormatDraft = {
   caption: string;
-  shots: { onScreenText?: string; line?: string; start?: number }[];
+  shots: { onScreenText?: string; line?: string; start?: number; visual?: string }[];
+  /** The script's two-sentence story and its payoff. */
+  story?: string;
+  payoff?: string;
   /** Explainers: where each fact comes from. */
   sources?: { url?: string; published?: string; title?: string }[];
 };
@@ -105,7 +108,10 @@ const CALL_TO_ACTION = /\b(link in (my |our )?bio|visit|sign ?up|try it|book|dm 
 export const MADE_WITH_AI = /\b(made|created|generated|animated) (with|by|using) ai\b|\bai[- ](generated|made|animation|video)\b|#aiart|#ai\b/i;
 
 /** Colour words a satisfying video's later on-screen text can't use: the simulation, not the script, decides who leads. */
-export const COLOUR_WORD = /\b(green|pink|blue|yellow|orange|red|purple|gold|teal|cyan|mint|white|lilac|cream|sky|lime)\b/i;
+export const COLOUR_WORD = /\b(green|pink|blue|yellow|orange|red|purple|gold|teal|cyan|mint|white|lilac|cream|sky|lime|violet|indigo|rainbow)\b/i;
+/** A race's order, which only the run decides (test run 44841594624: "they finish fully reversed, violet first"). */
+export const RACE_ORDER = new RegExp(`\\b(reversed?( order)?|in (rainbow|the same|exact|the exact) order|takes? the lead|overtakes?|(${COLOUR_WORD.source.replace(/\\b/g, "")})( ball)?( \\w+){0,3} (first|last|wins?|leads?|ahead|in front))\\b`, "i");
+const MANY = /\b(five|six|seven|eight|nine|ten|eleven|twelve|[5-9]|[1-9]\d) (\w+ )?(coloured |colored )?balls\b/i;
 /** Things a physics scene never has. */
 export const NOT_IN_SCENE = /\b(flags?|teams?|players?|countr(y|ies)|nations?|horses?|cars?|runners?)\b/i;
 
@@ -140,6 +146,14 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const invented = ordered.map((s) => s.onScreenText?.match(NOT_IN_SCENE)?.[0]).find(Boolean);
     checks.push(check("On-screen words after the hook name no colour (the run decides who leads)", !called, called ? `says "${called}"` : undefined));
     checks.push(check("On-screen words name nothing the scene doesn't have (flags, teams, players)", !invented, invented ? `says "${invented}"` : undefined));
+    // A race has 2 to 4 balls and the run decides their order, so the script can't promise either.
+    const told = [d.story, d.payoff, ...ordered.map((s) => s.visual)].filter(Boolean).join(" ");
+    if (/\b(race|laps?)\b/i.test(told)) {
+      const order = told.match(RACE_ORDER)?.[0];
+      const many = told.match(MANY)?.[0];
+      checks.push(check("A race's script promises no order (the run decides who finishes where)", !order, order ? `says "${order}"` : undefined));
+      checks.push(check("A race has 2 to 4 balls", !many, many ? `says "${many}"` : undefined));
+    }
   }
   if (c.format === "explainer") {
     const fresh = (d.sources ?? []).filter((s) => {

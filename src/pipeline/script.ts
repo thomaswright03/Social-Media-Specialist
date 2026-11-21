@@ -216,7 +216,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
         const reads = shots.length ? await retellReads(shots, intended, cold) : null;
         const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
-        const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources }, d.products, d.now?.() ?? new Date());
+        const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources, story: s?.story, payoff: s?.payoff }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
         const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];
         return gate([...base.checks, ...clarity, ...ears, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);

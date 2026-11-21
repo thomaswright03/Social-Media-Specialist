@@ -403,7 +403,10 @@ export async function physicsPlan(shots: Shot[], story: string, seconds: number,
       log?.(`Physics plan, try ${t}: the Claude call failed: ${e.message}`);
       return "";
     });
-    const plan = parseJson<PhysicsPlan>(answer);
+    const parsed = parseJson<PhysicsPlan>(answer);
+    // A race is always neon: the script may name only its colours (green, pink, blue, yellow), and
+    // test run 44841594624 drew sunset balls (orange, red, gold, purple) under a script that named others.
+    const plan = parsed && parsed.kind === "race" ? { ...parsed, palette: "neon" as const } : parsed;
     problems = physicsProblems(plan);
     if (!problems.length) {
       const tuned = tuneRun(plan!, seconds);
@@ -417,6 +420,30 @@ export async function physicsPlan(shots: Shot[], story: string, seconds: number,
   }
   log?.(`The physics plan still has problems after ${PHYSICS_TRIES} tries: ${best.problems.join(" ")}`);
   return best;
+}
+
+/**
+ * What the finished run really shows, for stage 5's cold viewers to be matched
+ * against. The script's own story can't be: the run, not the writer, decides
+ * what happens (test run 44841594624's script promised seven rainbow balls
+ * finishing in reverse order; the race had four, and orange won).
+ */
+export function physicsStory(run: SimResult): string {
+  const p = run.plan;
+  const names = (COLOUR_NAMES[p.palette ?? "neon"] ?? COLOUR_NAMES.neon).map((n) => n.toLowerCase());
+  switch (p.kind) {
+    case "race": {
+      const n = Math.max(2, Math.min(4, p.balls ?? 4));
+      const who = run.winner != null ? names[run.winner] ?? "one colour" : "one colour";
+      return `${n} glowing balls (${names.slice(0, n).join(", ")}) race down a field of pegs for ${RACE_LAPS} laps while a counter at the top counts the laps. The ${who} ball finishes first and the screen says ${who.toUpperCase()} WINS!`;
+    }
+    case "escape-rings":
+      return `A ball bounces inside ${p.rings ?? "several"} spinning rings, each with a gap. Each time it slips through a gap, that ring breaks, and the counter counts down the rings left until the ball escapes the last one.`;
+    case "growing-ball":
+      return "A ball bounces inside a circle and grows a little with every bounce, with a counter counting the bounces, until it fills the circle.";
+    case "multiply":
+      return "Balls bounce inside a circle and multiply as they go, with a counter showing how full the circle is, until it is full.";
+  }
 }
 
 // --- Sound: our own notes, one per collision -------------------------------

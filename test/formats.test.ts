@@ -96,6 +96,22 @@ describe("gateFormat", () => {
     expect(things(g([{ start: 0, onScreenText: "WHOSE FLAG WINS?" }])).passed).toBe(false);
   });
 
+  it("keeps a race's script off the order and to 2-4 balls, since the run decides (test run 44841594624)", () => {
+    const sat = { format: "satisfying" as const, product: null };
+    const race = (story: string, visual = "Balls race down the pegs, lap 1 of 3.") => {
+      const cs = gateFormat(sat, { caption: "Made with AI", story, shots: [{ start: 0, onScreenText: "PICK A COLOUR", visual }] }, P).checks;
+      return { order: cs.find((c) => c.name.startsWith("A race's script promises no order"))!, count: cs.find((c) => c.name === "A race has 2 to 4 balls")! };
+    };
+    const ok = race("Four balls race down the pegs for three laps. One colour wins and the counter names it.");
+    expect([ok.order.passed, ok.count.passed]).toEqual([true, true]);
+    const bad = race("Seven balls in rainbow order race for three laps. They finish fully reversed, violet first and red last.");
+    expect(bad.order.passed).toBe(false);
+    expect(bad.count).toMatchObject({ passed: false, detail: 'says "Seven balls"' });
+    expect(race("Four balls race.", "The blue ball pulls ahead on lap 2.").order.passed).toBe(false);
+    // Not a race: no race checks.
+    expect(gateFormat(sat, { caption: "Made with AI", story: "A ball escapes the last ring.", shots: [] }, P).checks.some((c) => c.name === "A race has 2 to 4 balls")).toBe(false);
+  });
+
   it("keeps an explainer to one story: no line jumps to another fact with \"separately\" or \"elsewhere\"", () => {
     const news = { format: "explainer" as const, product: null };
     const one = (line: string) => gateFormat(news, { caption: "x", shots: [{ start: 0, line: "Cotton prices doubled on one island." }, { start: 3, line }] }, P).checks.find((c) => c.name.startsWith("Tells one story"))!;
