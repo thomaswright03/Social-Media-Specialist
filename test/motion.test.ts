@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, replanShots, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
-import { composeHtml, timeline, transitionFor } from "../src/pipeline/compose.ts";
+import { composeHtml, timeline, totalSeconds, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
 const shots = [
@@ -160,6 +160,11 @@ describe("one take", () => {
     expect(a!.voiceAt).toBe(0);
     expect(b!.dur).toBe(1.2);
     expect(timeline([{ start: 0, end: 5, line: "hi" }], [{ seconds: 1.4, words: w }])[0]!.dur).toBe(5);
+    // A Reel the voice made too short gets an even pause after each shot, up to 1 s (test run 44850757174).
+    const short = timeline([{ start: 0, end: 5, line: "hi" }, { start: 5, end: 10, line: "hi" }], [{ seconds: 1.4, words: w }, { seconds: 0.5, words: w }], { oneTake: true, minSeconds: 4 });
+    expect(totalSeconds(short)).toBeCloseTo(4, 5);
+    expect(short[1]!.voiceAt).toBeCloseTo(short[1]!.at, 5);
+    expect(totalSeconds(timeline([{ start: 0, end: 2, line: "hi" }], [{ seconds: 1, words: w }], { oneTake: true, minSeconds: 28 }))).toBeLessThan(4);
   });
 
   it("puts no label over a motion shot", () => {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Browser } from "playwright";
 import type { Vault } from "../vault.ts";
 import { loudness, mergeAligned, splitRead, splitReadAt, spokenText, type SoundEffect, type Speak } from "../voice.ts";
-import { audioSeconds, composeHtml, FPS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
+import { audioSeconds, composeHtml, FPS, MIN_SHOTS_SECONDS, mixAudio, mux, renderFrames, run, runOut, timeline, totalSeconds, writeSvgs, type TimedShot } from "./compose.ts";
 import { check, END_CARD, gate, gateProduction, type GateResult, type MediaFacts, type Packaging, type ProductionJudgement, type Shot, type TextBox } from "./gates.ts";
 import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from "./scenes.ts";
 import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
@@ -267,7 +267,7 @@ export async function runProduce(d: {
     }
   }
   if (voiceProblem) return stop(voiceProblem, reel.subject);
-  const t = timeline(shots, voices, { oneTake: oneTake });
+  const t = timeline(shots, voices, { oneTake, minSeconds: MIN_SHOTS_SECONDS });
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
@@ -295,6 +295,10 @@ export async function runProduce(d: {
       await d.vault.logAction({ kind: "stage", summary: "Stage 5, Production: stopped, the physics plan didn't pass its checks.", detail: g.checks[0]!.detail ?? null, target: reel.subject, ok: false }, now());
       return { ...stop(g.checks[0]!.name, reel.subject), gate: g };
     }
+    // The run, not the script, decides when it finishes, so a label scripted for
+    // after that moment ("SO CLOSE" under "FREE!", test run 44853965768) is dropped:
+    // the counter says how it ended.
+    for (const s of t) if (s.at >= ph.run.doneAt!) s.onScreenText = "";
     physics = physicsRuntime(ph.run);
     physicsWhat = physicsStory(ph.run);
     const notes = join(work, "collisions.wav");
