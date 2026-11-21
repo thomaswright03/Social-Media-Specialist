@@ -440,7 +440,7 @@ export function physicsStory(run: SimResult): string {
     case "escape-rings":
       return `A ball bounces inside ${p.rings ?? "several"} spinning rings, each with a gap. Each time it slips through a gap, that ring breaks, and the counter counts down the rings left until the ball escapes the last one.`;
     case "growing-ball":
-      return "A ball bounces inside a circle and grows a little with every bounce, with a counter counting the bounces, until it fills the circle.";
+      return "A ball bounces inside a circle and grows a little with every bounce, with a counter counting the bounces, until it nearly fills the circle and the counter says how many bounces it took.";
     case "multiply":
       return "Balls bounce inside a circle and multiply as they go, with a counter showing how full the circle is, until it is full.";
   }
@@ -532,7 +532,9 @@ export function counterText(plan: PhysicsPlan, n: number, winner: number | null,
   }
   if (done) return plan.kind === "escape-rings" ? "FREE!" : plan.kind === "growing-ball" ? `FULL IN ${n} BOUNCES!` : "FULL!";
   const fallback = { "escape-rings": "{n} RINGS LEFT", "growing-ball": "{n} BOUNCES", multiply: "{n}% FULL", race: "" }[plan.kind];
-  return (plan.counter && counterFits(plan.kind, plan.counter) ? plan.counter : fallback).replace("{n}", String(n)).toUpperCase();
+  const text = (plan.counter && counterFits(plan.kind, plan.counter) ? plan.counter : fallback).replace("{n}", String(n)).toUpperCase();
+  // "1 BOUNCES" (test run 44846881822): one of anything is singular.
+  return n === 1 ? text.replace(/\b1 (BOUNCE|RING)S\b/, "1 $1") : text;
 }
 
 /** The browser code that draws a recorded run (data in window.PHYS); it draws into canvas#phys. */

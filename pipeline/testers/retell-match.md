@@ -4,7 +4,7 @@ A viewer who watched it once retold it as:
 "{{RETELLING}}"
 
 Did the viewer understand the story? Check three things:
-- Who: the viewer has the right person or people, and what they are to the story.
+- Who: the viewer has the right person or people, and what they are to the story. When the story has no people (balls, rings, shapes), Who is RIGHT if the viewer names the main thing; saying it isn't about a person, or naming the brand shown in the header, is fine.
 - What happened: the viewer has the main events, with nothing that changes their meaning.
 - Ending: the viewer has how it ends, including the answer if the story answers a question. A closing question put to the viewer ("what do you think?") asks for their opinion: the ending is what the video shows before it, and the viewer doesn't need an answer to it.
 
