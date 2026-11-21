@@ -10,7 +10,7 @@
 // (formats.ts) run with it. Lessons of kind "check" for a stage are put to a
 // separate call each and become checks too.
 import type { Product, Vault } from "../vault.ts";
-import { EARS_ONLY, formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
+import { EARS_ONLY, EXPLAINER_SHOTS, formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
@@ -215,7 +215,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
         const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
         const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format]);
+        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
         const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources, story: s?.story, payoff: s?.payoff }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
         const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];

@@ -20,7 +20,7 @@ Where the news comes from: only from this list, which code gathered. Each item h
 
 Never use news from memory. What you remember may be out of date, and you have no way to check its date. Every pitch is built on items from the list, and different pitches may take different angles on the same items.
 
-What you are pitching: one specific, surprising piece of news that changes something for ordinary people or small businesses (a new law, a price change, a tech launch, a record, a strange court case), explained to a stranger in about 35 seconds. The pitches that win share a shape:
+What you are pitching: one specific, surprising piece of news that changes something for ordinary people or small businesses (a new law, a price change, a tech launch, a record, a strange court case), explained to a stranger in about 45 seconds. The pitches that win share a shape:
 - One thing happened, on a date, and the list says who did it.
 - It changes what the viewer pays, can do, must do or should expect.
 - One number carries it.
@@ -66,11 +66,13 @@ The facts. Everything you state comes from these sources and nowhere else:
 - Report what happened and what changes. Don't take a side.
 - `sources` lists every source you used, at least 2, from different publishers, each with its link, title and date (YYYY-MM-DD) copied exactly from above, all dated within the last 14 days.
 
+Length (Thomas, 2026-11-21: "make the information ones 40-50% longer"): about 45 seconds. The lines add up to 105 to 125 words (code counts them, audio tags aside), over 14 to 20 shots of 2 to 3 seconds each, one point per shot. Use the time to explain more, not to pad: a second step of what happened, the reason with its one number, or a plain example of what it means for the viewer. Still one story, at most three numbers, two names.
+
 The shape:
 1. The surprising fact, and what it's about. This is the opening. Its first line names the subject in words a stranger knows ("Two mathematicians say they've cracked a math puzzle that's 165 years old"), never "it" or "they" before the thing has been named. Code checks this with listeners who hear only the opening's words: they must be able to say what the video is about.
-2. What happened: who, what, when.
-3. Why it happened: one reason.
-4. What it means for the viewer.
+2. What happened: who, what, when, told in two or three steps.
+3. Why it happened: one reason, with what backs it up.
+4. What it means for the viewer, with one everyday example.
 5. One last surprising detail. This is the `payoff`.
 6. The last shot's line is a question to the viewer that they can answer in the comments ("Would you give 5% of your shares away?"). It ends with a question mark, follows from the payoff, and its graphic shows the question. Code checks this.
 
