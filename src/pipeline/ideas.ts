@@ -46,7 +46,7 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
       const items = [...new Set(f.news)].map((n) => news.find((i) => i.n === n));
       const publishers = new Set(items.map((i) => i?.publisher).filter(Boolean));
       const missing = items.filter((i) => !i).length;
-      fmt.push(check(`Finalist ${f.id} is built on 2+ news items from 2+ publishers`, missing === 0 && items.length >= 2 && publishers.size >= 2, missing ? `${missing} of its news numbers aren't on the list` : `${items.length} items, ${publishers.size} publishers`));
+      fmt.push(check(`Finalist ${f.id} is built on 2+ news items from 2+ publishers`, missing === 0 && items.length >= 2 && publishers.size >= 2, missing ? `${missing} of its news numbers aren't on the list` : !items.length ? 'it has no "news" field; list the numbers of the news items it is built on, like "news": [3, 7]' : `${items.length} items, ${publishers.size} publishers`));
     }
     if (choice.format === "ad") {
       // The hook may hold the product back for the reveal; then the ending names it.
