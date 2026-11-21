@@ -13,7 +13,7 @@
 // on the Vault page, and a failed post is never retried on its own (a retry
 // could post it twice); Thomas taps Try again.
 import { fullCaption, pickNext, readSite, screenDraft, buildDraftPrompt, type Subject } from "./draft.ts";
-import { crosspostOn, facebookPageClient, type FacebookPageClient } from "./facebook.ts";
+import { crosspostOn, facebookPageClient, pageText, type FacebookPageClient } from "./facebook.ts";
 import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
@@ -263,7 +263,7 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
       // The same approved post on the Facebook Page. A refusal there never undoes or retries the Instagram post.
       if (page) {
         try {
-          const fb = await page.publishPhoto(url, fullCaption(p));
+          const fb = await page.publishPhoto(url, pageText(fullCaption(p), SITE_URL()));
           log(`Posted "${p.headline}" to the Facebook Page${fb.permalink ? `: ${fb.permalink}` : ""}.`);
           await vault.logAction({ kind: "posted", summary: `Posted "${p.headline}" to the Facebook Page.`, detail: fb.permalink ?? fb.postId, target: p.id, onInstagram: true }, now);
         } catch (err) {
@@ -304,7 +304,7 @@ async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: Instag
   if (!page) return;
   try {
     if (!page.publishReelFile) throw new Error("This Facebook Page client can't upload a video.");
-    const fb = await page.publishReelFile(video, fullCaption(p));
+    const fb = await page.publishReelFile(video, pageText(fullCaption(p), SITE_URL()));
     d.log(`Posted the Reel "${p.headline}" to the Facebook Page${fb.permalink ? `: ${fb.permalink}` : ""}.`);
     await d.vault.logAction({ kind: "posted", summary: `Posted the Reel "${p.headline}" to the Facebook Page.`, detail: fb.permalink ?? fb.videoId, target: p.id, onInstagram: true }, now);
   } catch (err) {

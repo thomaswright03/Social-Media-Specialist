@@ -23,10 +23,44 @@ export type FacebookPageClient = {
   publishReelFile?(video: Uint8Array, description: string): Promise<{ videoId: string; permalink: string | null }>;
   comments(objectId: string): Promise<PageComment[]>;
   reply(objectId: string, message: string): Promise<{ id: string }>;
+  /** Everything an audit of the Page looks at, read only (Thomas, 2026-11-21: "do an audit of the facebook page"). */
+  audit?(): Promise<PageAudit>;
 };
+
+export type PageAudit = {
+  /** Each profile field Facebook gave, or the reason it didn't. */
+  profile: Record<string, unknown>;
+  posts: PagePost[];
+  reels: { id: string; description: string | null; createdAt: string; permalink: string | null; views: number | null }[];
+  /** Page insights over the last 28 days, by metric; null where Facebook gave none. */
+  insights: Record<string, number | null>;
+  errors: string[];
+};
+
+/** The Page fields an audit reads, one at a time so one Facebook refuses doesn't hide the rest. */
+export const AUDIT_FIELDS = [
+  "name", "username", "link", "category", "category_list", "about", "description", "general_info", "mission", "company_overview", "founded",
+  "website", "emails", "phone", "whatsapp_number", "single_line_address", "location", "hours", "price_range", "is_published", "is_verified",
+  "verification_status", "followers_count", "fan_count", "rating_count", "overall_star_rating", "picture.type(large){url,is_silhouette}",
+  "cover{source}", "instagram_business_account{username}", "call_to_actions{type,status,web_url}", "has_added_app", "can_post", "is_messenger_platform_bot", "messenger_ads_default_icebreakers", "new_like_count", "talking_about_count", "were_here_count",
+];
+/** Page insights worth a look; Facebook has retired some, so each is asked on its own. */
+export const AUDIT_METRICS = ["page_impressions_unique", "page_post_engagements", "page_follows", "page_daily_follows_unique", "page_views_total", "page_video_views", "page_media_view"];
 
 const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const total = (v: unknown) => n((v as { summary?: { total_count?: unknown } } | undefined)?.summary?.total_count);
+
+/**
+ * A Page post's text: the caption, then the website as a link Facebook makes clickable (Thomas, 2026-11-21: "i
+ * also want a link to the website as a clickable popup at the bottom of every post"). Instagram makes no caption
+ * link clickable, so only the Page gets it; Instagram keeps "Link in bio".
+ */
+export function pageText(caption: string, site: string): string {
+  const link = site.replace(/\/+$/, "");
+  const bare = link.replace(/^https?:\/\//, "");
+  if (caption.includes(bare)) return caption;
+  return `${caption.trimEnd()}\n\n👉 ${link}`;
+}
 
 /** Cross-posting approved posts to the Page is on unless FACEBOOK_CROSSPOST is "off". */
 export const crosspostOn = () => (process.env.FACEBOOK_CROSSPOST?.trim().toLowerCase() ?? "") !== "off";
@@ -81,6 +115,46 @@ export function facebookPageClient(token: string, opts: { fetchImpl?: Fetch; pag
         after = paging.cursors.after;
       }
       return out.slice(0, max);
+    },
+
+    async audit() {
+      const page = await id();
+      const errors: string[] = [];
+      const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 160);
+      const profile: Record<string, unknown> = {};
+      for (const f of AUDIT_FIELDS) {
+        const key = f.split(/[.{]/)[0]!;
+        try {
+          const r = await get(page, { fields: f });
+          profile[key] = r[key] ?? null;
+        } catch (err) {
+          profile[key] = `(not readable: ${why(err)})`;
+        }
+      }
+      const posts = await this.posts(25).catch((err) => (errors.push(`posts: ${why(err)}`), [] as PagePost[]));
+      const reels: PageAudit["reels"] = [];
+      try {
+        const r = await get(`${page}/video_reels`, { fields: "id,description,created_time,permalink_url,video_insights.metric(blue_reels_play_count){values}", limit: "25" });
+        for (const v of (r.data as Record<string, unknown>[] | undefined) ?? []) {
+          const plays = ((v.video_insights as { data?: { values?: { value?: unknown }[] }[] } | undefined)?.data?.[0]?.values?.[0]?.value);
+          const link = typeof v.permalink_url === "string" ? v.permalink_url : null;
+          reels.push({ id: String(v.id), description: typeof v.description === "string" ? v.description : null, createdAt: String(v.created_time ?? ""), permalink: link && link.startsWith("/") ? `https://www.facebook.com${link}` : link, views: n(plays) });
+        }
+      } catch (err) {
+        errors.push(`reels: ${why(err)}`);
+      }
+      const insights: Record<string, number | null> = {};
+      for (const m of AUDIT_METRICS) {
+        try {
+          const r = await get(`${page}/insights`, { metric: m, period: "days_28" });
+          const vals = ((r.data as { values?: { value?: unknown }[] }[] | undefined)?.[0]?.values ?? []).map((x) => n(x.value));
+          insights[m] = vals.length ? vals[vals.length - 1]! : null;
+        } catch (err) {
+          insights[m] = null;
+          errors.push(`insight ${m}: ${why(err)}`);
+        }
+      }
+      return { profile, posts, reels, insights, errors };
     },
 
     async publishPhoto(imageUrl, message) {
