@@ -92,6 +92,8 @@ describe("past Instagram Reels onto YouTube", () => {
     const post = await vault.addPost({ productId: null, productName: null, ideaId: null, kind: "reel", angle: "Reel", headline: "Robots", subline: null, caption: "c", hashtags: [], theme: "ink", sourceUrl: "repo:posts/reels/a.mp4" }, Buffer.from([1]), NOW);
     await vault.updatePost(post.id, { state: "published", igMediaId: "2" }, NOW);
     await vault.logAction({ kind: "posted", summary: `Posted the Reel "Robots" to YouTube as a Short.`, target: post.id }, NOW);
+    // A title that mentions YouTube doesn't count as being on YouTube.
+    await vault.logAction({ kind: "posted", summary: `Posted the Reel "YouTube may pay schools" to Instagram.`, target: igTarget("3") }, NOW);
     const yt = fakeYt();
     const r = await backfillYouTube({ vault, ig: fakeIg(), yt: yt.client, log: () => {}, skip: ["CODE1"], go: true, fetchImpl: cdn, now: NOW });
     expect(r.uploaded.map((u) => u.media.id)).toEqual(["3"]);
