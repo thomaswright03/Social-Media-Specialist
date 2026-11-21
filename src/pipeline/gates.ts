@@ -361,6 +361,25 @@ export function emptySlices(shots: Shot[], length: number): number[] {
   return empty;
 }
 
+/**
+ * The caption as Instagram shows it: the hook alone on the first line. Hashtags
+ * left at the end of the first line move to their own line, and a first line
+ * over 125 characters gives its first sentence as the hook (calorie ad, test
+ * run 44847887000: one 225-character line with the hashtags on it).
+ */
+export const HOOK_CHARS = 125;
+export function captionLines(caption: string): string[] {
+  let lines = caption.trim().split("\n");
+  const tags = lines[0]!.match(/(?:\s+#[\p{L}\p{N}_]+)+\s*$/u);
+  if (tags && tags.index! > 0) lines = [lines[0]!.slice(0, tags.index).trim(), tags[0].trim(), ...lines.slice(1)];
+  const first = lines[0]!.trim();
+  if (first.length > HOOK_CHARS) {
+    const m = first.match(new RegExp(`^(.{10,${HOOK_CHARS}}?[.!?])\\s+(.+)$`));
+    if (m) lines = [m[1]!, m[2]!, ...lines.slice(1)];
+  }
+  return lines;
+}
+
 export function gateScript(s: Script | null, opening: Opening | null, review: ScriptReview | null, learned: Check[] = []): GateResult {
   const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
   const length = shots.length ? Math.max(...shots.map((x) => x.end ?? 0)) : 0;
@@ -370,6 +389,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
   const rushed = shots.filter((x) => x.line?.trim() && wordCount(x.line) / Math.max(0.01, (x.end ?? 0) - (x.start ?? 0)) > MAX_SPOKEN_WPS);
   const text = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook, s?.caption].filter(Boolean).join(" \n");
   const openingFirst = opening?.shots?.[0];
+  const hook = s?.caption?.trim() ? captionLines(s.caption)[0]!.trim() : "";
   return gate([
     check("30 to 60 seconds long", length >= 30 && length <= 60, `${length.toFixed(1)} s`),
     check("Shots run in order with no gaps", shots.length > 0 && (shots[0]!.start ?? 0) === 0 && gaps === 0, gaps ? `${gaps} gaps` : undefined),
@@ -380,6 +400,7 @@ export function gateScript(s: Script | null, opening: Opening | null, review: Sc
     check("Stands alone (no other episodes)", !REFERS_TO_OTHER_EPISODES.test(text), text.match(REFERS_TO_OTHER_EPISODES)?.[0] ? `says "${text.match(REFERS_TO_OTHER_EPISODES)![0]}"` : undefined),
     check("Has its own payoff", Boolean(s?.payoff?.trim())),
     check("Leaves a reason to watch the next", Boolean(s?.nextHook?.trim())),
+    check(`The caption opens with a hook of ${HOOK_CHARS} characters or less`, hook.length <= HOOK_CHARS, hook.length > HOOK_CHARS ? `${hook.length} characters` : undefined),
     check("Review: grammar, physics, timing and consistency", review !== null && review.problems.length === 0, review ? review.problems.join("; ") || undefined : "not reviewed"),
     ...learned,
   ]);

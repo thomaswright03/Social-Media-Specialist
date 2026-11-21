@@ -11,7 +11,7 @@ import { usageMark, usageSince, usageText, type ClaudeUsage } from "../claude-us
 import type { InstagramClient } from "../instagram.ts";
 import type { Product, Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
-import { CTA, check, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
+import { CTA, captionLines, check, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
 import { runIdeas, type IdeasResult } from "./ideas.ts";
 import type { ProduceResult } from "./produce.ts";
 import { learnedChecks, runScript, type ScriptResult } from "./script.ts";
@@ -38,13 +38,7 @@ const HASHTAG = /#[\p{L}\p{N}_]+/gu;
  * text on screen). Nothing is invented here; the gate then checks it.
  */
 export function packageReel(r: { format: Format; caption: string; shots: { at: number; dur: number; onScreenText?: string }[]; assets: Packaging["assets"] }): Packaging & { thumbOffsetMs: number | null } {
-  let lines = r.caption.trim().split("\n");
-  // A long first line: its first sentence becomes the hook line, the rest follows.
-  const first = lines[0]!.trim();
-  if (first.length > 125) {
-    const m = first.match(/^(.{10,125}?[.!?])\s+(.+)$/);
-    if (m) lines = [m[1]!, m[2]!, ...lines.slice(1)];
-  }
+  let lines = captionLines(r.caption);
   let caption = lines.join("\n");
   if (!CTA.test(caption)) {
     // Before the hashtags, which close the caption.

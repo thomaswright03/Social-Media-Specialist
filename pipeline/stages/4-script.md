@@ -92,6 +92,7 @@ Write the narration first, as one piece, before you split it into shots: 80 to 1
 ## The ending
 
 - The story finishes inside this video. `payoff` states the ending that actually happens in the shots, and `caption` never contradicts it.
+- `caption` opens with the hook: one short sentence, 125 characters at most, alone on the first line. The rest goes on the next lines, and the hashtags on the last line.
 - `nextHook` is a reason to follow for a different story: a new question or a new mystery. It never suggests this video is unfinished.
 
 ## If a draft was rejected
