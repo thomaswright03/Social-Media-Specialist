@@ -85,9 +85,31 @@ export function nextProduct(history: Made[], products: Product[]): Product | nul
  * The format's prompt for stage 2 (ideas) or stages 3 and 4 (script), with the
  * ad's product and the explainer's news (NEWS for ideas, SOURCES for script).
  */
+/**
+ * Hooks Thomas set for a product's ads, with the words the opening must say.
+ * Free Calorie Counter (2026-11-20): "Are you trying to be healthy, but don't
+ * want to pay for an expensive calorie tracking app? Good! Cus we made one for
+ * free." Test run 44876401844 drifted to "Fifth app, 'allow tracking'?", so
+ * the brief pins it and the ad's gate checks its opening.
+ */
+export const AD_HOOKS: Record<string, { hook: string; then: string; opening: RegExp[] }> = {
+  "Free Calorie Counter": {
+    hook: "Are you trying to be healthy, but don't want to pay for an expensive calorie tracking app?",
+    then: "Good! Because we made one for free. No sign-up, no payment! Here's how it works.",
+    opening: [/\bhealth(y|ier)?\b/i, /\b(pay|paying|cost|costs|expensive|money|price)\b/i],
+  },
+};
+export const adHook = (c: Choice) => (c.format === "ad" && c.product ? AD_HOOKS[c.product.name] ?? null : null);
+
 export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fill: Record<string, string> = {}): string {
   const product = c.product ? `\nThe product: ${c.product.name} (${c.product.url}). ${c.product.description ?? ""}` : "";
-  return `${fillPrompt(formatPrompt(c.format, block), fill)}${product}`;
+  const h = adHook(c);
+  const hook = h
+    ? block === "ideas"
+      ? `\nThomas set this product's hook. Every pitch's \`sentence\` is his question, in his words: "${h.hook}" The pitches differ only in their \`answer\`: which feature settles it and the everyday moment it shows.`
+      : `\nThomas set this product's hook, and the ad opens with it. The first shots ask his question: "${h.hook}" Shorten it only where a shot's time needs it, keeping "healthy" and the cost ("Trying to be healthy?" / "But don't want to pay for an app?"). Then: "${h.then}" Code checks that the first 3 shots' lines say both.`
+    : "";
+  return `${fillPrompt(formatPrompt(c.format, block), fill)}${product}${hook}`;
 }
 
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
@@ -134,6 +156,12 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const pitch = all.match(CUSTOM_BUILD)?.[0];
     checks.push(check("The ad sells the product itself, not custom software", !pitch, pitch ? `says "${pitch}"` : undefined));
     checks.push(check("The ad ends on a call to action", CALL_TO_ACTION.test(all)));
+    const h = adHook(c);
+    if (h) {
+      const opening = [...d.shots].sort((x, y) => (x.start ?? 0) - (y.start ?? 0)).slice(0, 3).map((x) => x.line ?? "").join(" ");
+      const missing = h.opening.filter((r) => !r.test(opening));
+      checks.push(check("The ad opens with Thomas's hook for this product", missing.length === 0, missing.length ? `the first 3 lines don't ask "${h.hook}"` : undefined));
+    }
   } else {
     const sell = all.match(SELLING)?.[0];
     checks.push(check("Entertainment doesn't sell", !sell && others.length === 0, sell ? `says "${sell}"` : others.length ? `names ${others.join(", ")}` : undefined));

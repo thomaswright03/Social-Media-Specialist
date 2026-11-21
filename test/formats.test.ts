@@ -65,6 +65,17 @@ describe("gateFormat", () => {
     expect(g.passed).toBe(true);
   });
 
+  it("pins Thomas's hook for Free Calorie Counter in the brief and checks the ad opens with it (test run 44876401844)", () => {
+    const fcc = { id: "site:fcc", name: "Free Calorie Counter", description: "A free calorie tracker.", url: "https://fcc.example/" };
+    const c = { format: "ad" as const, product: fcc };
+    expect(formatBrief(c, "ideas")).toMatch(/Every pitch's `sentence` is his question/);
+    expect(formatBrief(c, "script")).toMatch(/don't want to pay for an expensive calorie tracking app/);
+    expect(formatBrief(ad, "script")).not.toMatch(/Thomas set this product's hook/);
+    const hook = (lines: string[]) => gateFormat(c, { caption: "Link in bio", shots: lines.map((line, i) => ({ start: i * 2, line })) }, [fcc]).checks.find((x) => x.name.startsWith("The ad opens with Thomas's hook"))!;
+    expect(hook(["Trying to be healthy?", "But don't want to pay for an app?", "Good! We made Free Calorie Counter."]).passed).toBe(true);
+    expect(hook(["Fifth app, 'allow tracking'?", "Calorie counter needs what?", "Free Calorie Counter."]).passed).toBe(false);
+  });
+
   it("fails an ad that names two products or offers to build software (Thomas, 2026-11-20)", () => {
     const g = gateFormat(ad, { caption: "Try AI Waste Bot and Room Designer 3D. Link in bio.", shots: [{ onScreenText: "We build custom AI agents for your business too" }] }, P);
     expect(g.checks.filter((c) => !c.passed).map((c) => c.name)).toEqual(["The ad markets only one product", "The ad sells the product itself, not custom software"]);
