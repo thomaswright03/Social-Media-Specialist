@@ -22,6 +22,10 @@ on:
         description: Post it as a Trial Reel when every check passes (off makes and checks it only)
         type: boolean
         default: false
+      product:
+        description: An ad for this product (its name on the website); empty takes turns
+        type: string
+        default: ""
 
 # Its own group, so the hourly Hitta and posting runs in social.yml never wait on a Reel.
 concurrency:
@@ -56,6 +60,7 @@ jobs:
       ELEVENLABS_NARRATOR_VOICE: ${{ vars.ELEVENLABS_NARRATOR_VOICE }}
       RESEARCH_ACCOUNTS: ${{ vars.RESEARCH_ACCOUNTS }}
       REEL_FORMAT: ${{ matrix.format }}
+      REEL_PRODUCT: ${{ inputs.product }}
       # Scheduled runs post; a run by hand posts only when asked.
       REEL_POST: ${{ (github.event_name == 'schedule' || inputs.post) && 'on' || 'off' }}
     steps:
