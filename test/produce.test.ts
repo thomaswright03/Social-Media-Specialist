@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cameraFor, captionChunks, captionWords, composeHtml, repeatsLine, LEAD, MIN_SHOT, TAIL, timeline, totalSeconds } from "../src/pipeline/compose.ts";
-import { endQuestionText, keyFrameNumbers, mismatchedShots, picturesLine } from "../src/pipeline/produce.ts";
+import { endQuestionText, keyFrameNumbers, mismatchedShots, picturesLine, picturesVote } from "../src/pipeline/produce.ts";
 import { castFrom, castProblems, castSheet, drawScene, missingRefs, NO_CAST, safeSvg, svgFrom, svgProblems, withCast } from "../src/pipeline/scenes.ts";
 import { stagePrompt } from "../src/pipeline/stages.ts";
 
@@ -190,5 +190,13 @@ describe("redrawing the shots a viewer says don't match the voice", () => {
     expect(mismatchedShots(p.detail, 13)).toEqual([2, 5]);
     expect(mismatchedShots("doesn't match the voice: shot-03.jpg and shot-3.jpg, 40", 13)).toEqual([3]);
     expect(mismatchedShots(picturesLine("PICTURES: fine").detail, 13)).toEqual([]);
+  });
+
+  it("calls a picture wrong only when 2 of 3 viewers say so (one viewer flagged 4 good shots in test run 44837502299)", () => {
+    expect(picturesVote(["PICTURES: 03, 04, 08, 09", "PICTURES: fine", "PICTURES: none"], 13)).toMatchObject({ ok: true, shots: [] });
+    expect(picturesVote(["PICTURES: 03, 08", "PICTURES: 08", "PICTURES: fine"], 13)).toMatchObject({ ok: false, shots: [8] });
+    expect(picturesVote(["PICTURES: 03, 08", "PICTURES: 08", "PICTURES: fine"], 13).detail).toMatch(/8 \(each flagged by 2\+ of 3 viewers\)/);
+    expect(picturesVote(["PICTURES: they don't fit", "PICTURES: the art is off", "PICTURES: fine"], 13)).toMatchObject({ ok: false });
+    expect(picturesVote(["PICTURES: fine", "PICTURES: fine", "PICTURES: fine"], 13)).toEqual({ ok: true, shots: [] });
   });
 });

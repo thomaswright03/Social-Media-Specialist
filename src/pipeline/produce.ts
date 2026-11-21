@@ -37,6 +37,27 @@ export function picturesLine(answer: string): { ok: boolean; detail?: string } {
   return /^\W*(fine|none|nothing)\b/i.test(v) || !v ? { ok: true } : { ok: false, detail: `doesn't match the voice: ${v.slice(0, 200)}` };
 }
 
+/**
+ * Cold viewers of the finished frames. One viewer was a coin toss: test run
+ * 44837502299's explainer failed on shots 3, 4, 8 and 9, whose pictures did
+ * show their lines. Like stage 4's testers, 2 of 3 must agree.
+ */
+export const FOLLOW_VIEWERS = 3;
+
+/** The viewers' PICTURES lines together: a shot is wrong when 2 or more viewers say so. */
+export function picturesVote(answers: string[], total: number): { ok: boolean; detail?: string; shots: number[] } {
+  const lines = answers.map(picturesLine);
+  const count = new Map<number, number>();
+  for (const l of lines) if (!l.ok) for (const n of mismatchedShots(l.detail, total)) count.set(n, (count.get(n) ?? 0) + 1);
+  const shots = [...count].filter(([, c]) => c >= 2).map(([n]) => n).sort((a, b) => a - b);
+  const fine = lines.filter((l) => l.ok).length;
+  // A viewer who says pictures don't fit without naming a shot counts against all of them.
+  const vague = lines.filter((l) => !l.ok && mismatchedShots(l.detail, total).length === 0).length;
+  const ok = shots.length === 0 && vague < 2;
+  if (ok) return { ok, shots, ...(fine < lines.length ? { detail: `${fine} of ${lines.length} viewers said every picture fits; no shot was flagged by 2` } : {}) };
+  return { ok, shots, detail: shots.length ? `doesn't match the voice: ${shots.join(", ")} (each flagged by 2+ of ${lines.length} viewers)` : `${lines.length - fine} of ${lines.length} viewers said pictures don't fit: ${lines.filter((l) => !l.ok).map((l) => l.detail).join("; ").slice(0, 200)}` };
+}
+
 /** Rounds of redrawing the shots a viewer said don't show what the voice says, before stage 5 gives up. */
 export const REDRAW_ROUNDS = 1;
 
@@ -374,20 +395,21 @@ export async function runProduce(d: {
       await copyFile(join(framesDir, `${String(f).padStart(5, "0")}.jpg`), join(followDir, name)).catch(() => {});
       watched.push(`${name}${s.line ? ` (you hear: "${spokenText(s.line)}")` : " (no voice)"}`);
     }
-    const retold = (
-      await d
-        .judge(followDir)(
-          stagePrompt(5, { WATCHED: watched.join("\n") }, "follow"),
-        )
-        .catch(() => "")
-    ).trim();
     const intended = reel.script.story?.trim() || `${shots.map((s) => s.line).filter(Boolean).join(" ")}\nHow it ends: ${reel.script.payoff ?? ""}`;
-    // Like stage 4: the match call weighs the whole answer, confusion included.
-    const verdict = retold ? await d.ask(retellMatchPrompt(intended, retold)).catch(() => "") : "";
-    const followed = Boolean(retold) && verdictYes(verdict);
-    if (!followed) log(`The match said: ${verdict.replace(/\s+/g, " ").slice(0, 300)}`);
-    log(`A cold viewer of the frames said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
-    const pictures = picturesLine(retold);
+    const views = await Promise.all(
+      Array.from({ length: FOLLOW_VIEWERS }, async () => {
+        const retold = (await d.judge(followDir)(stagePrompt(5, { WATCHED: watched.join("\n") }, "follow")).catch(() => "")).trim();
+        // Like stage 4: the match call weighs the whole answer, confusion included.
+        const verdict = retold ? await d.ask(retellMatchPrompt(intended, retold)).catch(() => "") : "";
+        return { retold, verdict, yes: Boolean(retold) && verdictYes(verdict) };
+      }),
+    );
+    const got = views.filter((v) => v.yes).length;
+    const followed = got >= 2;
+    for (const v of views.filter((v) => !v.yes)) log(`The match said: ${v.verdict.replace(/\s+/g, " ").slice(0, 300)}`);
+    const retold = views.find((v) => !v.yes && v.retold)?.retold ?? views.find((v) => v.retold)?.retold ?? "";
+    log(`Cold viewers of the frames who got it: ${got} of ${views.length}. One said: ${retold.replace(/\s+/g, " ").slice(0, 300)}`);
+    const pictures = picturesVote(views.map((v) => v.retold).filter(Boolean), t.length);
     const cuts = t.length - 1;
     const notes = [
       voiced
@@ -409,7 +431,7 @@ export async function runProduce(d: {
         const g = gateProduction(j, { ours: ours.length }, learned, undefined, { voiced });
         return gate([
           check("Every shot has a drawing and every line was voiced", true, `${t.length} shots, ${voiceFiles.filter(Boolean).length} lines`),
-          check("A cold viewer of the frames and voice gets the story", followed, retold ? retold.replace(/\s+/g, " ").slice(0, 240) : "no answer"),
+          check("Cold viewers of the frames and voice get the story (2 of 3)", followed, `${got} of ${views.length}${retold ? `. One said: ${retold.replace(/\s+/g, " ").slice(0, 220)}` : ""}`),
           check("Every picture shows what the voice says", pictures.ok, pictures.detail),
           ...g.checks,
         ]);
@@ -422,8 +444,8 @@ export async function runProduce(d: {
     });
 
     const failing = r.gate.checks.filter((c) => !c.passed).map((c) => c.name);
-    const bad = mismatchedShots(r.gate.checks.find((c) => c.name === "Every picture shows what the voice says" && !c.passed)?.detail, t.length);
-    const onlyPictures = failing.every((n) => n === "Every picture shows what the voice says" || n === "A cold viewer of the frames and voice gets the story");
+    const bad = pictures.shots;
+    const onlyPictures = failing.every((n) => n === "Every picture shows what the voice says" || n === "Cold viewers of the frames and voice get the story (2 of 3)");
     if (r.gate.passed || !redrawable || round >= REDRAW_ROUNDS || !bad.length || !onlyPictures) break;
     log(`Redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}: a viewer said ${bad.length > 1 ? "their pictures don't" : "its picture doesn't"} show what the voice says.`);
     await d.vault.logAction({ kind: "stage", summary: `Stage 5, Production: redrawing shot${bad.length > 1 ? "s" : ""} ${bad.join(", ")}, whose pictures didn't show what the voice says.`, target: reel.subject }, now());
