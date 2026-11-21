@@ -67,13 +67,57 @@ const isNum = (v: unknown) => Number.isFinite(num(v));
 export function motionFrom(answer: string): MotionPlan | null {
   const j = parseJson<MotionPlan>(answer);
   if (!j || !Array.isArray(j.shots)) return null;
-  const shots = j.shots.filter((s) => s && typeof s === "object").map((s) => ({ ...s, shot: Number(s.shot), pieces: Array.isArray(s.pieces) ? s.pieces : [] })).sort((a, b) => a.shot - b.shot);
+  const shots = j.shots
+    .filter((s) => s && typeof s === "object")
+    .map((s) => ({ ...s, shot: Number(s.shot), pieces: Array.isArray(s.pieces) ? s.pieces.map((x) => (x?.kind === "draw" && typeof x.svg === "string" ? { ...x, svg: readableDraw(x.svg) } : x)) : [] }))
+    .sort((a, b) => a.shot - b.shot);
   return typeof j.backdrop === "string" ? { shots, backdrop: j.backdrop } : { shots };
 }
 
 /** The words a drawn graphic puts on screen, one entry per <text>. */
 export function drawTexts(svg: string): string[] {
   return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)].map((m) => m[1]!.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
+/** A tag's own font size (attribute or style), or null. */
+const ownSize = (tag: string): number | null => {
+  const v = attr(tag, "font-size") ?? tag.match(/font-size\s*:\s*([\d.]+)/i)?.[1];
+  return v != null && Number.isFinite(parseFloat(v)) ? parseFloat(v) : null;
+};
+
+/** Every <text> in a drawing with the font size it really gets: its own, or the nearest enclosing <g> or <svg>'s. */
+function textSizes(svg: string): { at: number; tag: string; size: number | null }[] {
+  const out: { at: number; tag: string; size: number | null }[] = [];
+  const stack: (number | null)[] = [];
+  for (const m of svg.matchAll(/<(\/?)([a-zA-Z]+)\b[^>]*?(\/?)>/g)) {
+    const [tag, close, name, selfClose] = m;
+    const n = name!.toLowerCase();
+    if (n !== "g" && n !== "svg" && n !== "text") continue;
+    if (close) {
+      if (n !== "text") stack.pop();
+      continue;
+    }
+    const inherited = [...stack].reverse().find((x) => x != null) ?? null;
+    if (n === "text") out.push({ at: m.index!, tag: tag!, size: ownSize(tag!) ?? inherited });
+    else if (!selfClose) stack.push(ownSize(tag!));
+  }
+  return out;
+}
+
+/**
+ * A drawing with every too-small or unsized <text> raised to the readable minimum (test run 44938268336:
+ * three tries in a row lost on one small label in shot 18, so the whole Reel stopped). Bigger text is left alone.
+ */
+export function readableDraw(svg: string): string {
+  let out = svg;
+  for (const t of textSizes(svg).reverse()) {
+    if (t.size != null && t.size >= DRAW_MIN_FONT) continue;
+    const fixed = /\sfont-size\s*=\s*["'][^"']*["']/i.test(t.tag)
+      ? t.tag.replace(/\sfont-size\s*=\s*["'][^"']*["']/i, ` font-size='${DRAW_MIN_FONT}'`)
+      : t.tag.replace(/font-size\s*:\s*[\d.]+(px)?/i, `font-size:${DRAW_MIN_FONT}px`).replace(/^<text\b/i, (x) => (/font-size\s*:/i.test(t.tag) ? x : `${x} font-size='${DRAW_MIN_FONT}'`));
+    out = out.slice(0, t.at) + fixed + out.slice(t.at + t.tag.length);
+  }
+  return out;
 }
 
 const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, "i"))?.[2];
@@ -97,13 +141,7 @@ export function drawProblems(svg: unknown): string[] {
   if (texts.length > 8) p.push(`a drawing has ${texts.length} bits of text; keep it to 8 at most`);
   if (texts.some((t) => t.length > 28)) p.push("each bit of text in a drawing is at most 28 characters");
   if (texts.join("").length > 90) p.push("a drawing has at most 90 characters of text in all; the voice says the rest");
-  for (const m of v.matchAll(/<text\b[^>]*>/gi)) {
-    const size = Number(attr(m[0], "font-size") ?? m[0].match(/font-size\s*:\s*([\d.]+)/i)?.[1] ?? NaN);
-    if (!(size >= DRAW_MIN_FONT)) {
-      p.push(`every <text> in a drawing sets font-size of at least ${DRAW_MIN_FONT}, so it reads on a phone`);
-      break;
-    }
-  }
+  if (textSizes(v).some((t) => !((t.size ?? 0) >= DRAW_MIN_FONT))) p.push(`every <text> in a drawing sets font-size of at least ${DRAW_MIN_FONT}, so it reads on a phone`);
   const anims = [...v.matchAll(/<[a-z][^>]*\sdata-a\s*=\s*["']([^"']*)["'][^>]*>/gi)];
   if (anims.length < 2) p.push('a drawing animates at least 2 of its parts with data-a (draw, pop, rise, grow-up, …)');
   for (const m of anims) {

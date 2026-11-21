@@ -1,7 +1,7 @@
 // The motion kit (Thomas, 2026-11-19: "the animations are terrible").
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { BACKDROPS, ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, repeatedShots, replanShots, shotMotion, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
+import { BACKDROPS, ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, readableDraw, repeatedShots, replanShots, shotMotion, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { BEAT, composeHtml, timeline, totalSeconds, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
@@ -291,6 +291,20 @@ describe("drawn graphics", () => {
     expect(bad(chips(5).replace("data-t='0.2'", "data-t='2'"))).toMatch(/0 to 0.6 seconds/);
     expect(bad(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 820 900'><text font-size='60' data-a='pop'>35%</text><text font-size='60' data-a='pop'>MORE</text></svg>`)).toMatch(/nearly empty/);
     expect(motionProblems({ shots: [{ shot: 1, pieces: [{ kind: "draw", svg: chips(5) }, { kind: "title", text: "WOW" }] }] }, s1).join(" ")).toMatch(/a drawing fills the shot on its own/);
+  });
+
+  it("raises small or unsized text to the minimum, and counts a group's size (test run 44938268336)", () => {
+    const small = chips(5).replace("font-size='40'", "font-size='20'");
+    const fixed = motionFrom(JSON.stringify(one(small)))!;
+    expect(String(fixed.shots[0]!.pieces[0]!.svg)).toContain("font-size='34' fill='#fff' text-anchor='middle'>MORE PLAYERS");
+    expect(motionProblems(fixed, s1)).toEqual([]);
+    const grouped = chips(5).replace("<text x='410' y='860' font-size='40'", "<g font-size='60'><text x='410' y='860'").replace("MORE PLAYERS</text>", "MORE PLAYERS</text></g>");
+    expect(motionProblems(one(grouped), s1)).toEqual([]);
+    expect(readableDraw(grouped)).toBe(grouped);
+    const bare = chips(5).replace(" font-size='40'", "");
+    expect(motionProblems(one(bare), s1).join(" ")).toMatch(/font-size of at least 34/);
+    expect(readableDraw(bare)).toContain("<text font-size='34' x='410' y='860'");
+    expect(readableDraw("<svg><text style='font-size: 12px'>A</text></svg>")).toBe("<svg><text style='font-size:34px'>A</text></svg>");
   });
 
   it("lets at most 3 shots use ready-made pieces, the app's screens aside, and no two drawings be the same", () => {
