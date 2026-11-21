@@ -355,7 +355,7 @@ describe("posting", () => {
     const page = fakePage();
     const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, fetchImpl: siteFetch, now: NOW });
     expect(r.published).toHaveLength(1);
-    expect(page.calls).toEqual([{ url: `https://vault.example.com/api/social/media/${post.mediaToken}.jpg`, message: ig.calls[0]!.caption }]);
+    expect(page.calls).toEqual([{ url: `https://vault.example.com/api/social/media/${post.mediaToken}.jpg`, message: `${ig.calls[0]!.caption}\n\n👉 https://wright-ai-solutions.com` }]);
     const history = (await vault.actions()).map((a) => a.summary);
     expect(history.some((h) => h.includes("to Instagram"))).toBe(true);
     expect(history.some((h) => h.includes("to the Facebook Page"))).toBe(true);

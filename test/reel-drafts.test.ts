@@ -3,7 +3,7 @@ import { createClient } from "@libsql/client";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { facebookPageClient, type FacebookPageClient } from "../src/facebook.ts";
+import { facebookPageClient, pageText, type FacebookPageClient } from "../src/facebook.ts";
 import type { InstagramClient } from "../src/instagram.ts";
 import { addReelDrafts, parseReelDrafts, readReel, reelPath, REEL_DIR } from "../src/reel-drafts.ts";
 import { publishDue } from "../src/social.ts";
@@ -145,7 +145,8 @@ describe("posting an approved Reel", () => {
     const r = await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => page.client, readReel: read, now: NOW });
     expect(r.published).toHaveLength(1);
     expect(ig.calls).toEqual([{ bytes: "VIDEO-A", caption: "Pick yours.\n\n#satisfying", opts: undefined }]);
-    expect(page.calls).toEqual([{ bytes: "VIDEO-A", description: "Pick yours.\n\n#satisfying" }]);
+    // The Page gets the website as a clickable link at the bottom (Thomas, 2026-11-21); Instagram can't click one.
+    expect(page.calls).toEqual([{ bytes: "VIDEO-A", description: "Pick yours.\n\n#satisfying\n\n👉 https://wright-ai-solutions.com" }]);
     expect(await vault.post(post.id)).toMatchObject({ state: "published", igMediaId: "m1", permalink: "https://instagram.com/reel/x" });
     const history = (await vault.actions()).map((a) => a.summary);
     expect(history.some((h) => /Posted the Reel .* to Instagram/.test(h))).toBe(true);
@@ -189,6 +190,31 @@ describe("posting an approved Reel", () => {
     expect(finish.body).toContain("video_id=v9");
   });
 
+  // Thomas, 2026-11-21: "do an audit of the facebook page". The audit only reads.
+  it("audits the Page with reads only, keeping what it got when Facebook refuses a field", async () => {
+    const methods: string[] = [];
+    const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      methods.push(init?.method ?? "GET");
+      const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status });
+      if (url.includes("/me?")) return json({ id: "pg", name: "Page", instagram_business_account: { id: "IG" } });
+      if (url.includes("fields=about")) return json({ error: { message: "Tried accessing nonexisting field (about)", code: 100 } }, 400);
+      if (url.includes("fields=website")) return json({ id: "pg", website: "https://wright-ai-solutions.com" });
+      if (url.includes("/posts?")) return json({ data: [{ id: "p1", message: "Hi", created_time: "2026-11-20T21:04:23+0000", reactions: { summary: { total_count: 3 } } }] });
+      if (url.includes("/video_reels?")) return json({ data: [{ id: "v1", description: "Ball", created_time: "2026-11-21", permalink_url: "/reel/v1", video_insights: { data: [{ values: [{ value: 42 }] }] } }] });
+      if (url.includes("/insights?")) return json({ data: [{ values: [{ value: 7 }] }] });
+      return json({ id: "pg" });
+    }) as typeof fetch;
+    const a = await facebookPageClient("EAAtoken", { fetchImpl })!.audit!();
+    expect(methods.every((m) => m === "GET")).toBe(true);
+    expect(a.profile.website).toBe("https://wright-ai-solutions.com");
+    expect(String(a.profile.about)).toMatch(/not readable/);
+    expect(a.profile.name).toBeNull();
+    expect(a.posts[0]).toMatchObject({ id: "p1", reactions: 3 });
+    expect(a.reels[0]).toMatchObject({ permalink: "https://www.facebook.com/reel/v1", views: 42 });
+    expect(a.insights.page_follows).toBe(7);
+  });
+
   it("marks a refused Reel failed, logs it, and doesn't try again on its own", async () => {
     const { vault, post, read } = await reelPost("approved");
     const ig = fakeIg(true);
@@ -198,5 +224,12 @@ describe("posting an approved Reel", () => {
     expect((await vault.actions()).some((a) => a.kind === "post_failed")).toBe(true);
     await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, facebook: () => null, readReel: read, now: NOW });
     expect(ig.calls).toHaveLength(1);
+  });
+});
+
+describe("the Page's website link", () => {
+  it("adds the website once, at the bottom", () => {
+    expect(pageText("Hi\n\n#a ", "https://wright-ai-solutions.com/")).toBe("Hi\n\n#a\n\n👉 https://wright-ai-solutions.com");
+    expect(pageText("See wright-ai-solutions.com", "https://wright-ai-solutions.com/")).toBe("See wright-ai-solutions.com");
   });
 });

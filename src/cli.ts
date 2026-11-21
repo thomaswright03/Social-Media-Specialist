@@ -9,6 +9,7 @@
 //                   drafts (once each); they go out like any post, after Thomas approves them
 //   preview         drafts one post and saves its image to preview.jpg; saves nothing to the Vault, posts nothing
 //   instagram-test  reads the Instagram account (and the Facebook Page, with a Facebook token); posts nothing
+//   page-audit      reads the Facebook Page's profile, posts, Reels and insights for an audit; changes nothing
 //   hitta-test      sends Hitta a low-urgency test report
 //   ideas           stage 2: picks the next Reel's format (80% entertainment, 20% ads) and keeps 3 ideas
 //                   (REEL_FORMAT or a format after the command picks one by hand)
@@ -295,6 +296,25 @@ async function main() {
     return;
   }
 
+  // Thomas, 2026-11-21: "do an audit of the facebook page". Reads only; changes nothing on the Page.
+  if (command === "page-audit") {
+    const vault = connect();
+    try {
+      const token = await currentToken(vault, { log });
+      const page = token ? facebookPageClient(token.token) : null;
+      if (!page?.audit) {
+        console.error("No Facebook-login token, so the Page can't be read.");
+        process.exit(2);
+      }
+      const a = await page.audit();
+      const ig = await instagramClient(token!.token).account().catch(() => null);
+      console.log(`PAGE AUDIT\n${JSON.stringify({ ...a, instagram: ig }, null, 1)}`);
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
   if (command === "preview") {
     const vault = connect();
     const renderer = await playwrightRenderer();
@@ -450,7 +470,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit or hitta-test.`);
     process.exit(2);
   }
 
