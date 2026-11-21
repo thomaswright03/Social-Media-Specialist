@@ -8,7 +8,9 @@ state `approved` that it claimed with `claimForPublishing`. The Facebook Page (T
 manage the Facebook page too") follows the same rule: `publishDue` cross-posts the approved post there, nothing
 else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft,
 and never retry a failed post on its own. YouTube Shorts (Thomas, 2026-11-21) follow the Page's rule: only
-an approved Reel goes there, from `publishDue`, once, and a refusal is logged and never retried. Keep the tests for this passing.
+an approved Reel goes there, from `publishDue`, once, and a refusal is logged and never retried.
+The one other way in is `youtube-backfill` (Thomas, 2026-11-21: "all the reels that the ai has posted ... need to
+be uploaded and posted as youtube shorts"): Reels already public on Instagram, only when run with "go", each once. Keep the tests for this passing.
 
 Exception, Trial Reels only (Thomas, 2026-11-10): he chose "automatic Trial Reels only" for the content pipeline
 (`pipeline/README.md`). A pipeline Reel may go out without his OK only as a Trial Reel (shown to non-followers,
