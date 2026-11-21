@@ -41,6 +41,8 @@ export type TimedShot = Shot & { at: number; dur: number; voiceAt: number | null
 
 /** Shot time a Reel needs so that with the end card it runs at least 30 s (stage 6), with a little to spare. */
 export const MIN_SHOTS_SECONDS = 30 - END_CARD + 0.3;
+/** An explainer runs at least 40 s with the end card (Thomas, 2026-11-21: "make the information ones 40-50% longer"). */
+export const EXPLAINER_MIN_SHOTS_SECONDS = 40 - END_CARD + 0.3;
 /** The beat of silence after a line the script marks `pause` (a hook question, before a twist, before the closing question). */
 export const BEAT = 0.45;
 /** The most breath added after each line to reach that. */

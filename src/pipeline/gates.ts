@@ -465,13 +465,14 @@ export function cameraCheck(shots: Shot[]): Check {
   );
 }
 
-export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = [], narrated = true): Check[] {
+export function clarityChecks(shots: Shot[], retell: RetellReads | null, notes: string[] = [], narrated = true, range: readonly [number, number] = [MIN_SHOTS, MAX_SHOTS]): Check[] {
+  const [lo, hi] = range;
   const places = new Set(shots.map((s) => (s.place ?? "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim()).filter(Boolean));
   const unnamed = shots.filter((s) => !s.place?.trim()).length;
   const voiced = shots.filter((s) => s.line?.trim()).length;
   const right = (retell ?? []).filter(Boolean).length;
   return [
-    check(`${MIN_SHOTS} to ${MAX_SHOTS} shots`, shots.length >= MIN_SHOTS && shots.length <= MAX_SHOTS, `${shots.length} shots`),
+    check(`${lo} to ${hi} shots`, shots.length >= lo && shots.length <= hi, `${shots.length} shots`),
     check("One or two places", unnamed === 0 && places.size >= 1 && places.size <= 2, unnamed ? `${unnamed} shots don't name their place` : `${places.size}: ${[...places].join(", ")}`),
     // A satisfying video has no narrator; the others are told by the voice.
     ...(narrated

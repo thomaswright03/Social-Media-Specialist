@@ -27,6 +27,14 @@ export const MIX_WINDOW = 10;
 export const MIN_GAP_BETWEEN_ADS = 3;
 /** A current event is at most this many days old. */
 export const NEWS_MAX_DAYS = 14;
+/**
+ * An explainer's narration, in words (Thomas, 2026-11-21, on the 30 s killer-robots test: "make the information
+ * ones 40-50% longer"). The voice runs about 2.7 words a second at VOICE_SPEED, so this is 40 to 46 s of voice,
+ * about 42 to 48 s with the end card.
+ */
+export const EXPLAINER_WORDS = [105, 125] as const;
+/** An explainer's shots: more of them, so each still makes one point in 2 to 3 seconds. */
+export const EXPLAINER_SHOTS = [14, 20] as const;
 
 export type Made = { format: Format; productId?: string | null; at: string };
 export type Choice = { format: Format; product: Product | null };
@@ -190,6 +198,8 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
       const t = Date.parse(s.published ?? "");
       return /^https?:\/\//.test(s.url ?? "") && Number.isFinite(t) && t <= now.getTime() + 86_400_000 && now.getTime() - t <= NEWS_MAX_DAYS * 86_400_000;
     });
+    const words = d.shots.reduce((n, s) => n + (s.line ?? "").replace(/\[[^\]]*\]/g, " ").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length, 0);
+    checks.push(check(`The narration is ${EXPLAINER_WORDS[0]} to ${EXPLAINER_WORDS[1]} words (about 45 seconds)`, words >= EXPLAINER_WORDS[0] && words <= EXPLAINER_WORDS[1], `${words} words`));
     checks.push(check(`At least 2 dated sources from the last ${NEWS_MAX_DAYS} days`, fresh.length >= 2, `${fresh.length} of ${(d.sources ?? []).length} sources are linked, dated and recent`));
     // One story: test run 3's listeners lost the thread at "Separately, 65% in three islands..." (2026-11-20).
     const jump = d.shots.map((s) => s.line ?? "").join(" ").match(STORY_JUMP)?.[0];

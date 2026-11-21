@@ -12,7 +12,7 @@ leaves a reason to watch the next. Something new every 2 to 3 seconds.
 - standalone: no "part 2", "episode", "last time", "previously", "as we saw";
 - it has a payoff and a reason to watch the next;
 - a stranger can follow it (Thomas, 2026-11-18: the first test Reel was
-  "the most incoherent thing I've ever seen"): 8 to 14 shots, one or two
+  "the most incoherent thing I've ever seen"): 8 to 14 shots (an explainer 14 to 20, with 105 to 125 words of narration, Thomas 2026-11-21), one or two
   places, every shot names its camera (no two in a row the same, 3+ kinds),
   and (narrated formats: not the satisfying video) the voice starts in the
   first shot and speaks in at least 3 of 4 shots, and 3 separate cold reads that see only what a viewer sees and hears
@@ -75,7 +75,7 @@ The rules below make a script pass; they don't make it good. In formats that tel
 
 Code checks these, and one miss fails the script.
 
-- 10 to 14 shots, 30 to 42 seconds in total, counting the opening. The first shot starts at 0 and every shot starts exactly where the one before it ends.
+- 10 to 14 shots, 30 to 42 seconds in total, counting the opening (an explainer: 14 to 20 shots, about 45 seconds, as its format says). The first shot starts at 0 and every shot starts exactly where the one before it ends.
 - Every shot is 2 to 3 seconds, never longer (the opening's shots keep their own timing). The video is checked in 3-second slices from 0 to the end, and a slice with no new shot, no new on-screen text and no new line is flagged. Each shot is a new beat: something happens, is revealed, or changes. Never fill a slice with a cut or a caption that tells the viewer nothing new.
 - Every shot names its `place` and its `camera`. At most two places in the whole video, spelled the same way every time. At least 3 kinds of camera, never the same one twice in a row, and the same word for the same camera every time.
 - Every shot with a spoken `line` has `onScreen` filled in with how that claim is shown. A shot with no line leaves both empty.

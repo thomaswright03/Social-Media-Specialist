@@ -91,8 +91,12 @@ describe("gateFormat", () => {
       { url: "https://news.example/a", published: "2026-11-16" },
       { url: "https://news.example/b", published: "2026-11-10" },
     ];
-    const ask = [{ start: 0, line: "A $2 billion bridge just opened." }, { start: 3, line: "Would you pay the toll?" }];
+    // 110 words of narration: an explainer runs about 45 s (Thomas, 2026-11-21).
+    const middle = Array.from({ length: 10 }, (_, k) => ({ start: 3 + k * 3, line: "The bridge crosses the river and saves drivers ten minutes." }));
+    const ask = [{ start: 0, line: "A $2 billion bridge just opened." }, ...middle, { start: 33, line: "Would you pay the toll?" }];
     expect(gateFormat(news, { caption: "The $2 billion bridge, explained", shots: ask, sources }, P, now).passed).toBe(true);
+    const short = gateFormat(news, { caption: "The $2 billion bridge, explained", shots: [ask[0]!, ask.at(-1)!], sources }, P, now);
+    expect(short.checks.find((c) => c.name.startsWith("The narration is"))).toMatchObject({ passed: false, detail: "11 words" });
     expect(gateFormat(news, { caption: "x", shots: [], sources: [sources[0]!, { url: "https://old.example", published: "2026-09-01" }] }, P, now).passed).toBe(false);
   });
 
