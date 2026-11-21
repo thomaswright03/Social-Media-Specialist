@@ -58,8 +58,11 @@ export function picturesVote(answers: string[], total: number): { ok: boolean; d
   return { ok, shots, detail: shots.length ? `doesn't match the voice: ${shots.join(", ")} (each flagged by 2+ of ${lines.length} viewers)` : `${lines.length - fine} of ${lines.length} viewers said pictures don't fit: ${lines.filter((l) => !l.ok).map((l) => l.detail).join("; ").slice(0, 200)}` };
 }
 
-/** Rounds of redrawing the shots a viewer said don't show what the voice says, before stage 5 gives up. */
-export const REDRAW_ROUNDS = 1;
+/**
+ * Rounds of redrawing the shots a viewer said don't show what the voice says, before stage 5 gives up.
+ * Two: fresh viewers of the redrawn video can flag a different shot (test run 44859311055: shot 1, then 12).
+ */
+export const REDRAW_ROUNDS = 2;
 
 /** The shot numbers in a PICTURES detail ("doesn't match the voice: 02, 05" or "shot-02.jpg"), within 1..total. */
 export function mismatchedShots(detail: string | undefined, total: number): number[] {
