@@ -97,7 +97,8 @@ Other fields:
 - `story` says in two sentences what the product does for the viewer and how.
 
 The caption:
-- It names the product, says in one line what it does for you, and ends with "Link in bio", then 3 to 5 hashtags its real users follow (for a calorie counter: #calorietracking, not #smallbusiness).
+- The first line is the hook alone: one short sentence of 125 characters at most, the viewer's question or the product in a few words ("Know what's really in your bowl.").
+- Then it names the product, says in one line what it does for you, and ends with "Link in bio", then on the last line 3 to 5 hashtags its real users follow (for a calorie counter: #calorietracking, not #smallbusiness).
 <!-- /script -->
 
 <!-- style -->

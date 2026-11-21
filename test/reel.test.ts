@@ -47,6 +47,13 @@ describe("stage 6 packaging", () => {
     expect(p.caption.split("\n")[0]).toBe("This is the hook.");
   });
 
+  it("moves hashtags off the first line, and its first sentence becomes the hook (calorie ad, test run 44847887000)", () => {
+    const one = "Know what's really in your bowl. Free Calorie Counter logs your real portion and fills your daily goal, with no account. Link in bio #calorietracking #caloriecounter #mealtracking";
+    const lines = packageReel({ format: "ad", caption: one, shots, assets: [] }).caption.split("\n");
+    expect(lines[0]).toBe("Know what's really in your bowl.");
+    expect(lines.at(-1)).toBe("#calorietracking #caloriecounter #mealtracking");
+  });
+
   it("has no cover when no shot has text", () => {
     const p = packageReel({ format: "satisfying", caption, shots: [{ at: 0, dur: 30 }], assets: [] });
     expect(p.coverAt).toBeNull();

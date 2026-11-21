@@ -205,7 +205,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #scrim{position:absolute;z-index:6;left:0;right:0;top:0;height:${BRAND_TOP + 150}px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.6) 0,rgba(0,0,0,.45) ${BRAND_TOP + 60}px,rgba(0,0,0,0) 100%)}
 #brand{position:absolute;z-index:8;left:0;right:0;top:${BRAND_TOP}px;text-align:center;font-family:Montserrat,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)}
 #brand b{display:inline-block;font-weight:900;font-size:36px;letter-spacing:.08em;text-transform:uppercase}
-#brand i{display:block;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85;margin-top:2px}
+#brand i{display:table;margin:2px auto 0;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;opacity:.85}
 #endcard{position:absolute;inset:0;z-index:20;opacity:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:260px;background:radial-gradient(circle at 30% 25%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 75% 70%,rgba(255,92,173,.28),transparent 55%),radial-gradient(circle at 50% 50%,rgba(92,225,255,.12),transparent 70%),#07070a;font-family:Montserrat,sans-serif;color:#f4f2ed;text-align:center}
 #endcard .mark{width:300px;height:300px}
 #endcard p{max-width:780px;margin-bottom:90px;font-weight:900;font-size:84px;line-height:1.06;letter-spacing:-.01em;text-transform:uppercase;color:#fff}
@@ -213,7 +213,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#0b0d12}
 #endcard.q .mark{width:220px;height:220px}
 #endcard.q b{margin-top:40px;font-size:72px}
 #endcard.q i{font-size:46px}
-#endcard b{display:block;margin-top:56px;font-weight:900;font-size:86px;line-height:1.02;letter-spacing:-.02em}
+#endcard b{display:block;max-width:800px;margin-top:56px;font-weight:900;font-size:76px;line-height:1.02;letter-spacing:-.02em}
 #endcard i{display:inline-block;margin-top:30px;font-style:normal;font-weight:800;font-size:54px;letter-spacing:.01em;background:linear-gradient(90deg,#7c5cff,#ff5cad 55%,#5ce1ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 </style></head><body>
 ${world ? `<div id="world"></div><svg id="links" width="${W}" height="${H}"></svg>` : ""}

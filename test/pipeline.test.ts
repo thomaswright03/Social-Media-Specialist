@@ -353,6 +353,10 @@ describe("stage 4, script", () => {
     const unshown = { ...script, shots: script.shots.map((s, i) => (i === 3 ? { ...s, line: "He's been falling for an hour", onScreen: "" } : s)) };
     expect(gateScript(unshown, opening, { problems: [] }).passed).toBe(false);
     expect(gateScript({ ...script, nextHook: "See part 6" }, opening, { problems: [] }).passed).toBe(false);
+    // The caption's hook is checked here too, before the video is made (test run 44847887000).
+    const longCaption = "Free Calorie Counter lets you log your real bowl of granola, meals and weight, and see your daily goal fill, with no account and no ads. Link in bio #calorietracking";
+    expect(gateScript({ ...script, caption: longCaption }, opening, { problems: [] }).checks.find((c) => c.name.startsWith("The caption opens"))).toMatchObject({ passed: false });
+    expect(gateScript({ ...script, caption: "Know what's in your bowl? " + longCaption }, opening, { problems: [] }).passed).toBe(true);
     expect(gateScript(script, opening, { problems: ["He falls 40 floors in 2 seconds"] }).passed).toBe(false);
     expect(gateScript(script, opening, null).passed).toBe(false);
     const long = { ...script, shots: [...shots, { start: 36, end: 75, visual: "more" }] };
