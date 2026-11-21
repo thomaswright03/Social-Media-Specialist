@@ -6,7 +6,9 @@ import { gate, check } from "../src/pipeline/gates.ts";
 import type { IdeasResult } from "../src/pipeline/ideas.ts";
 import type { ProduceResult } from "../src/pipeline/produce.ts";
 import { reelAssets } from "../src/pipeline/produce.ts";
-import { packageReel, runReel } from "../src/pipeline/reel.ts";
+import { DAILY_SLOTS, packageReel, runReel, slotFormat } from "../src/pipeline/reel.ts";
+import type { FacebookPageClient } from "../src/facebook.ts";
+import type { YouTubeClient } from "../src/youtube.ts";
 import type { ScriptResult } from "../src/pipeline/script.ts";
 import { Vault } from "../src/vault.ts";
 
@@ -217,17 +219,17 @@ const base = async (vault: Vault, over: Partial<Parameters<typeof runReel>[0]> =
   runReel({ vault, format: "explainer", products: [], ask: async () => "{}", produce: async () => produced(), client: null, post: true, ideas: ideasOk, script: scriptOk, readVideo: async () => new Uint8Array([1]), now: () => NOW, ...over });
 
 describe("the daily Reel", () => {
-  it("posts a Reel that passed every gate once, as a Trial Reel (MANUAL), and logs it with its token use", async () => {
+  it("posts a Reel that passed every gate once, as a normal Reel (not a Trial Reel), and logs it with its token use", async () => {
     const vault = await memoryVault();
     const { c, posts } = client();
     const r = await base(vault, { client: c });
     expect(r.posted).toEqual({ mediaId: "M1", permalink: "https://instagram.com/reel/z" });
     expect(posts).toHaveLength(1);
-    expect(posts[0]!.opts).toEqual({ trial: "MANUAL", thumbOffsetMs: 1000 });
+    expect(posts[0]!.opts).toEqual({ thumbOffsetMs: 1000 });
     expect(posts[0]!.caption).toMatch(/Follow/);
     const log = await vault.actions();
     expect(log.some((a) => a.kind === "posted" && a.onInstagram)).toBe(true);
-    expect(log.some((a) => /Daily explainer Reel: posted as a Trial Reel\. Used \d+ Claude call/.test(a.summary))).toBe(true);
+    expect(log.some((a) => /Daily explainer Reel: posted\. Used \d+ Claude call/.test(a.summary))).toBe(true);
     expect(await vault.latestStage(6, { subject: "reel:1", passedOnly: true })).not.toBeNull();
   });
 
@@ -292,5 +294,56 @@ describe("the daily Reel", () => {
     expect(tries).toBe(1);
     expect(r.posted).toBeNull();
     expect((await vault.actions()).some((a) => a.kind === "post_failed" && !a.ok)).toBe(true);
+  });
+
+  it("sends the same video to the Facebook Page and YouTube after Instagram; a refusal there is logged once and never undoes Instagram", async () => {
+    const vault = await memoryVault();
+    const { c } = client();
+    const fb: string[] = [];
+    const page = { async publishReelFile(_v: Uint8Array, text: string) {
+      fb.push(text);
+      return { videoId: "V1", permalink: "https://facebook.com/reel/1" };
+    } } as unknown as FacebookPageClient;
+    let ytTries = 0;
+    const youtube = { async uploadShort() {
+      ytTries++;
+      throw new Error("quota");
+    } } as unknown as YouTubeClient;
+    const r = await base(vault, { client: c, page, youtube });
+    expect(r.posted).not.toBeNull();
+    expect(fb).toHaveLength(1);
+    expect(fb[0]).toMatch(/https:\/\/wright-ai-solutions\.com/);
+    expect(ytTries).toBe(1);
+    const log = await vault.actions();
+    expect(log.some((a) => a.kind === "posted" && /Facebook Page/.test(a.summary))).toBe(true);
+    expect(log.some((a) => a.kind === "post_failed" && /YouTube refused/.test(a.summary))).toBe(true);
+  });
+
+  it("sends nothing to the Page or YouTube when Instagram refused it", async () => {
+    const vault = await memoryVault();
+    const { c } = client({ async publishReelFile() { throw new Error("no"); } });
+    let sent = 0;
+    const page = { async publishReelFile() { sent++; return { videoId: "V", permalink: null }; } } as unknown as FacebookPageClient;
+    const youtube = { async uploadShort() { sent++; return { videoId: "Y", url: "u", privacy: "public" }; } } as unknown as YouTubeClient;
+    await base(vault, { client: c, page, youtube });
+    expect(sent).toBe(0);
+  });
+});
+
+describe("five posts a day", () => {
+  it("has five slots with no format twice in a row and one ad", () => {
+    expect(DAILY_SLOTS).toHaveLength(5);
+    const f = DAILY_SLOTS.map((s) => s.format);
+    expect(f.filter((x) => x === "ad")).toHaveLength(1);
+    expect(f.every((x, i) => x !== f[(i + 1) % f.length])).toBe(true);
+  });
+
+  it("makes the format of the latest slot that started in Arizona, even when GitHub starts the run late", () => {
+    expect(slotFormat(new Date("2026-11-21T14:03:00Z"))).toBe("explainer"); // 7:03
+    expect(slotFormat(new Date("2026-11-21T18:40:00Z"))).toBe("satisfying"); // 11:40, the 10:00 run started late
+    expect(slotFormat(new Date("2026-11-21T20:03:00Z"))).toBe("ad"); // 13:03
+    expect(slotFormat(new Date("2026-11-21T23:03:00Z"))).toBe("explainer"); // 16:03
+    expect(slotFormat(new Date("2026-11-22T02:03:00Z"))).toBe("satisfying"); // 19:03
+    expect(slotFormat(new Date("2026-11-22T11:00:00Z"))).toBe("satisfying"); // 4:00, still the evening slot
   });
 });

@@ -8,15 +8,20 @@ state `approved` that it claimed with `claimForPublishing`. The Facebook Page (T
 manage the Facebook page too") follows the same rule: `publishDue` cross-posts the approved post there, nothing
 else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft,
 and never retry a failed post on its own. YouTube Shorts (Thomas, 2026-11-21) follow the Page's rule: only
-an approved Reel goes there, from `publishDue`, once, and a refusal is logged and never retried.
+an approved Reel goes there, from `publishDue`, once, and a refusal is logged and never retried. YouTube stays off
+until the variable `YOUTUBE_CROSSPOST` is `on`: Thomas chose to wait for Google's API audit (2026-11-21), then
+turn it on and run the backfill.
 The one other way in is `youtube-backfill` (Thomas, 2026-11-21: "all the reels that the ai has posted ... need to
 be uploaded and posted as youtube shorts"): Reels already public on Instagram, only when run with "go", each once. Keep the tests for this passing.
 
-Exception, Trial Reels only (Thomas, 2026-11-10): he chose "automatic Trial Reels only" for the content pipeline
-(`pipeline/README.md`). A pipeline Reel may go out without his OK only as a Trial Reel (shown to non-followers,
-`graduation_strategy: MANUAL`, so showing it to followers stays his call in the app), and only when `mayAutoPost` in
-`src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist isn't paused. Feed posts and normal
-Reels keep the approval rule above. Keep the tests for `mayAutoPost` passing.
+Exception, the pipeline's own Reels (Thomas, 2026-11-21: "I want the AI to post 5 times a day with variety of
+content. It can start doing so without my approval. I am lifting that gate."; before that, since 2026-11-10, they
+went out only as Trial Reels). `reels.yml` makes five a day (`DAILY_SLOTS` in `src/pipeline/reel.ts`, mixed
+formats, one ad), and each goes out on its own as a normal Reel, then to the Facebook Page (and YouTube once it's
+on), only when `mayAutoPost` in `src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist
+isn't paused. The quality gates stay; he lifted only his approval. Each Reel posts once and a refusal is never
+retried. Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Keep the tests
+for `mayAutoPost` passing.
 
 ## The pipeline's gates are code (Thomas, 2026-11-10)
 

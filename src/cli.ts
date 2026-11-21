@@ -20,8 +20,9 @@
 //                   that passed stage 2
 //   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
 //                   captions, our own sound) and grades it on our rubric; posts nothing
-//   reel            one Reel of the format after the command (explainer, satisfying, ad) from idea to
-//                   Instagram: stages 2 to 6, then posted as a Trial Reel only when every check passed
+//   reel            one Reel of the format after the command (explainer, satisfying, ad, or slot for the
+//                   format of this hour's slot of the five a day) from idea to Instagram: stages 2 to 6,
+//                   then posted as a normal Reel, and to the Facebook Page, only when every check passed
 //                   (src/pipeline/reel.ts); REEL_POST=off makes and checks it but posts nothing
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
 //   diagnose        stage 0 of the content pipeline (pipeline/README.md): reads Insights for
@@ -45,7 +46,7 @@ import { DISCOVERY_USAGE_STOP, call, currentToken, instagramClient, type Discove
 import { playwrightRenderer } from "./render.ts";
 import { socialAnswerer, VAULT_TABLES } from "./requests.ts";
 import { siteProducts } from "./site.ts";
-import { publishDue, runDaily } from "./social.ts";
+import { publishDue, runDaily, youtubeCrosspost } from "./social.ts";
 import { addReelDrafts } from "./reel-drafts.ts";
 import { runDiagnose } from "./pipeline/diagnose.ts";
 import { runResearch, studyAccounts, summaryText, type ResearchResult } from "./pipeline/research.ts";
@@ -53,7 +54,7 @@ import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
 import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
-import { DAILY_FORMATS, runReel } from "./pipeline/reel.ts";
+import { DAILY_FORMATS, runReel, slotFormat } from "./pipeline/reel.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { Vault } from "./vault.ts";
@@ -171,9 +172,12 @@ async function main() {
 
   if (command === "reel") {
     // One Reel of a format from idea to Instagram (reels.yml runs it daily for each format).
-    const format = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
+    const asked = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
+    // "slot": a scheduled run makes the format of the slot it's for (DAILY_SLOTS).
+    const format = asked === "slot" ? slotFormat(new Date()) : asked;
+    if (asked === "slot") log(`This run is for the ${format} slot.`);
     if (!isFormat(format)) {
-      console.error(`"${format}" isn't a format. Use ${DAILY_FORMATS.join(", ")} (or story).`);
+      console.error(`"${format}" isn't a format. Use ${DAILY_FORMATS.join(", ")}, slot (or story).`);
       process.exit(2);
     }
     const vault = connect();
@@ -197,6 +201,8 @@ async function main() {
         ask: askClaude,
         produce: (subject) => produce(vault, subject),
         client: token ? instagramClient(token.token) : null,
+        page: token && crosspostOn() ? facebookPageClient(token.token) : null,
+        youtube: youtubeCrosspost({}),
         // REEL_POST=off makes and checks the Reel but posts nothing.
         post: process.env.REEL_POST !== "off",
         log,
@@ -335,7 +341,7 @@ async function main() {
       process.exit(2);
     }
     const c = await youtubeClient(creds).channel();
-    log(`YouTube: ${c.title}${c.handle ? ` (${c.handle})` : ""}, ${c.subscribers ?? "?"} subscribers, ${c.videos ?? "?"} videos. Approved Reels ${youtubeOn() ? "also go here as Shorts" : "stay off YouTube (YOUTUBE_CROSSPOST=off)"}.`);
+    log(`YouTube: ${c.title}${c.handle ? ` (${c.handle})` : ""}, ${c.subscribers ?? "?"} subscribers, ${c.videos ?? "?"} videos. Approved Reels ${youtubeOn() ? "also go here as Shorts" : "stay off YouTube until the variable YOUTUBE_CROSSPOST is on"}.`);
     return;
   }
 

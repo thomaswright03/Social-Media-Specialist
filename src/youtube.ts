@@ -6,7 +6,8 @@
 //
 // Until Google audits the API project, YouTube locks every API upload as
 // private (it can't be made public by hand), so the Short only shows once the
-// audit passes. YOUTUBE_CROSSPOST=off stops the uploads.
+// audit passes. Thomas chose to wait for it (2026-11-21), so nothing uploads
+// until the repository variable YOUTUBE_CROSSPOST is "on".
 
 type Fetch = typeof fetch;
 
@@ -44,8 +45,11 @@ export function youtubeCreds(env: NodeJS.ProcessEnv = process.env): YouTubeCreds
   return clientId && clientSecret && refreshToken ? { clientId, clientSecret, refreshToken } : null;
 }
 
-/** Approved Reels also go to YouTube once it's set up, unless YOUTUBE_CROSSPOST is "off". */
-export const youtubeOn = (env: NodeJS.ProcessEnv = process.env) => youtubeCreds(env) !== null && (env.YOUTUBE_CROSSPOST?.trim().toLowerCase() ?? "") !== "off";
+/**
+ * Reels go to YouTube only once it's set up and YOUTUBE_CROSSPOST is "on". Thomas chose to wait for Google's
+ * audit (2026-11-21: uploads until then are locked private), so it's off until he says it passed.
+ */
+export const youtubeOn = (env: NodeJS.ProcessEnv = process.env) => youtubeCreds(env) !== null && env.YOUTUBE_CROSSPOST?.trim().toLowerCase() === "on";
 
 /** A Short's title: the headline, cut at a word to fit YouTube's 100 characters, with #Shorts when it fits. */
 export function shortTitle(headline: string): string {

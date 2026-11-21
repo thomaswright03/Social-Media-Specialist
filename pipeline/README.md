@@ -85,19 +85,21 @@ every lesson in `SocialLesson`, and every action the specialist takes (a
 post, a draft, a token refresh, a stage passed or failed, anything done
 through Hitta) in its History (`SocialAction`), shown on the Vault page.
 
-## Posting: Trial Reels only, on their own
+## Posting: five a day, on their own
 
-Thomas chose automatic Trial Reels only: a finished video goes out as a Trial
-Reel (shown to non-followers only) without waiting for him, but only after
-every stage-6 check passes. Graduation (showing it to followers) stays his
-call in the Instagram app (`graduation_strategy: MANUAL`). Feed posts still
+Thomas lifted his approval for the pipeline's Reels (2026-11-21: "I want the AI
+to post 5 times a day with variety of content. It can start doing so without
+my approval. I am lifting that gate."; until then they went out only as Trial
+Reels). A finished video goes out as a normal Reel without waiting for him,
+then to the Facebook Page (and YouTube once `YOUTUBE_CROSSPOST` is on), but
+only after every stage-6 check passes. Feed posts and the videos he adds still
 need his approval on the Vault page.
 
-Every day (Thomas, 2026-11-20: "1 explainer and 1 satisfying and 1 ad per
-day"), `.github/workflows/reels.yml` runs `social reel <format>` for each of
-the three: stages 2 to 6 in a row (`src/pipeline/reel.ts`), then the video is
-uploaded straight from the run with Instagram's resumable upload
-(`publishReelFile`, no public URL needed) as a Trial Reel. A stage that
+Five times a day (`DAILY_SLOTS`: 7am explainer, 10am satisfying, 1pm ad, 4pm
+explainer, 7pm satisfying, Arizona time), `.github/workflows/reels.yml` runs
+`social reel slot`: stages 2 to 6 in a row (`src/pipeline/reel.ts`), then the
+video is uploaded straight from the run with Instagram's resumable upload
+(`publishReelFile`, no public URL needed). A stage that
 doesn't pass stops that Reel for the day, a refused post is logged and never
 retried, and the History gets one line per Reel with the Claude tokens it
 used (`src/claude-usage.ts`). An explainer needs news from the last 14 days;

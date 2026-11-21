@@ -1,16 +1,26 @@
-# The daily Reels (Thomas, 2026-11-20: "1 explainer and 1 satisfying and 1
-# ad per day"). Each format runs `npx social reel <format>`: idea, script,
-# video and the pre-publish checks, each behind its gate
-# (src/pipeline/reel.ts). A Reel that passes every check goes out on its own
-# as a Trial Reel only: non-followers see it, and sharing it with followers
-# stays Thomas's call in the Instagram app (CLAUDE.md). Anything that fails a
-# gate stops that Reel for the day; nothing is retried.
+# Five Reels a day (Thomas, 2026-11-21: "I want the AI to post 5 times a day
+# with variety of content. It can start doing so without my approval. I am
+# lifting that gate."). Each scheduled run makes the Reel of its slot
+# (DAILY_SLOTS in src/pipeline/reel.ts: 7am explainer, 10am satisfying, 1pm
+# ad, 4pm explainer, 7pm satisfying, Arizona time) with `npx social reel
+# slot`: idea, script, video and the pre-publish checks, each behind its gate.
+# A Reel that passes every check goes out on its own as a normal Reel, then to
+# the Facebook Page (CLAUDE.md). Anything that fails a gate stops that slot's
+# Reel; nothing is retried. Pausing the specialist on the Vault page stops it.
 #
 # Run it by hand from the Actions tab with "post" off to make and check the
 # Reels without posting them.
 name: Daily Reels
 
 on:
+  schedule:
+    # A few minutes past 7, 10, 13, 16 and 19 in Arizona (UTC-7 all year), at
+    # :03, away from the other employees' runs. The run takes about half an hour.
+    - cron: "3 14 * * *"
+    - cron: "3 17 * * *"
+    - cron: "3 20 * * *"
+    - cron: "3 23 * * *"
+    - cron: "3 2 * * *"
   workflow_dispatch:
     inputs:
       format:
@@ -19,7 +29,7 @@ on:
         default: all
         options: [all, explainer, satisfying, ad]
       post:
-        description: Post it as a Trial Reel when every check passes (off makes and checks it only)
+        description: Post it when every check passes (off makes and checks it only)
         type: boolean
         default: false
       product:
@@ -40,11 +50,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
-      # One at a time: they post about half an hour apart and share the Claude limits.
+      # One at a time: they share the Claude limits.
       max-parallel: 1
       fail-fast: false
       matrix:
-        format: ${{ fromJSON((github.event_name != 'schedule' && inputs.format != 'all') && format('["{0}"]', inputs.format) || '["explainer","satisfying","ad"]') }}
+        # A scheduled run makes its slot's format; by hand, the one asked for or all three.
+        format: ${{ fromJSON(github.event_name == 'schedule' && '["slot"]' || (inputs.format != 'all' && format('["{0}"]', inputs.format) || '["explainer","satisfying","ad"]')) }}
     env:
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
       VAULT_DATABASE_AUTH_TOKEN: ${{ secrets.VAULT_DATABASE_AUTH_TOKEN }}
@@ -54,6 +65,11 @@ jobs:
       INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
       INSTAGRAM_GRAPH_HOST: ${{ vars.INSTAGRAM_GRAPH_HOST }}
       FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
+      FACEBOOK_CROSSPOST: ${{ vars.FACEBOOK_CROSSPOST }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_CROSSPOST: ${{ vars.YOUTUBE_CROSSPOST }}
       META_APP_ID: ${{ vars.META_APP_ID }}
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -68,7 +84,7 @@ jobs:
 
       - name: Clean up pasted secrets
         run: |
-          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET ELEVENLABS_API_KEY; do
+          for name in VAULT_DATABASE_URL VAULT_DATABASE_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN HITTA_API_KEY INSTAGRAM_ACCESS_TOKEN INSTAGRAM_USER_ID META_APP_SECRET YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN ELEVENLABS_API_KEY; do
             value="$(printf '%s' "${!name}" | tr -d '[:space:]')"
             [ -n "$value" ] && echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"

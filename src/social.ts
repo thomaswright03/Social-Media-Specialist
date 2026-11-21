@@ -14,7 +14,7 @@
 // could post it twice); Thomas taps Try again.
 import { fullCaption, pickNext, readSite, screenDraft, buildDraftPrompt, type Subject } from "./draft.ts";
 import { crosspostOn, facebookPageClient, pageText, type FacebookPageClient } from "./facebook.ts";
-import { youtubeClient, youtubeCreds, type YouTubeClient } from "./youtube.ts";
+import { youtubeClient, youtubeCreds, youtubeOn, type YouTubeClient } from "./youtube.ts";
 import { HITTA_PROJECT, type HittaReport, type HittaResult } from "./hitta.ts";
 import { currentToken, instagramClient, InstagramError, type InstagramClient } from "./instagram.ts";
 import type { Renderer } from "./render.ts";
@@ -310,11 +310,11 @@ async function publishApprovedReel(d: Omit<Deps, "ask" | "renderer">, ig: Instag
   if (yt) await reelToYouTube(d, yt, video, p, now);
 }
 
-/** YouTube for approved Reels: the test's fake, else the channel once it's set up; YOUTUBE_CROSSPOST=off stops it. */
-function youtubeCrosspost(d: Omit<Deps, "ask" | "renderer">): YouTubeClient | null {
+/** YouTube for Reels: the test's fake, else the channel once YOUTUBE_CROSSPOST is "on" (youtubeOn); "off" stops both. */
+export function youtubeCrosspost(d: Pick<Deps, "youtube" | "fetchImpl">): YouTubeClient | null {
   if (process.env.YOUTUBE_CROSSPOST?.trim().toLowerCase() === "off") return null;
   if (d.youtube) return d.youtube();
-  const creds = youtubeCreds();
+  const creds = youtubeOn() ? youtubeCreds() : null;
   return creds ? youtubeClient(creds, { fetchImpl: d.fetchImpl }) : null;
 }
 
