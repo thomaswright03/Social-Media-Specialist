@@ -1,7 +1,7 @@
 // The motion kit (Thomas, 2026-11-19: "the animations are terrible").
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { BACKDROPS, ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, readableDraw, repeatedShots, replanShots, shotMotion, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
+import { BACKDROPS, ICONS, KINDS, motionFrom, motionPlan, motionProblems, pieceFigures, shotsWithProblems, readableDraw, repeatedShots, replanShots, shotMotion, THEMES, type MotionPlan } from "../src/pipeline/motion.ts";
 import { BEAT, composeHtml, timeline, totalSeconds, transitionFor } from "../src/pipeline/compose.ts";
 import { END_CARD } from "../src/pipeline/gates.ts";
 
@@ -329,5 +329,28 @@ describe("drawn graphics", () => {
     const js = readFileSync(new URL("../pipeline/motion/runtime.js", import.meta.url), "utf8");
     const block = js.slice(js.indexOf("const BACKDROPS = {"), js.indexOf("\n  };", js.indexOf("const BACKDROPS = {")));
     expect([...block.matchAll(/^\s{4}([a-z]+):/gm)].map((m) => m[1]).sort()).toEqual([...BACKDROPS].sort());
+  });
+});
+
+// Thomas, 2026-11-23: a backup plan when content is rejected. Explainers at 4 PM on Nov 22 and 7 AM on Nov 23
+// were dropped because one shot's drawing stayed "nearly empty" for three whole plans.
+describe("redoing only the broken shots", () => {
+  it("names the shots behind the problems, or none when one is about the whole plan", () => {
+    expect(shotsWithProblems(["Shot 12, piece 1: a drawing is nearly empty", "Shot 3 has 3 pieces; give it 1 or 2.", "Shot 12: bg is one of red"])).toEqual([3, 12]);
+    expect(shotsWithProblems(['There was no JSON with "shots" in the answer.'])).toBeNull();
+  });
+
+  it("keeps the plan and redoes just the shot that kept failing", async () => {
+    const stuck: MotionPlan = { shots: [good.shots[0]!, { shot: 2, pieces: [{ kind: "counter", to: 99 }] }] };
+    const redone: MotionPlan = { shots: [{ shot: 1, pieces: [{ kind: "title", text: "IGNORED" }] }, good.shots[1]!] };
+    const answers = [stuck, stuck, stuck, redone].map((x) => JSON.stringify(x));
+    const seen: string[] = [];
+    const logs: string[] = [];
+    const r = await motionPlan(shots, async (p) => (seen.push(p), answers.shift() ?? ""), (m) => logs.push(m));
+    expect(r.problems).toEqual([]);
+    expect(r.plan!.shots[0]).toEqual(good.shots[0]);
+    expect(r.plan!.shots[1]!.pieces[0]!.kind).toBe("bars");
+    expect(seen[3]).toMatch(/This plan is right except for shot 2/);
+    expect(logs.join(" ")).toMatch(/after redoing shot 2/);
   });
 });

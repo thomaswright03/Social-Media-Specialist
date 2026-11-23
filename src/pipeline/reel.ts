@@ -10,7 +10,7 @@
 import { readFile } from "node:fs/promises";
 import { usageMark, usageSince, usageText, type ClaudeUsage } from "../claude-usage.ts";
 import { pageText, type FacebookPageClient } from "../facebook.ts";
-import type { InstagramClient } from "../instagram.ts";
+import { InstagramError, type InstagramClient } from "../instagram.ts";
 import { SITE_URL } from "../site.ts";
 import type { YouTubeClient } from "../youtube.ts";
 import type { Product, Vault } from "../vault.ts";
@@ -184,7 +184,8 @@ export async function runReel(d: {
   if (!d.post) return done({ subject: ideas.subject, stage: 6, posted: null, problem: "a test run: every check passed, nothing was posted" });
   if (!d.client?.publishReelFile) return done({ subject: ideas.subject, stage: 6, posted: null, problem: "no Instagram token to post with" });
 
-  // Post once, as a normal Reel. A failure is logged and never retried.
+  // Post once, as a normal Reel. Instagram's client starts over with a fresh upload when it refuses before
+  // anything went out (the backup plan, 2026-11-23); a refusal after that is logged, and the slot moves on.
   let video: Uint8Array;
   let posted: { mediaId: string; permalink: string | null };
   try {
@@ -194,7 +195,7 @@ export async function runReel(d: {
     await d.vault.logAction({ kind: "posted", summary: `Posted a ${name} Reel to Instagram (it passed every check; you lifted the approval step on Nov 21).`, detail: r.permalink ?? r.mediaId, target: ideas.subject, onInstagram: true }, now());
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Reel; Instagram refused it. It won't be tried again.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
+    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Reel; Instagram refused it${err instanceof InstagramError && err.notPosted ? ", even after fresh uploads, and nothing went out" : ""}. The next slot makes a new one.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
     return done({ subject: ideas.subject, stage: 6, posted: null, problem: `Instagram refused it: ${error}` });
   }
 

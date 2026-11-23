@@ -224,6 +224,14 @@ async function draftOne(d: Deps, pick: Subject, renderer: Renderer, settings: Aw
 export type PublishResult = { published: Post[]; failed: { post: Post; error: string }[]; skipped: string | null };
 
 /** Posts every approved post whose time has come (at most three an hour). */
+/** Runs that try one approval before it waits for Thomas's Try again (each run also starts over up to 3 times; instagram.ts). */
+export const AUTO_TRIES = 3;
+/** A refused post waits this long before the next run tries it again (the hourly run picks it up). */
+export const RETRY_AFTER_MS = 50 * 60_000;
+/** Which automatic try the last refusal was, from the note it left; 0 after Approve or Try again, which clear it. */
+export const autoTry = (error: string | null | undefined) => Number(/\(try (\d+) of \d+\)/.exec(error ?? "")?.[1] ?? 0);
+const azTime = (d: Date) => d.toLocaleString("en-US", { timeZone: "America/Phoenix", hour: "numeric", minute: "2-digit" });
+
 export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<PublishResult> {
   const now = d.now ?? new Date();
   const { vault, log } = d;
@@ -278,13 +286,25 @@ export async function publishDue(d: Omit<Deps, "ask" | "renderer">): Promise<Pub
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
+      // The backup plan (Thomas, 2026-11-23): Instagram refused it before the publish step, so nothing
+      // went out. It goes back in the queue for a later run, up to AUTO_TRIES runs per approval.
+      const tried = autoTry(p.error) + 1;
+      if (err instanceof InstagramError && err.notPosted && !err.tokenProblem && tried < AUTO_TRIES) {
+        const later = new Date(now.getTime() + RETRY_AFTER_MS);
+        const note = `Instagram refused it (try ${tried} of ${AUTO_TRIES}); nothing went out, and it tries again on its own after ${azTime(later)}: ${error}`;
+        await vault.updatePost(p.id, { state: "approved", scheduledFor: vaultNow(later), error: note.slice(0, 500) }, now);
+        result.failed.push({ post: p, error });
+        log(`Couldn't post "${p.headline}" (try ${tried} of ${AUTO_TRIES}); it tries again after ${azTime(later)}: ${error}`);
+        await vault.logAction({ kind: "post_failed", summary: `Tried to post "${p.headline}"; Instagram refused it before anything went out. It tries again on its own after ${azTime(later)} (try ${tried} of ${AUTO_TRIES}).`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
+        continue;
+      }
       await vault.updatePost(p.id, { state: "failed", error: error.slice(0, 500) }, now);
       result.failed.push({ post: p, error });
       log(`Couldn't post "${p.headline}": ${error}`);
       await vault.logAction({ kind: "post_failed", summary: `Tried to post "${p.headline}"; Instagram refused it.`, detail: error.slice(0, 500), target: p.id, onInstagram: true, ok: false }, now);
       await reportOnce(d, `failed:${p.id}:${p.attempts + 1}`, {
         title: "An approved Instagram post didn't go out",
-        summary: `Instagram refused your approved post "${p.headline.slice(0, 80)}". ${error.slice(0, 200)}${err instanceof InstagramError && err.tokenProblem ? " The Instagram token needs replacing." : ""} It won't try again on its own; tap Try again on the Social Media Specialist page once it's fixed.`,
+        summary: `Instagram refused your approved post "${p.headline.slice(0, 80)}"${tried > 1 ? ` ${tried} times` : ""}. ${error.slice(0, 200)}${err instanceof InstagramError && err.tokenProblem ? " The Instagram token needs replacing." : ""} It won't try again on its own now; tap Try again on the Social Media Specialist page once it's fixed.`,
         urgency: "normal",
       });
     }

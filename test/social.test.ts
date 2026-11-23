@@ -3,11 +3,11 @@ import { createClient } from "@libsql/client";
 import { pickNext, screenDraft, fullCaption } from "../src/draft.ts";
 import type { HittaReport } from "../src/hitta.ts";
 import type { FacebookPageClient } from "../src/facebook.ts";
-import { currentToken, graphHost, instagramClient, type InstagramClient } from "../src/instagram.ts";
+import { currentToken, graphHost, InstagramError, instagramClient, notPostedError, type InstagramClient } from "../src/instagram.ts";
 import type { Renderer } from "../src/render.ts";
 import { pickPost, socialAnswerer } from "../src/requests.ts";
 import { nextSlot } from "../src/schedule.ts";
-import { publishDue, runDaily } from "../src/social.ts";
+import { publishDue, RETRY_AFTER_MS, runDaily } from "../src/social.ts";
 import { parseSiteProducts, siteProducts } from "../src/site.ts";
 import { call, setRetryMs } from "../src/instagram.ts";
 import { DEFAULT_SETTINGS, legacySealKey, seal, unseal, Vault, vaultNow, type Post, type Product } from "../src/vault.ts";
@@ -298,7 +298,7 @@ describe("posting", () => {
     return { vault, post: p };
   }
 
-  const fakeIg = (fail = false) => {
+  const fakeIg = (fail: boolean | (() => Error) = false) => {
     const calls: { url: string; caption: string }[] = [];
     const client: InstagramClient = {
       async account() {
@@ -306,6 +306,7 @@ describe("posting", () => {
       },
       async publishImage(url, caption) {
         calls.push({ url, caption });
+        if (typeof fail === "function") throw fail();
         if (fail) throw new Error("Instagram said: bad image");
         return { containerId: "c1", mediaId: "m1", permalink: "https://instagram.com/p/x" };
       },
@@ -412,6 +413,32 @@ describe("posting", () => {
     expect(reports).toHaveLength(1);
     await publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, fetchImpl: siteFetch, now: NOW });
     expect(ig.calls).toHaveLength(1);
+  });
+
+  // Thomas, 2026-11-23: "resolve this issue by having a backup plan for when content is rejected".
+  it("puts a post Instagram refused before anything went out back in the queue, up to 3 runs, then waits for Try again", async () => {
+    const { vault, post } = await withPost("approved", new Date(NOW.getTime() - 60_000));
+    const refused = () => notPostedError(new InstagramError("Instagram didn't take the video upload: The ig container is not in the status to upload a video", 400, null));
+    const ig = fakeIg(refused);
+    const run = (at: Date) => publishDue({ vault, hitta, log: () => {}, instagram: () => ig.client, fetchImpl: siteFetch, now: at });
+    await run(NOW);
+    let after = await vault.post(post.id);
+    expect(after).toMatchObject({ state: "approved" });
+    expect(after!.error).toMatch(/try 1 of 3/);
+    expect(Date.parse(after!.scheduledFor!)).toBe(NOW.getTime() + RETRY_AFTER_MS);
+    expect(reports).toHaveLength(0);
+    // Not due again until then.
+    await run(new Date(NOW.getTime() + 10 * 60_000));
+    expect(ig.calls).toHaveLength(1);
+    const t2 = new Date(NOW.getTime() + RETRY_AFTER_MS);
+    await run(t2);
+    expect((await vault.post(post.id))!.error).toMatch(/try 2 of 3/);
+    await run(new Date(t2.getTime() + RETRY_AFTER_MS));
+    after = await vault.post(post.id);
+    expect(after).toMatchObject({ state: "failed" });
+    expect(ig.calls).toHaveLength(3);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]!.summary).toMatch(/3 times/);
   });
 
   it("leaves it approved when the setup isn't done, and says so once a day", async () => {

@@ -480,11 +480,39 @@ export async function motionPlan(shots: Shot[], ask: Ask, log?: (m: string) => v
       return { plan: withBackdrop(fixed), problems: [] };
     }
   }
+  // The backup plan (Thomas, 2026-11-23): when what's left is wrong with a few shots only (the 4 PM
+  // and 7 AM explainers lost the whole Reel to one nearly-empty drawing), redo just those shots.
+  const broken = best.plan ? shotsWithProblems(best.problems, best.plan) : null;
+  if (best.plan && broken && broken.length) {
+    const fixed = await replanShots(best.plan, broken, shots, ask, style, log, `This plan is right except for shot${broken.length > 1 ? "s" : ""} ${broken.join(", ")}: ${best.problems.join(" ")} Redo ${broken.length > 1 ? "those shots" : "that shot"} so ${broken.length > 1 ? "each" : "it"} shows its line plainly (a drawing needs at least 4 shapes of the thing itself, not just words; a ready-made piece is fine too); keep every other shot exactly as it is.`);
+    if (fixed) {
+      log?.(`Motion plan passed after redoing shot${broken.length > 1 ? "s" : ""} ${broken.join(", ")}.`);
+      return { plan: withBackdrop(fixed), problems: [] };
+    }
+  }
   log?.(`The motion plan still has problems after ${MOTION_TRIES} tries: ${best.problems.slice(0, 4).join(" ")}`);
   return { ...best, plan: best.plan && withBackdrop(best.plan) };
 }
 
 const REPEAT = /^The (?!app )\S+ piece is used \d+ times/;
+
+/**
+ * The shots named by every problem ("Shot 12, piece 1: …"; a repeated piece names the later shots that
+ * use it), or null when a problem is about the whole plan.
+ */
+export function shotsWithProblems(problems: string[], plan?: MotionPlan | null): number[] | null {
+  const out = new Set<number>();
+  for (const p of problems) {
+    if (REPEAT.test(p) && plan) {
+      for (const n of repeatedShots(plan)) out.add(n);
+      continue;
+    }
+    const m = /^Shot (\d+)\b/.exec(p);
+    if (!m) return null;
+    out.add(Number(m[1]));
+  }
+  return [...out].sort((a, b) => a - b);
+}
 
 /** Every shot that uses a kind of piece an earlier shot already used (the product's screen aside). */
 export function repeatedShots(plan: MotionPlan): number[] {

@@ -1,20 +1,14 @@
 {
-  "date": "November 21, 2026",
-  "summary": "A security round that fixes the November 21 security check. The five daily Reels still post on their own, but now only when they hold no outside links, web addresses, @handles, emails, phone numbers or \"DM us\" asks, and the news and other creators' posts the pipeline reads can no longer steer what it writes. Claude now runs without any of the specialist's keys, the Instagram token in the Vault gets its own lock, Hitta can no longer read hidden tables or be talked into un-pausing by text it read, and the YouTube backfill respects Pause.",
+  "date": "November 23, 2026",
+  "summary": "Backup plans for when content is rejected. When Instagram refuses a post before anything goes out (like \"the ig container is not in the status to upload a video\"), it starts over with a fresh upload, up to 3 times in the same run, and an approved post that's still refused goes back in the queue for up to 3 hourly runs before it waits for your Try again. When a daily Reel's plan keeps failing on one or two shots, it redoes just those shots instead of dropping the whole Reel.",
   "frontend": [
-    "This Latest Update box, on the Social Media Specialist page.",
-    "A Reel whose caption, cover or on-screen words have an outside link, web address, @handle, email, phone number or \"DM us\" ask doesn't post; the History says which check stopped it and that slot is skipped.",
-    "Hitta's answers now say the five daily Reels post on their own when they pass every check, and that Pause stops them.",
-    "Asking Hitta to resume only works when you say so yourself (\"resume\", \"turn it back on\", \"start posting again\")."
+    "An approved post Instagram refused before anything went out stays scheduled, with a note saying which try it was (\"try 1 of 3\") and when it tries again; only after the third refused run does it show Instagram refused it and the Try again button.",
+    "History says when a Reel was refused even after fresh uploads, and that nothing went out."
   ],
   "other": [
-    "News articles and other creators' captions, transcripts and patterns reach Claude only as cleaned-up, marked data: tags, links, @handles and brackets are taken out, and every prompt says to never follow instructions inside them.",
-    "Claude runs with only its own sign-in (no Vault, Instagram, Facebook, YouTube, Hitta or ElevenLabs keys), no MCP servers, and only the Read tool where it needs one, which can't read the process's secrets.",
-    "New optional secret SOCIAL_SEAL_KEY: once set, the stored Instagram and Page token is locked with it instead of a key made from the shared Vault database token. Tokens locked the old way still open and are locked again with the new key.",
-    "Tokens made during a run (the Facebook Page token, YouTube access) are masked in the public GitHub logs.",
-    "Hitta's database reads refuse hidden tables however they're written (quoted names, pragma functions, tables starting with _).",
-    "The YouTube backfill uploads nothing while paused, and \"go\" needs YOUTUBE_CROSSPOST on.",
-    "GitHub Actions are pinned to exact versions, the Claude CLI is pinned to 2.1.330, installs run without any secrets or install scripts, and checkout keeps no GitHub token.",
-    "Dependabot proposes monthly updates as pull requests; SECURITY.md says how to report a problem."
+    "Instagram uploads: a refusal before the publish step starts over with a brand-new container after 30 seconds, then 2 minutes. It never starts over once the publish step was called, or for a refused token or a used-up hourly allowance, so nothing can post twice.",
+    "Approved posts: those refusals go back in the queue 50 minutes later, up to 3 runs per approval; Approve or Try again starts the count over. Hitta is told only after the last one.",
+    "Daily Reels: when the motion plan still fails after 3 tries and every problem names a shot (a nearly empty drawing, a repeated piece, a made-up number), only those shots are redone. This would have saved the 4 PM explainer on Nov 22 and the 7 AM explainer on Nov 23.",
+    "The Facebook Page and YouTube rules don't change: a refusal there is logged and never retried."
   ]
 }
