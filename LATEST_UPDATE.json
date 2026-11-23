@@ -1,14 +1,13 @@
 {
   "date": "November 23, 2026",
-  "summary": "Backup plans for when content is rejected. When Instagram refuses a post before anything goes out (like \"the ig container is not in the status to upload a video\"), it starts over with a fresh upload, up to 3 times in the same run, and an approved post that's still refused goes back in the queue for up to 3 hourly runs before it waits for your Try again. When a daily Reel's plan keeps failing on one or two shots, it redoes just those shots instead of dropping the whole Reel.",
+  "summary": "Five Reels a day, every day, on one schedule. The day has five times (7 and 10 AM, 1, 4 and 7 PM Arizona). A post you approve takes the next open one of those times instead of one a day on your posting days, and at the times you haven't filled the specialist makes its own Reel, so it stays five a day.",
   "frontend": [
-    "An approved post Instagram refused before anything went out stays scheduled, with a note saying which try it was (\"try 1 of 3\") and when it tries again; only after the third refused run does it show Instagram refused it and the Try again button.",
-    "History says when a Reel was refused even after fresh uploads, and that nothing went out."
+    "Schedule shows today's remaining times and the next two days, five each: what you approved for a time, or which Reel the specialist makes there (news explainer, satisfying video, product ad).",
+    "Approve puts a post at the next open time (it goes out about 20 past the hour), often the same day, instead of the next Monday, Wednesday or Friday.",
+    "Settings no longer has posting days and a posting time; it says the five times instead."
   ],
   "other": [
-    "Instagram uploads: a refusal before the publish step starts over with a brand-new container after 30 seconds, then 2 minutes. It never starts over once the publish step was called, or for a refused token or a used-up hourly allowance, so nothing can post twice.",
-    "Approved posts: those refusals go back in the queue 50 minutes later, up to 3 runs per approval; Approve or Try again starts the count over. Hitta is told only after the last one.",
-    "Daily Reels: when the motion plan still fails after 3 tries and every problem names a shot (a nearly empty drawing, a repeated piece, a made-up number), only those shots are redone. This would have saved the 4 PM explainer on Nov 22 and the 7 AM explainer on Nov 23.",
-    "The Facebook Page and YouTube rules don't change: a refusal there is logged and never retried."
+    "The daily Reel run skips its slot when a post you approved has that time, and says so on the History, which also saves that Reel's cost.",
+    "Hitta's answers know the five times."
   ]
 }

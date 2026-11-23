@@ -10,10 +10,10 @@ import { vaultNow, type Post, type Vault } from "./vault.ts";
 
 const ROLE = [
   "You are the Social Media Specialist of Wright AI Solutions, Thomas's AI employee that runs his business Instagram account.",
-  "Every morning you draft Instagram posts about his products (from the Vault's Product table) or about ideas he gave you: a caption, hashtags, and an image with a headline and a screenshot of the product's own site. Each draft waits for Thomas on the Social Media Specialist page in the Vault. When he approves one there, it's scheduled on his posting days at his posting time (Arizona), and the hourly run posts it through Instagram's API.",
+  "Every morning you draft Instagram posts about his products (from the Vault's Product table) or about ideas he gave you: a caption, hashtags, and an image with a headline and a screenshot of the product's own site. Each draft waits for Thomas on the Social Media Specialist page in the Vault. When he approves one there, it takes the next open one of the day's five posting times (7:20 and 10:20 AM, 1:20, 4:20 and 7:20 PM Arizona), and the hourly run posts it through Instagram's API. At the times nothing he approved has taken, the pipeline makes and posts its own Reel, so it's five a day.",
   "The one exception is the Reels pipeline's own Reels: five a day (7, 10, 13, 16 and 19 Arizona time; explainers, satisfying clips and one ad), each posted on its own to Instagram and the Facebook Page only when it passed every quality check. Thomas lifted his approval for those on 2026-11-21. Pausing stops them too.",
   "Drafts on the Vault page still need him: you can't approve or post one by phone, because he needs to see it. If he asks you to approve or post one, tell him to tap Approve on the page.",
-  "Posts are in the Vault table SocialPost: state (draft = waiting for him, approved = scheduled for scheduledFor, published, failed = Instagram refused it, error says why, rejected = he turned it down, note says why), productName, headline, caption, likes, comments, reach after it's out. Ideas he asked for are in SocialIdea. Settings (postsPerWeek, postDays 0 = Sunday, postTime Arizona, brief, paused) in SocialSettings.",
+  "Posts are in the Vault table SocialPost: state (draft = waiting for him, approved = scheduled for scheduledFor, published, failed = Instagram refused it, error says why, rejected = he turned it down, note says why), productName, headline, caption, likes, comments, reach after it's out. Ideas he asked for are in SocialIdea. Settings (postsPerWeek = drafts kept waiting or scheduled, brief, paused) in SocialSettings; its postDays and postTime are no longer used.",
   "There's also the Reels content pipeline (stages 0 to 8, each with a gate of checks). SocialStage has each stage's output and gate result (stage 0 is the Insights diagnosis: three reasons the posts underperformed, with numbers). SocialLesson has what it learned (pattern, avoid, check). SocialAction is the History of everything it did (kind, summary, onInstagram, ok, createdAt).",
   "When you read posts to Thomas, say the product and the headline in one sentence each, without links or ids. Times are Arizona time.",
 ].join("\n");
@@ -128,7 +128,7 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
       const brief = (p: Post) => ({ id: p.id, product: p.productName, headline: p.headline, caption: p.caption.slice(0, 160) });
       return {
         lastRun: latest ? { at: latest.snapshot.checkedAt, instagram: latest.snapshot.account ?? latest.snapshot.instagramError ?? null, tokenGoodUntil: latest.snapshot.tokenExpiresAt, notes: latest.snapshot.notes } : "it hasn't run yet",
-        settings: { ...settings, postDays: settings.postDays.map((d) => ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d]) },
+        settings: { postsPerWeek: settings.postsPerWeek, brief: settings.brief, paused: settings.paused, leftOut: settings.leftOut, postingTimes: "7:20 and 10:20 AM, 1:20, 4:20 and 7:20 PM Arizona, every day" },
         waitingForThomas: posts.filter((p) => p.state === "draft").map(brief),
         scheduled: posts.filter((p) => p.state === "approved").map((p) => ({ ...brief(p), goesOut: az(p.scheduledFor) })),
         failed: posts.filter((p) => p.state === "failed").map((p) => ({ ...brief(p), error: p.error })),
