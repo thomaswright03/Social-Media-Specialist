@@ -40,13 +40,13 @@ export const DAILY_MIX = ["explainer", "satisfying", "ad", "explainer", "satisfy
 export const nextFormat = (tries: number): Format => DAILY_MIX[tries % DAILY_MIX.length]!;
 
 /**
- * The series that takes a daily slot (src/pipeline/series.ts), or null. Off
- * until Thomas chooses how The Night Desk goes out (2026-11-23); when on, the
- * fifth Reel of the day (SERIES_SLOT, the second satisfying one) is the
- * series' next episode, and once all its episodes are posted or passed over the
- * slot goes back to DAILY_MIX.
+ * The series that takes a daily slot (src/pipeline/series.ts), or null. Thomas,
+ * 2026-11-23, chose The Night Desk "Daily, no part numbers": the fifth Reel of
+ * the day (SERIES_SLOT, the second satisfying one) is the series' next episode,
+ * and once all its episodes are posted or passed over the slot goes back to
+ * DAILY_MIX.
  */
-export const LIVE_SERIES: string | null = null;
+export const LIVE_SERIES: string | null = "night-desk";
 export const SERIES_SLOT = 4;
 
 /** The series that the day's next Reel belongs to, if any (`live` is LIVE_SERIES, a parameter for tests). */

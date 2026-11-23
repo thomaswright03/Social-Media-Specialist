@@ -113,9 +113,10 @@ describe("The Night Desk", () => {
     vault.close();
   });
 
-  it("stays out of the daily mix until Thomas chooses, then takes the fifth Reel", () => {
-    expect(LIVE_SERIES).toBeNull();
-    expect([0, 1, 2, 3, 4, 5].map((t) => seriesForSlot(t))).toEqual([null, null, null, null, null, null]);
+  it("takes the fifth Reel of the day (Thomas, 2026-11-23: daily, no part numbers)", () => {
+    expect(LIVE_SERIES).toBe("night-desk");
+    expect([0, 1, 2, 3, 4, 5].map((t) => seriesForSlot(t))).toEqual([null, null, null, null, "night-desk", null]);
+    expect(seriesForSlot(3, null)).toBeNull();
     expect(DAILY_MIX[SERIES_SLOT]).toBe("satisfying");
     expect([0, 1, 2, 3, 4, 9].map((t) => seriesForSlot(t, "night-desk"))).toEqual([null, null, null, null, "night-desk", "night-desk"]);
   });
