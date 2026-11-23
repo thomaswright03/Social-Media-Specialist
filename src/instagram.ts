@@ -37,6 +37,18 @@ export class InstagramError extends Error {
   get rateLimited(): boolean {
     return this.code === 4 || this.code === 17 || this.code === 32 || this.code === 613 || this.code === 80002;
   }
+  /**
+   * Instagram refused it before the publish step, so for certain nothing was posted: trying again
+   * with a fresh container can't post it twice. A failure at or after the publish step is never this.
+   */
+  notPosted = false;
+}
+
+/** Marks a failure before the publish step: nothing went out. */
+export function notPostedError(err: unknown): InstagramError {
+  const e = err instanceof InstagramError ? err : new InstagramError(err instanceof Error ? err.message : String(err), null, null);
+  e.notPosted = true;
+  return e;
 }
 
 export type Account = { id: string; username: string; followers: number | null; posts: number | null };
@@ -211,13 +223,21 @@ const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : nul
  * same container, and nothing is published until one upload is taken, so this can't post anything twice.
  */
 export const UPLOAD_RETRY_MS = [10_000, 30_000, 60_000];
+/**
+ * The backup plan (Thomas, 2026-11-23: "resolve this issue by having a backup plan for when content is
+ * rejected", after "The ig container is not in the status to upload a video"): when Instagram refuses a
+ * post before the publish step, start over with a brand-new container after these waits. Nothing was
+ * published, so this can't post twice. A refused token or a used-up hourly allowance isn't retried here.
+ */
+export const FRESH_RETRY_MS = [30_000, 120_000];
 /** Upload refusals worth sending the bytes again for: Meta's side, not the video or the token. */
 const TRANSIENT_UPLOAD = /request processing failed|processing failed|try again|temporar|unexpected error|timeout|timed out|service unavailable/i;
 
-export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId?: string; pollMs?: number; uploadRetryMs?: number[] } = {}): InstagramClient {
+export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId?: string; pollMs?: number; uploadRetryMs?: number[]; freshRetryMs?: number[] } = {}): InstagramClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const pollMs = opts.pollMs ?? 3_000;
   const uploadWaits = opts.uploadRetryMs ?? UPLOAD_RETRY_MS;
+  const freshWaits = opts.freshRetryMs ?? FRESH_RETRY_MS;
   let userId = opts.userId ?? process.env.INSTAGRAM_USER_ID?.trim() ?? "";
 
   async function id(): Promise<string> {
@@ -235,20 +255,51 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
   }
 
   // Waits for Instagram to process a Reel's video, publishes it, and reads its link back.
-  async function finishReel(ig: string, containerId: string): Promise<{ containerId: string; mediaId: string; permalink: string | null }> {
+  /** Waits until Instagram has processed the video. Nothing is published yet. */
+  async function reelReady(containerId: string): Promise<void> {
     // Video processing takes longer than an image: up to five minutes.
     for (let i = 0; i < 100; i++) {
       const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
-      if (s.status_code === "FINISHED") break;
+      if (s.status_code === "FINISHED") return;
       if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the video: ${String(s.status ?? s.status_code)}`, null, null);
       if (i === 99) throw new InstagramError("Instagram was still processing the video after five minutes.", null, null);
       await sleep(pollMs);
     }
+  }
+
+  /** The publish step. Never retried: once it's called, the post may be out. */
+  async function publishContainer(ig: string, containerId: string, what: string): Promise<{ containerId: string; mediaId: string; permalink: string | null }> {
     const published = await call(fetchImpl, "POST", `${ig}/media_publish`, token, { creation_id: containerId });
     const mediaId = String(published.id ?? "");
-    if (!mediaId) throw new InstagramError("Instagram didn't say the Reel went out.", null, null);
+    if (!mediaId) throw new InstagramError(`Instagram didn't say the ${what} went out.`, null, null);
     const back = await call(fetchImpl, "GET", mediaId, token, { fields: "permalink" }).catch(() => ({}) as Record<string, unknown>);
     return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
+  }
+
+  /**
+   * Makes a container and gets it ready (`prepare`), starting over with a fresh one when Instagram
+   * refuses before the publish step (FRESH_RETRY_MS), then publishes once.
+   */
+  async function freshTries(ig: string, what: string, prepare: () => Promise<string>) {
+    for (let attempt = 0; ; attempt++) {
+      let containerId: string;
+      try {
+        containerId = await prepare();
+      } catch (err) {
+        const e = notPostedError(err);
+        if (e.tokenProblem || e.rateLimited || attempt >= freshWaits.length) {
+          if (attempt > 0) {
+            const again = new InstagramError(`${e.message} (tried ${attempt + 1} fresh uploads; nothing was posted)`, e.status, e.code);
+            again.notPosted = true;
+            throw again;
+          }
+          throw e;
+        }
+        await sleep(freshWaits[attempt]!);
+        continue;
+      }
+      return publishContainer(ig, containerId, what);
+    }
   }
 
   return {
@@ -259,23 +310,20 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
 
     async publishImage(imageUrl, caption) {
       const ig = await id();
-      const container = await call(fetchImpl, "POST", `${ig}/media`, token, { image_url: imageUrl, caption });
-      const containerId = String(container.id ?? "");
-      if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
-      // Instagram fetches the image itself; wait for it (about a minute at most).
-      for (let i = 0; i < 20; i++) {
-        const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
-        if (s.status_code === "FINISHED") break;
-        if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the image: ${String(s.status ?? s.status_code)}`, null, null);
-        if (i === 19) throw new InstagramError("Instagram was still fetching the image after a minute.", null, null);
-        await sleep(pollMs);
-      }
-      const published = await call(fetchImpl, "POST", `${ig}/media_publish`, token, { creation_id: containerId });
-      const mediaId = String(published.id ?? "");
-      if (!mediaId) throw new InstagramError("Instagram didn't say the post went out.", null, null);
-      // Read it back: the post exists and has a link.
-      const back = await call(fetchImpl, "GET", mediaId, token, { fields: "permalink,timestamp" }).catch(() => ({}) as Record<string, unknown>);
-      return { containerId, mediaId, permalink: typeof back.permalink === "string" ? back.permalink : null };
+      return freshTries(ig, "post", async () => {
+        const container = await call(fetchImpl, "POST", `${ig}/media`, token, { image_url: imageUrl, caption });
+        const containerId = String(container.id ?? "");
+        if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
+        // Instagram fetches the image itself; wait for it (about a minute at most).
+        for (let i = 0; i < 20; i++) {
+          const s = await call(fetchImpl, "GET", containerId, token, { fields: "status_code,status" });
+          if (s.status_code === "FINISHED") return containerId;
+          if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new InstagramError(`Instagram couldn't use the image: ${String(s.status ?? s.status_code)}`, null, null);
+          if (i === 19) throw new InstagramError("Instagram was still fetching the image after a minute.", null, null);
+          await sleep(pollMs);
+        }
+        return containerId;
+      });
     },
 
     async listMedia(max = 100) {
@@ -344,10 +392,13 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       if (opts.coverUrl) params.cover_url = opts.coverUrl;
       if (opts.thumbOffsetMs !== undefined) params.thumb_offset = String(Math.round(opts.thumbOffsetMs));
       if (opts.shareToFeed !== undefined) params.share_to_feed = String(opts.shareToFeed);
-      const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
-      const containerId = String(container.id ?? "");
-      if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
-      return finishReel(ig, containerId);
+      return freshTries(ig, "Reel", async () => {
+        const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
+        const containerId = String(container.id ?? "");
+        if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
+        await reelReady(containerId);
+        return containerId;
+      });
     },
 
     async publishReelFile(video, caption, opts = {}) {
@@ -355,29 +406,32 @@ export function instagramClient(token: string, opts: { fetchImpl?: Fetch; userId
       const params: Record<string, string> = { media_type: "REELS", upload_type: "resumable", caption };
       if (opts.trial) params.trial_params = JSON.stringify({ graduation_strategy: opts.trial });
       if (opts.thumbOffsetMs !== undefined) params.thumb_offset = String(Math.round(opts.thumbOffsetMs));
-      const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
-      const containerId = String(container.id ?? "");
-      if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
-      const uri = typeof container.uri === "string" && container.uri.startsWith(`https://${RUPLOAD_HOST}/`) ? container.uri : `https://${RUPLOAD_HOST}/ig-api-upload/${GRAPH_VERSION}/${containerId}`;
-      const waits = uploadWaits;
-      for (let attempt = 0; ; attempt++) {
-        let problem: InstagramError;
-        try {
-          const res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
-          const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string; code?: number }; debug_info?: { message?: string } };
-          if (res.ok && !json.error && json.success !== false) break;
-          const why = json.error?.message || json.debug_info?.message || `HTTP ${res.status}`;
-          problem = new InstagramError(`Instagram didn't take the video upload: ${why}`, res.status, typeof json.error?.code === "number" ? json.error.code : null);
-          // A refused video or token won't change on a second send; Meta's own hiccups usually do.
-          if (problem.tokenProblem || !(res.status >= 500 || TRANSIENT_UPLOAD.test(why))) throw problem;
-        } catch (err) {
-          if (err instanceof InstagramError && (err.tokenProblem || (!TRANSIENT_UPLOAD.test(err.message) && !(err.status != null && err.status >= 500)))) throw err;
-          problem = err instanceof InstagramError ? err : new InstagramError(`The video upload didn't reach Instagram: ${err instanceof Error ? err.message : String(err)}`, null, null);
+      return freshTries(ig, "Reel", async () => {
+        const container = await call(fetchImpl, "POST", `${ig}/media`, token, params);
+        const containerId = String(container.id ?? "");
+        if (!containerId) throw new InstagramError("Instagram didn't make a media container.", null, null);
+        const uri = typeof container.uri === "string" && container.uri.startsWith(`https://${RUPLOAD_HOST}/`) ? container.uri : `https://${RUPLOAD_HOST}/ig-api-upload/${GRAPH_VERSION}/${containerId}`;
+        const waits = uploadWaits;
+        for (let attempt = 0; ; attempt++) {
+          let problem: InstagramError;
+          try {
+            const res = await fetchImpl(uri, { method: "POST", headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(video.byteLength) }, body: new Blob([video as Uint8Array<ArrayBuffer>]), signal: AbortSignal.timeout(5 * 60_000) });
+            const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string; code?: number }; debug_info?: { message?: string } };
+            if (res.ok && !json.error && json.success !== false) break;
+            const why = json.error?.message || json.debug_info?.message || `HTTP ${res.status}`;
+            problem = new InstagramError(`Instagram didn't take the video upload: ${why}`, res.status, typeof json.error?.code === "number" ? json.error.code : null);
+            // A refused video or token won't change on a second send; Meta's own hiccups usually do.
+            if (problem.tokenProblem || !(res.status >= 500 || TRANSIENT_UPLOAD.test(why))) throw problem;
+          } catch (err) {
+            if (err instanceof InstagramError && (err.tokenProblem || (!TRANSIENT_UPLOAD.test(err.message) && !(err.status != null && err.status >= 500)))) throw err;
+            problem = err instanceof InstagramError ? err : new InstagramError(`The video upload didn't reach Instagram: ${err instanceof Error ? err.message : String(err)}`, null, null);
+          }
+          if (attempt >= waits.length) throw new InstagramError(`${problem.message} (sent ${attempt + 1} times over about ${Math.round(waits.reduce((a, b) => a + b, 0) / 1000)} s; nothing was posted)`, problem.status, problem.code);
+          await sleep(waits[attempt]!);
         }
-        if (attempt >= waits.length) throw new InstagramError(`${problem.message} (sent ${attempt + 1} times over about ${Math.round(waits.reduce((a, b) => a + b, 0) / 1000)} s; nothing was posted)`, problem.status, problem.code);
-        await sleep(waits[attempt]!);
-      }
-      return finishReel(ig, containerId);
+        await reelReady(containerId);
+        return containerId;
+      });
     },
 
     async stats(mediaId) {

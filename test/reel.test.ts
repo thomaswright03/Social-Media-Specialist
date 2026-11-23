@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { addUsage, claudeUsage, usageMark, usageSince, usageText } from "../src/claude-usage.ts";
-import { instagramClient, type InstagramClient } from "../src/instagram.ts";
+import { InstagramError, instagramClient, type InstagramClient } from "../src/instagram.ts";
 import { gate, check, contentChecks, outsideContacts } from "../src/pipeline/gates.ts";
 import { plainText } from "../src/pipeline/news.ts";
 import { outsideLine } from "../src/pipeline/research.ts";
@@ -123,9 +123,58 @@ describe("Instagram resumable upload", () => {
       if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
       return Response.json({});
     }) as typeof fetch;
-    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0 });
-    await expect(ig.publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow(/bad video/);
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, freshRetryMs: [0, 0] });
+    const err = await ig.publishReelFile!(new Uint8Array([1]), "Hook").catch((e: InstagramError) => e);
+    expect(err).toBeInstanceOf(InstagramError);
+    expect((err as InstagramError).message).toMatch(/bad video \(tried 3 fresh uploads; nothing was posted\)/);
+    expect((err as InstagramError).notPosted).toBe(true);
+    // The backup plan: a brand-new container each time, never the publish step.
+    expect(urls.filter((u) => /\/IG\/media$/.test(u.split("?")[0]!))).toHaveLength(3);
     expect(urls.some((u) => u.includes("media_publish"))).toBe(false);
+  });
+
+  // Thomas, 2026-11-23: "The ig container is not in the status to upload a video" -> "having a backup plan".
+  it("starts over with a fresh container when one isn't ready for the video, then publishes once", async () => {
+    let containers = 0;
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      urls.push(u);
+      if (u.startsWith("https://rupload.facebook.com/")) return u.endsWith("/C1") ? Response.json({ success: false, error: { message: "The ig container is not in the status to upload a video" } }, { status: 400 }) : Response.json({ success: true });
+      if (u.includes("/media_publish")) return Response.json({ id: "M2" });
+      if (u.includes("/media") && init?.method === "POST") return Response.json({ id: `C${++containers}` });
+      if (u.includes("/C2?")) return Response.json({ status_code: "FINISHED" });
+      return Response.json({});
+    }) as typeof fetch;
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, freshRetryMs: [0, 0] });
+    const r = await ig.publishReelFile!(new Uint8Array([1]), "Hook");
+    expect(r).toMatchObject({ containerId: "C2", mediaId: "M2" });
+    expect(containers).toBe(2);
+    expect(urls.filter((u) => u.includes("media_publish"))).toHaveLength(1);
+  });
+
+  it("never starts over once the publish step was called, or for a refused token", async () => {
+    let containers = 0;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith("https://rupload.facebook.com/")) return Response.json({ success: true });
+      if (u.includes("/media_publish")) return Response.json({ error: { message: "An unknown error occurred" } }, { status: 500 });
+      if (u.includes("/media") && init?.method === "POST") return Response.json({ id: `C${++containers}` });
+      if (/\/C\d\?/.test(u)) return Response.json({ status_code: "FINISHED" });
+      return Response.json({});
+    }) as typeof fetch;
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, freshRetryMs: [0, 0] });
+    const err = await ig.publishReelFile!(new Uint8Array([1]), "Hook").catch((e: InstagramError) => e);
+    expect((err as InstagramError).notPosted).toBe(false);
+    expect(containers).toBe(1);
+    containers = 0;
+    const badToken = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/media") && init?.method === "POST") return (containers++, Response.json({ error: { message: "Invalid OAuth access token", code: 190 } }, { status: 400 }));
+      return Response.json({});
+    }) as typeof fetch;
+    await expect(instagramClient("EAAtok", { fetchImpl: badToken, userId: "IG", pollMs: 0, freshRetryMs: [0, 0] }).publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow(/Invalid OAuth/);
+    expect(containers).toBe(1);
   });
 
   // Thomas, 2026-11-21: "Instagram didn't take the video upload: Request processing failed".
@@ -159,7 +208,7 @@ describe("Instagram resumable upload", () => {
       if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
       return Response.json({});
     }) as typeof fetch;
-    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0] });
+    const ig = instagramClient("EAAtok", { fetchImpl, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0], freshRetryMs: [] });
     await expect(ig.publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow(/Request processing failed \(sent 4 times.*nothing was posted\)/);
     expect(uploads).toBe(4);
     expect(urls.some((u) => u.includes("media_publish"))).toBe(false);
@@ -170,7 +219,7 @@ describe("Instagram resumable upload", () => {
       if (u.includes("/media") && init?.method === "POST") return Response.json({ id: "C1" });
       return Response.json({});
     }) as typeof fetch;
-    await expect(instagramClient("EAAtok", { fetchImpl: expired, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0] }).publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow();
+    await expect(instagramClient("EAAtok", { fetchImpl: expired, userId: "IG", pollMs: 0, uploadRetryMs: [0, 0, 0], freshRetryMs: [0, 0] }).publishReelFile!(new Uint8Array([1]), "Hook")).rejects.toThrow();
     expect(uploads).toBe(1);
   });
 });

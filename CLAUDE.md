@@ -6,8 +6,12 @@ The Social Media Specialist drafts Instagram posts; Thomas approves each one on 
 (he chose Instagram's own API, posting on approval). Only `publishDue` in `src/social.ts` posts, and only posts in
 state `approved` that it claimed with `claimForPublishing`. The Facebook Page (Thomas, 2026-11-11: "I want it to
 manage the Facebook page too") follows the same rule: `publishDue` cross-posts the approved post there, nothing
-else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft,
-and never retry a failed post on its own. YouTube Shorts (Thomas, 2026-11-21) follow the Page's rule: only
+else posts to it, and a Page refusal is logged, never retried. Never add a way to approve by phone or to post a draft.
+The backup plan (Thomas, 2026-11-23: "resolve this issue by having a backup plan for when content is rejected"): when
+Instagram refuses a post before the publish step (`notPosted` in `src/instagram.ts`), nothing went out, so the client
+starts over with a fresh container (`FRESH_RETRY_MS`), and an approved post goes back in the queue for up to
+`AUTO_TRIES` runs (`publishDue`) before it waits for Try again. Never retry once the publish step was called, never
+for a refused token, and never on the Page or YouTube. YouTube Shorts (Thomas, 2026-11-21) follow the Page's rule: only
 an approved Reel goes there, from `publishDue`, once, and a refusal is logged and never retried. YouTube stays off
 until the variable `YOUTUBE_CROSSPOST` is `on`: Thomas chose to wait for Google's API audit (2026-11-21), then
 turn it on and run the backfill.
@@ -19,8 +23,8 @@ content. It can start doing so without my approval. I am lifting that gate."; be
 went out only as Trial Reels). `reels.yml` makes five a day (`DAILY_SLOTS` in `src/pipeline/reel.ts`, mixed
 formats, one ad), and each goes out on its own as a normal Reel, then to the Facebook Page (and YouTube once it's
 on), only when `mayAutoPost` in `src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist
-isn't paused. The quality gates stay; he lifted only his approval. Each Reel posts once and a refusal is never
-retried. Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Keep the tests
+isn't paused. The quality gates stay; he lifted only his approval. Each Reel posts once; only a refusal before the
+publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Keep the tests
 for `mayAutoPost` passing.
 
 ## The pipeline's gates are code (Thomas, 2026-11-10)
