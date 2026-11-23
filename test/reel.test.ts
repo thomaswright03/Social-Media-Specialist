@@ -8,7 +8,7 @@ import { outsideLine } from "../src/pipeline/research.ts";
 import type { IdeasResult } from "../src/pipeline/ideas.ts";
 import type { ProduceResult } from "../src/pipeline/produce.ts";
 import { reelAssets } from "../src/pipeline/produce.ts";
-import { DAILY_SLOTS, packageReel, runReel, slotFormat } from "../src/pipeline/reel.ts";
+import { DAILY_MIX, nextFormat, packageReel, runReel } from "../src/pipeline/reel.ts";
 import type { FacebookPageClient } from "../src/facebook.ts";
 import type { YouTubeClient } from "../src/youtube.ts";
 import type { ScriptResult } from "../src/pipeline/script.ts";
@@ -382,20 +382,15 @@ describe("the daily Reel", () => {
 });
 
 describe("five posts a day", () => {
-  it("has five slots with no format twice in a row and one ad", () => {
-    expect(DAILY_SLOTS).toHaveLength(5);
-    const f = DAILY_SLOTS.map((s) => s.format);
+  it("mixes five formats with no format twice in a row and one ad", () => {
+    expect(DAILY_MIX).toHaveLength(5);
+    const f = [...DAILY_MIX];
     expect(f.filter((x) => x === "ad")).toHaveLength(1);
     expect(f.every((x, i) => x !== f[(i + 1) % f.length])).toBe(true);
   });
 
-  it("makes the format of the latest slot that started in Arizona, even when GitHub starts the run late", () => {
-    expect(slotFormat(new Date("2026-11-21T14:03:00Z"))).toBe("explainer"); // 7:03
-    expect(slotFormat(new Date("2026-11-21T18:40:00Z"))).toBe("satisfying"); // 11:40, the 10:00 run started late
-    expect(slotFormat(new Date("2026-11-21T20:03:00Z"))).toBe("ad"); // 13:03
-    expect(slotFormat(new Date("2026-11-21T23:03:00Z"))).toBe("explainer"); // 16:03
-    expect(slotFormat(new Date("2026-11-22T02:03:00Z"))).toBe("satisfying"); // 19:03
-    expect(slotFormat(new Date("2026-11-22T11:00:00Z"))).toBe("satisfying"); // 4:00, still the evening slot
+  it("makes the next format in turn, so a failed one is followed by a different one", () => {
+    expect([0, 1, 2, 3, 4, 5].map(nextFormat)).toEqual(["explainer", "satisfying", "ad", "explainer", "satisfying", "explainer"]);
   });
 });
 

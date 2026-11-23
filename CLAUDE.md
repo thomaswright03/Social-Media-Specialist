@@ -20,11 +20,13 @@ be uploaded and posted as youtube shorts"): Reels already public on Instagram, o
 
 Exception, the pipeline's own Reels (Thomas, 2026-11-21: "I want the AI to post 5 times a day with variety of
 content. It can start doing so without my approval. I am lifting that gate."; before that, since 2026-11-10, they
-went out only as Trial Reels). `reels.yml` makes five a day (`DAILY_SLOTS` in `src/pipeline/reel.ts`, mixed
-formats, one ad), and each goes out on its own as a normal Reel, then to the Facebook Page (and YouTube once it's
+went out only as Trial Reels). `reels.yml` runs every hour from 6 AM to 9 PM Arizona and makes the day's next Reel (`DAILY_MIX` in `src/pipeline/reel.ts`, mixed
+formats, one ad) until today has five posts on Instagram (Thomas, 2026-11-23: "making content and posting it starting at 6am
+everyday until there's 5 posts a day"; `decideRun`/`countToday` in `src/schedule.ts`, at most `MAX_TRIES` Reels started a day).
+Each goes out on its own as a normal Reel, then to the Facebook Page (and YouTube once it's
 on), only when `mayAutoPost` in `src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist
 isn't paused. The quality gates stay; he lifted only his approval. Each Reel posts once; only a refusal before the
-publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Five a day in all (Thomas, 2026-11-23: "5 reels scheduled every day"): a post he approves takes the next open one of the day's five times (`nextSlot` in `src/schedule.ts`, same as the Vault's), and a slot run whose time he already filled makes no Reel (`approvedInSlot`). Keep the tests
+publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. His approved posts count toward the five; one he approves goes out at the next free hour from 6 AM (`nextSlot` in `src/schedule.ts`, same as the Vault's). Keep the tests
 for `mayAutoPost` passing.
 
 ## The pipeline's gates are code (Thomas, 2026-11-10)

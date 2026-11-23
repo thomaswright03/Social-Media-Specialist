@@ -20,8 +20,8 @@
 //                   that passed stage 2
 //   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
 //                   captions, our own sound) and grades it on our rubric; posts nothing
-//   reel            one Reel of the format after the command (explainer, satisfying, ad, or slot for the
-//                   format of this hour's slot of the five a day) from idea to Instagram: stages 2 to 6,
+//   reel            one Reel of the format after the command (explainer, satisfying, ad, or next for the
+//                   day's next one while today has fewer than five posts) from idea to Instagram: stages 2 to 6,
 //                   then posted as a normal Reel, and to the Facebook Page, only when every check passed
 //                   (src/pipeline/reel.ts); REEL_POST=off makes and checks it but posts nothing
 //   voice-test      has the ElevenLabs voice read one line into voice-test.mp3; posts nothing
@@ -54,8 +54,8 @@ import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
 import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
-import { DAILY_FORMATS, runReel, slotFormat } from "./pipeline/reel.ts";
-import { approvedInSlot } from "./schedule.ts";
+import { DAILY_FORMATS, nextFormat, runReel } from "./pipeline/reel.ts";
+import { countToday, decideRun, REELS_TODAY_ROW, type DayCount } from "./schedule.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { syncLatestUpdate } from "./latest-update.ts";
@@ -174,24 +174,39 @@ async function main() {
   }
 
   if (command === "reel") {
-    // One Reel of a format from idea to Instagram (reels.yml runs it daily for each format).
+    // One Reel of a format from idea to Instagram. "next" (reels.yml, every hour from 6 AM) makes the day's next
+    // one only while today has fewer than five posts (src/schedule.ts); "slot" is its old name.
     const asked = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
-    // "slot": a scheduled run makes the format of the slot it's for (DAILY_SLOTS).
-    const format = asked === "slot" ? slotFormat(new Date()) : asked;
-    if (asked === "slot") log(`This run is for the ${format} slot.`);
-    if (!isFormat(format)) {
-      console.error(`"${format}" isn't a format. Use ${DAILY_FORMATS.join(", ")}, slot (or story).`);
+    const auto = asked === "next" || asked === "slot";
+    if (!auto && !isFormat(asked)) {
+      console.error(`"${asked}" isn't a format. Use ${DAILY_FORMATS.join(", ")}, next (or story).`);
       process.exit(2);
     }
+    let format: Format = auto ? "explainer" : (asked as Format);
     const vault = connect();
+    let today: DayCount | null = null;
+    const saveToday = (why: string, making: Format | null) =>
+      today ? vault.saveStatusRow(REELS_TODAY_ROW, true, JSON.stringify({ ...today, checkedAt: new Date().toISOString(), making, why }), new Date()).catch(() => {}) : Promise.resolve();
     try {
-      // A Reel Thomas approved has this slot's time: it's one of the day's five, so the specialist makes none.
-      const taken = asked === "slot" ? await approvedInSlot(vault, new Date()).catch(() => null) : null;
-      if (taken) {
-        const summary = `Daily ${format} Reel: skipped, because "${taken.headline}" that you approved has this time. Still five a day.`;
-        log(summary);
-        await vault.logAction({ kind: "stage", summary, target: taken.id }).catch(() => {});
-        return;
+      if (auto) {
+        const now = new Date();
+        const early = await currentToken(vault, { log }).catch(() => null);
+        const ig = early ? instagramClient(early.token) : null;
+        try {
+          today = await countToday(vault, ig?.listMedia ? () => ig.listMedia!(25) : null, now);
+        } catch (err) {
+          log(`Couldn't count today's posts, so no Reel this hour: ${err instanceof Error ? err.message : err}`);
+          return;
+        }
+        const decision = decideRun(today, now);
+        log(decision.why);
+        if (!decision.make) {
+          await saveToday(decision.why, null);
+          return;
+        }
+        format = nextFormat(today.tries);
+        log(`This run makes a ${format}.`);
+        await saveToday(decision.why, format);
       }
       const products = await siteProducts().catch((err) => {
         log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
@@ -225,6 +240,10 @@ async function main() {
           await mkdir("reel", { recursive: true });
           await writeFile("reel/script.json", JSON.stringify({ subject: r.subject, attempt: s4.attempt, passed: s4.passed, script: s4.output, gate: s4.gate }, null, 1));
         }
+      }
+      if (today) {
+        today = { ...today, tries: today.tries + 1, posted: today.posted + (r.posted ? 1 : 0) };
+        await saveToday(r.posted ? `Posted a ${format}; today has ${today.posted} of ${today.target}.` : `The ${format} didn't pass its checks; the next hour's run makes another.`, null);
       }
       if (!r.posted && process.env.REEL_POST !== "off") process.exitCode = 1;
       if (!r.posted && process.env.REEL_POST === "off" && r.stage < 6) process.exitCode = 1;
