@@ -8,6 +8,10 @@ that a stranger can follow with no other episode. The checks that hold it to
 that are code (`seriesChecks` in src/pipeline/series.ts, plus the story
 format's own gates).
 
+Thomas's requirements for every series are in REQUIREMENTS.md next to this
+file: a prompt per part, an outro that names the next part ("Part 2
+tomorrow!"), and 1 to 2 minutes a part.
+
 How the blocks are used: `series` goes into stage 2 (ideas) and stages 3 and 4
 (script) after the story format's own rules; `look` goes into stage 5's art
 after the story style; `episode N` is the brief for that one episode, in both
@@ -18,7 +22,7 @@ This Reel is one story in our recurring series, The Night Desk. The story format
 
 The series is a recurring character in a recurring place, never a continuing plot. Each video is a complete story: a viewer who has never seen another one follows it on one watch, and a viewer who has seen them all gets nothing extra they need. So:
 
-- Never mention another video's story, or anything that happened at the motel "before" this story. No "part", "episode", "last time", "another strange night" or numbers that count videos. The only things that carry over are Ruth, the motel and how it looks.
+- Never mention another video's story, or anything that happened at the motel "before" this story. No "episode", "last time", "another strange night", and no part number anywhere except the outro below. The only things that carry over are Ruth, the motel and how it looks.
 - The first spoken line says who Ruth is and where she is, as if for the first time, every time. For example: "Ruth works the night desk at the Starlite Motel, alone, ten till six." Vary the wording from story to story; keep the facts. Make it a full, natural sentence ("Ruth works nights at the Starlite Motel"), never clipped ("Ruth clerks nights at Starlite").
 - Ruth is told about in the third person by the one narrator ("Ruth", "she"). She never speaks as a second voice; what she or a guest says is reported.
 
@@ -32,6 +36,14 @@ The place, the same in every story (name these details the same way every time t
 - The outside: a one-storey row of motel doors with brass numbers, a gravel parking lot, and the highway beyond it with passing headlights.
 - It is always night, from ten at night to six in the morning. Light comes from the desk lamp, the neon sign, porch lights over the doors and passing headlights.
 - Guests' rooms are entered only when the brief says so, and then only with the guest there.
+
+Length: this story runs 60 to 120 seconds before the end card, not the story format's 35. That replaces the format's and stage 4's shorter length; every other rule stays. Take the time the story needs within that range. Every shot is still 2 to 3 seconds with something new in it, so the script has 20 to 50 shots. If it would run over 90 seconds, make sure every shot earns it (Facebook takes Reels up to 90 seconds). A longer story needs a middle that earns the time:
+- Ruth tries two or three things to find out, and each one turns up a new clue that makes the odd thing stranger. Never repeat a clue or a try.
+- One small turn around the middle raises the question (she was sure it was one thing, and it isn't). It is never a second mystery.
+- The answer lands in the last 20 seconds, then one short after-beat, then the outro.
+- Each beat in the brief can take several shots: the brief's beats are the spine, and the brief's "middle" ideas fill it.
+
+The outro: {{OUTRO}}
 
 What makes a Night Desk story good:
 - One guest or visitor, one odd thing about them, one answer. The guest has their own marker on or by the head (given in the brief), named in every `visual` they are in.
@@ -73,6 +85,7 @@ Key drawings: an insert of the brass bell (first time it appears); a close-up of
 Traps to avoid: never suggest a ghost or anything supernatural beyond the first shots' question; the boy is never in danger (no road, no pool); don't explain sleepwalking with medical words.
 
 Caption vote: would you have waited in the dark, or just unplugged the bell?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth checks the bell for a loose spring; she asks the trucker in Room 9 if he heard it (he slept through); she sets a paper cup on the bell to muffle it, and at 3:07 the cup is on the floor.
 <!-- /episode 1 -->
 
 <!-- episode 2 -->
@@ -95,6 +108,7 @@ Key drawings: inserts of the pens; a low angle of the crow on the desk for the a
 Traps to avoid: it is near dawn when the crow comes (crows don't fly at three in the morning); the crow never talks or does anything a real crow couldn't; no more than three pens in the story.
 
 Caption vote: would you keep the fish pen, or give it back?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth ties her pen to the desk with string, and the string is snipped clean; she asks the morning cleaner, who shrugs; she finds a small black feather on the sign-in book.
 <!-- /episode 2 -->
 
 <!-- episode 3 -->
@@ -117,6 +131,7 @@ Key drawings: an insert of Room 12's door with its brass numbers; a wide shot fr
 Traps to avoid: no illness named, no sad music, no tears; the care home is named plainly ("the care home across the road"); he never sleeps in the room, that is the point.
 
 Caption vote: would you have charged him for the room?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth checks the room: the bed is made, the lamp has been moved to the window; she notices he always parks facing the road; she sees the care home's van across the highway and thinks nothing of it, until the lamp.
 <!-- /episode 3 -->
 
 <!-- episode 4 -->
@@ -140,6 +155,7 @@ Key drawings: the envelope insert; the key insert; an over-the-shoulder of the p
 Traps to avoid: the envelope is never opened by Ruth; "Marigold" is a code word, so the narrator says it was their code word; at most two figures in a drawing.
 
 Caption vote: romantic or too much? One word.
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth holds the envelope up to the lamp and sees only the outline of something small and flat, then puts it back (she never opens it); a woman asks for 'Maryann' and Ruth nearly hands it over; on night four she notices the Room 7 key is missing from the wall.
 <!-- /episode 4 -->
 
 <!-- episode 5 -->
@@ -162,6 +178,7 @@ Key drawings: an insert of the sign reading "NO VACANCY"; a close-up of the owne
 Traps to avoid: the owner is caught, not in trouble; nothing cruel about him; "NO VACANCY" is the only text in the drawing of the sign.
 
 Caption vote: would you tell his wife?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth blames a short in the wiring and jiggles the plug; she finds wet slipper prints on the walkway; she notices the Room 1 key is back on its hook every morning, still warm.
 <!-- /episode 5 -->
 
 <!-- episode 6 -->
@@ -184,6 +201,7 @@ Key drawings: the microphone insert; the owl on the sign for the answer, lit red
 Traps to avoid: no danger, nothing creepy about the man once the microphone is seen; the owl doesn't make sounds that compete with the voice; sound cue at most a soft owl call once.
 
 Caption vote: would you have knocked on the window?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth checks the plate and the car is local; at the second night's 3 a.m. the man hasn't moved; she hears a soft hoot and thinks it's a bird outside the lobby, not connecting it yet.
 <!-- /episode 6 -->
 
 <!-- episode 7 -->
@@ -207,6 +225,7 @@ Key drawings: a wide of the lobby with the chairs turned to the window; the clos
 Traps to avoid: he is not lost or confused, just sleepless; no engine sound louder than the voice.
 
 Caption vote: what do you need to fall asleep? One word.
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth asks the cleaner, who swears it isn't her; she sets a cup of water on one chair's arm and in the morning it's half drunk; she notices a faint smell of diesel on the cushion.
 <!-- /episode 7 -->
 
 <!-- episode 8 -->
@@ -230,4 +249,5 @@ Key drawings: the piece insert; the finished-puzzle insert for the answer (clear
 Traps to avoid: never call it a goodbye or an ending to the series; the woman doesn't explain herself on screen, the narrator does in one line; the puzzle has no words on it.
 
 Caption vote: would you frame it, or put it back in the box?
+More for the middle (to fill a minute or more; use what fits, in this order): Ruth tries to fit the first pieces and they show only dark green and a sliver of gold; she asks the woman about them and gets only a smile; on day five she sees the woman sketching in the lot at dawn.
 <!-- /episode 8 -->

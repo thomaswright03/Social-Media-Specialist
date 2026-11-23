@@ -1,12 +1,12 @@
 {
   "date": "November 23, 2026",
-  "summary": "A new story series, The Night Desk: eight stick-figure stories about Ruth, the night clerk at the Starlite Motel, each with its own locked prompt and code checks so every one stands alone. You chose daily with no part numbers, so from tomorrow the fifth Reel of each day is the next story, for eight days.",
+  "summary": "A new story series, The Night Desk: eight stick-figure stories about Ruth, the night clerk at the Starlite Motel, each with its own prompt. Per your requirements, each part runs 1 to 2 minutes and its outro says the next part is coming tomorrow; the requirements are written down in pipeline/series/REQUIREMENTS.md. Once on, the fifth Reel each day is the next part, in order.",
   "frontend": [
     "Nothing new on the Vault page. Each Night Desk Reel shows in History as The Night Desk with its number."
   ],
   "other": [
-    "pipeline/series/night-desk.md holds the series rules, Ruth's and the motel's look, and a brief for each of the 8 stories (locked ending, guest, beats, key drawings, traps, caption vote).",
-    "New checks for every Night Desk Reel: the first lines say who Ruth is and where, she keeps her round glasses in every drawing, the guest's marker is drawn, it ends the way its brief locks it, no other story is mentioned, and the caption has #TheNightDesk. \"Part\" and \"episode\" stay banned.",
-    "reels.yml can make one by hand (format series, with an episode number). LIVE_SERIES is on: the day's fifth Reel is the next story not yet posted; one that fails 3 times is skipped, and the slot goes back to normal after the eighth."
+    "pipeline/series/REQUIREMENTS.md lists your requirements and what code checks each one; pipeline/series/night-desk.md has the series rules, the look and a brief per part, with extra middle beats for the longer length.",
+    "Checks for every part: 60 to 120 seconds in 20 to 50 shots, the outro says \"Part N tomorrow\" (the last part names none), no part number anywhere else, Ruth and the motel named in the first lines, her round glasses in every drawing, the locked ending, no other part's story, #TheNightDesk in the caption.",
+    "A part that fails is tried again in the next two hourly runs and the next day, never skipped, since its outro promised it. reels.yml can make one by hand (format series, with a part number)."
   ]
 }

@@ -18,7 +18,7 @@ import type { Product, Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
 import { CTA, captionLines, check, contentChecks, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
 import { runIdeas, type IdeasResult } from "./ideas.ts";
-import { SERIES, type SeriesPick } from "./series.ts";
+import { SERIES, SERIES_SECONDS, type SeriesPick } from "./series.ts";
 import type { ProduceResult } from "./produce.ts";
 import { learnedChecks, runScript, type ScriptResult } from "./script.ts";
 
@@ -48,9 +48,15 @@ export const nextFormat = (tries: number): Format => DAILY_MIX[tries % DAILY_MIX
  */
 export const LIVE_SERIES: string | null = "night-desk";
 export const SERIES_SLOT = 4;
+/** Each outro promises the next part tomorrow, so a part that fails is tried again that day, up to this many times. */
+export const SERIES_DAY_TRIES = 3;
 
-/** The series that the day's next Reel belongs to, if any (`live` is LIVE_SERIES, a parameter for tests). */
-export const seriesForSlot = (tries: number, live: string | null = LIVE_SERIES): string | null => (live && tries % DAILY_MIX.length === SERIES_SLOT ? live : null);
+/**
+ * The series that the day's next Reel belongs to, if any: from the fifth Reel of the day, until a part went out
+ * today or it had SERIES_DAY_TRIES tries. `live` is LIVE_SERIES, a parameter for tests.
+ */
+export const seriesForSlot = (tries: number, live: string | null = LIVE_SERIES, postedToday = false): string | null =>
+  live && !postedToday && tries >= SERIES_SLOT && tries < SERIES_SLOT + SERIES_DAY_TRIES ? live : null;
 
 /** A call to action for captions that have none (Instagram's gate wants one). */
 export const CTA_LINE: Record<Format, string> = {
@@ -95,7 +101,7 @@ export async function runPrepublish(d: { vault: Vault; ask: Ask; produced: Produ
   const learned = await learnedChecks(d.vault, 6, { caption: packaging.caption, coverText: packaging.coverText, keywords: packaging.keywords }, d.ask);
   // Every word that goes out, checked by code: no person reads it first (contentChecks).
   const words = [packaging.caption, packaging.coverText, p.script?.caption, ...(p.script?.shots ?? []).flatMap((s) => [s.line, s.onScreenText, s.onScreen]), ...p.shots.map((s) => s.onScreenText), ...p.boxes.map((b) => b.text)];
-  const g = gatePrepublish(p.facts, p.boxes, packaging, [...learned, ...contentChecks(words)]);
+  const g = gatePrepublish(p.facts, p.boxes, packaging, [...learned, ...contentChecks(words)], p.series ? SERIES_SECONDS : undefined);
   const recordId = await d.vault.saveStage({ stage: 6, subject: p.subject, attempt: 1, passed: g.passed, output: packaging, gate: g, input: { facts: p.facts, boxes: p.boxes.length } }, now());
   const failed = g.checks.filter((c) => !c.passed);
   d.log?.(`Stage 6 (Pre-publish): ${g.passed ? "every check passed" : `${failed.length} checks failed (${failed.map((c) => `${c.name}${c.detail ? `: ${c.detail}` : ""}`).join("; ")})`}.`);

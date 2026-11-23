@@ -57,7 +57,7 @@ import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
 import { DAILY_FORMATS, LIVE_SERIES, nextFormat, runReel, seriesForSlot } from "./pipeline/reel.ts";
 import { NIGHT_DESK, nextEpisode, SERIES, seriesProgress, type SeriesPick } from "./pipeline/series.ts";
-import { countToday, decideRun, REELS_TODAY_ROW, type DayCount } from "./schedule.ts";
+import { azDayStart, countToday, decideRun, REELS_TODAY_ROW, type DayCount } from "./schedule.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { syncLatestUpdate } from "./latest-update.ts";
@@ -210,9 +210,11 @@ async function main() {
           return;
         }
         format = nextFormat(today.tries);
-        const live = seriesForSlot(today.tries);
-        if (live && SERIES[live]) {
-          series = nextEpisode(SERIES[live]!, await seriesProgress(vault, live));
+        const progress = LIVE_SERIES && SERIES[LIVE_SERIES] ? await seriesProgress(vault, LIVE_SERIES) : null;
+        const postedToday = Boolean(progress?.lastPostedAt && Date.parse(progress.lastPostedAt) >= azDayStart(now).getTime());
+        const live = seriesForSlot(today.tries, LIVE_SERIES, postedToday);
+        if (live && SERIES[live] && progress) {
+          series = nextEpisode(SERIES[live]!, progress);
           if (series) format = "story";
           else log(`${SERIES[live]!.name} has no episodes left to make, so this slot is a ${format} again.`);
         }

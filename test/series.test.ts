@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { formatBrief, gateFormat } from "../src/pipeline/formats.ts";
 import { gateScript } from "../src/pipeline/gates.ts";
-import { DAILY_MIX, LIVE_SERIES, SERIES_SLOT, seriesForSlot } from "../src/pipeline/reel.ts";
-import { EPISODE_TRIES, NIGHT_DESK, nextEpisode, seriesBrief, seriesChecks, seriesIdeaCheck, seriesLook, seriesProgress } from "../src/pipeline/series.ts";
+import { DAILY_MIX, LIVE_SERIES, SERIES_DAY_TRIES, SERIES_SLOT, seriesForSlot } from "../src/pipeline/reel.ts";
+import { NIGHT_DESK, OUTRO, SERIES_SECONDS, SERIES_SHOTS, nextEpisode, seriesBrief, seriesChecks, seriesIdeaCheck, seriesLook, seriesProgress } from "../src/pipeline/series.ts";
 import { pipelineFile } from "../src/pipeline/stages.ts";
 import { Vault } from "../src/vault.ts";
 
@@ -13,7 +13,7 @@ const shots = [
   { start: 3, end: 7, line: "Ruth works the night desk at the Starlite Motel, alone.", visual: "Wide: Ruth in round glasses behind the wooden front desk under the green-shaded desk lamp." },
   { start: 7, end: 11, line: "Tonight she turned off the lamp and waited.", visual: "Close-up: Ruth in round glasses in the dark, lit red by the neon sign." },
   { start: 11, end: 15, line: "The bell rang. A small boy stood there, fast asleep.", visual: "Medium: a small boy in a pom-pom hat and pyjamas at the desk, eyes closed, hand on the bell." },
-  { start: 15, end: 19, line: "Ruth walked him back to Room 4.", visual: "Wide: Ruth in round glasses leading the boy in the pom-pom hat to Room 4's door." },
+  { start: 15, end: 19, line: "Ruth walked him back to Room 4. Part 2 tomorrow!", visual: "Wide: Ruth in round glasses leading the boy in the pom-pom hat to Room 4's door." },
 ];
 const draft = { caption: "The bell rang at 3 a.m. with nobody there. Would you have waited?\n#TheNightDesk #motel #nightshift", shots, payoff: "The boy from Room 4 was sleepwalking: he rang the bell fast asleep." };
 const failed = (checks: { name: string; passed: boolean }[]) => checks.filter((c) => !c.passed).map((c) => c.name);
@@ -48,7 +48,7 @@ describe("The Night Desk", () => {
   it("no brief or shared block carries words the standalone check refuses", () => {
     // The caption example and the briefs feed the script; they mustn't teach "part 2" or "#3".
     const blocks = ["ideas", "script"].flatMap((stage) => NIGHT_DESK.episodes.map((e) => seriesBrief({ id: NIGHT_DESK.id, episode: e.n }, stage as "ideas" | "script"))).concat(seriesLook(ep1));
-    const text = blocks.join("\n").replace(/No "part", "episode"[^.]*\./g, "");
+    const text = blocks.join("\n").replace(/No "episode"[^.]*\./g, "").replace(OUTRO, " ");
     const s = gateScript({ shots: [{ start: 0, end: 30, line: text }], payoff: "p", nextHook: "n", caption: "c" }, null, { problems: [] });
     expect(s.checks.find((c) => c.name.startsWith("Stands alone"))!.passed).toBe(true);
   });
@@ -77,9 +77,34 @@ describe("The Night Desk", () => {
     expect(failed(seriesChecks(ep1, { ...draft, shots: shots.map((s) => ({ ...s, visual: s.visual.replace(/pom-pom hat/g, "cap") })) }))).toEqual(["The guest's marker is named in the drawings"]);
   });
 
-  it("still refuses part numbers in an episode, as every story", () => {
-    const s = gateScript({ shots, payoff: "p", nextHook: "n", caption: "The Night Desk, part 3 #TheNightDesk" }, null, { problems: [] });
-    expect(s.checks.find((c) => c.name.startsWith("Stands alone"))!.passed).toBe(false);
+  it("lets the outro say the next part, and nothing else name a part (Thomas, 2026-11-23)", () => {
+    const standalone = (caption: string, allow?: RegExp) => gateScript({ shots, payoff: "p", nextHook: "n", caption }, null, { problems: [] }, [], { allow }).checks.find((c) => c.name.startsWith("Stands alone"))!.passed;
+    // A story outside a series still can't say it.
+    expect(standalone("#TheNightDesk")).toBe(false);
+    expect(standalone("#TheNightDesk", OUTRO)).toBe(true);
+    expect(standalone("Previously at the Starlite #TheNightDesk", OUTRO)).toBe(false);
+    const named = (d: typeof draft, n = 1) => seriesChecks({ id: "night-desk", episode: n }, d).filter((c) => !c.passed).map((c) => c.name);
+    const noOutro = { ...draft, shots: shots.map((x, i) => (i === shots.length - 1 ? { ...x, line: "Ruth walked him back to Room 4." } : x)) };
+    expect(named(noOutro)).toEqual(['The outro says "Part 2 tomorrow"']);
+    const wrongPart = { ...draft, shots: shots.map((x, i) => (i === shots.length - 1 ? { ...x, line: "Ruth walked him back. Part 3 tomorrow!" } : x)) };
+    expect(named(wrongPart)).toEqual(['The outro says "Part 2 tomorrow"']);
+    expect(named({ ...draft, caption: `Part 1: ${draft.caption}` })).toEqual(["A part number only in the outro (not the opening, the middle or the caption)"]);
+    expect(named({ ...draft, shots: shots.map((x, i) => (i === 0 ? { ...x, onScreenText: "PART 1" } : x)) })).toEqual(["A part number only in the outro (not the opening, the middle or the caption)"]);
+    // The last part promises nothing.
+    const brief8 = seriesBrief({ id: "night-desk", episode: 8 }, "script");
+    expect(brief8).toContain("names no next part");
+    expect(brief8).not.toMatch(/Part 9/);
+    expect(seriesBrief(ep1, "script")).toContain('"Part 2 tomorrow!"');
+  });
+
+  it("runs 60 to 120 seconds in 20 to 50 shots", () => {
+    expect(SERIES_SECONDS).toEqual([60, 120]);
+    expect(SERIES_SHOTS).toEqual([20, 50]);
+    const long = (end: number) => gateScript({ shots: [{ start: 0, end, line: "x" }], payoff: "p", nextHook: "n", caption: "c" }, null, { problems: [] }, [], { seconds: SERIES_SECONDS }).checks.find((c) => /seconds long/.test(c.name))!;
+    expect(long(45).passed).toBe(false);
+    expect(long(75).passed).toBe(true);
+    expect(long(75).name).toBe("60 to 120 seconds long");
+    expect(long(130).passed).toBe(false);
   });
 
   it("checks a stage 2 finalist's ending against the lock", () => {
@@ -87,11 +112,12 @@ describe("The Night Desk", () => {
     expect(seriesIdeaCheck(ep1, 3, "A ghost rings it.").passed).toBe(false);
   });
 
-  it("makes the first episode not yet posted, and passes over one that failed EPISODE_TRIES times", () => {
-    expect(nextEpisode(NIGHT_DESK, { posted: [], tries: {} })).toEqual(ep1);
-    expect(nextEpisode(NIGHT_DESK, { posted: [1, 2], tries: { 1: 1, 2: 2 } })).toEqual({ id: "night-desk", episode: 3 });
-    expect(nextEpisode(NIGHT_DESK, { posted: [1], tries: { 1: 1, 2: EPISODE_TRIES } })).toEqual({ id: "night-desk", episode: 3 });
-    expect(nextEpisode(NIGHT_DESK, { posted: [1, 2, 3, 4, 5, 6, 7, 8], tries: {} })).toBeNull();
+  it("makes the first part not yet posted and never skips ahead (each outro promised the next)", () => {
+    const p = (posted: number[], tries: Record<number, number> = {}) => ({ posted, tries, lastPostedAt: null });
+    expect(nextEpisode(NIGHT_DESK, p([]))).toEqual(ep1);
+    expect(nextEpisode(NIGHT_DESK, p([1, 2], { 1: 1, 2: 2 }))).toEqual({ id: "night-desk", episode: 3 });
+    expect(nextEpisode(NIGHT_DESK, p([1], { 1: 1, 2: 9 }))).toEqual({ id: "night-desk", episode: 2 });
+    expect(nextEpisode(NIGHT_DESK, p([1, 2, 3, 4, 5, 6, 7, 8]))).toBeNull();
   });
 
   it("reads which episodes posted from the Vault (a posted action on the Reel)", async () => {
@@ -107,17 +133,18 @@ describe("The Night Desk", () => {
     await vault.saveStage({ stage: 2, subject: "reel:e", attempt: 1, passed: true, output: {}, gate: {}, input: { format: "story" } }, at);
     await vault.logAction({ kind: "posted", summary: "Posted", target: "reel:a", onInstagram: true }, at);
     await vault.logAction({ kind: "post_failed", summary: "Refused", target: "reel:b", onInstagram: true, ok: false }, at);
-    expect(await seriesProgress(vault, "night-desk")).toEqual({ posted: [1], tries: { 1: 1, 2: 1, 3: 1 } });
+    expect(await seriesProgress(vault, "night-desk")).toEqual({ posted: [1], tries: { 1: 1, 2: 1, 3: 1 }, lastPostedAt: at.toISOString() });
     expect((await vault.reelsStarted()).find((r) => r.subject === "reel:d")?.series).toEqual({ id: "night-desk", episode: 3 });
     expect((await vault.reelsStarted()).find((r) => r.subject === "reel:e")?.series).toBeNull();
     vault.close();
   });
 
-  it("takes the fifth Reel of the day (Thomas, 2026-11-23: daily, no part numbers)", () => {
+  it("takes the fifth Reel of the day, and the next tries until a part went out (Thomas, 2026-11-23: daily)", () => {
     expect(LIVE_SERIES).toBe("night-desk");
-    expect([0, 1, 2, 3, 4, 5].map((t) => seriesForSlot(t))).toEqual([null, null, null, null, "night-desk", null]);
-    expect(seriesForSlot(3, null)).toBeNull();
+    expect(SERIES_DAY_TRIES).toBe(3);
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((t) => seriesForSlot(t))).toEqual([null, null, null, null, "night-desk", "night-desk", "night-desk", null]);
+    expect(seriesForSlot(5, "night-desk", true)).toBeNull();
+    expect(seriesForSlot(4, null)).toBeNull();
     expect(DAILY_MIX[SERIES_SLOT]).toBe("satisfying");
-    expect([0, 1, 2, 3, 4, 9].map((t) => seriesForSlot(t, "night-desk"))).toEqual([null, null, null, null, "night-desk", "night-desk"]);
   });
 });

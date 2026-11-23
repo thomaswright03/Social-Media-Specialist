@@ -413,18 +413,24 @@ export function captionLines(caption: string): string[] {
   return lines;
 }
 
-export function gateScript(s: Script | null, opening: Opening | null, review: ScriptReview | null, learned: Check[] = []): GateResult {
+/**
+ * `seconds`: the script's length (30 to 60 s; a series part 60 to 120 s, Thomas 2026-11-23). `allow`: words the
+ * standalone check skips (a series part's outro, "Part 3 tomorrow!", which its own check places).
+ */
+export function gateScript(s: Script | null, opening: Opening | null, review: ScriptReview | null, learned: Check[] = [], opts: { seconds?: readonly [number, number]; allow?: RegExp } = {}): GateResult {
+  const [minS, maxS] = opts.seconds ?? [30, 60];
   const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
   const length = shots.length ? Math.max(...shots.map((x) => x.end ?? 0)) : 0;
   const gaps = shots.slice(1).filter((x, i) => Math.abs((x.start ?? 0) - (shots[i]!.end ?? 0)) > 0.05).length;
   const empty = emptySlices(shots, length);
   const unshown = shots.filter((x) => x.line?.trim() && !x.onScreen?.trim());
   const rushed = shots.filter((x) => x.line?.trim() && wordCount(x.line) / Math.max(0.01, (x.end ?? 0) - (x.start ?? 0)) > MAX_SPOKEN_WPS);
-  const text = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook, s?.caption].filter(Boolean).join(" \n");
+  const said = [...shots.flatMap((x) => [x.line, x.onScreenText, x.visual]), s?.payoff, s?.nextHook, s?.caption].filter(Boolean).join(" \n");
+  const text = opts.allow ? said.replace(new RegExp(opts.allow.source, opts.allow.flags.includes("g") ? opts.allow.flags : `${opts.allow.flags}g`), " ") : said;
   const openingFirst = opening?.shots?.[0];
   const hook = s?.caption?.trim() ? captionLines(s.caption)[0]!.trim() : "";
   return gate([
-    check("30 to 60 seconds long", length >= 30 && length <= 60, `${length.toFixed(1)} s`),
+    check(`${minS} to ${maxS} seconds long`, length >= minS && length <= maxS, `${length.toFixed(1)} s`),
     check("Shots run in order with no gaps", shots.length > 0 && (shots[0]!.start ?? 0) === 0 && gaps === 0, gaps ? `${gaps} gaps` : undefined),
     check("Opens with the opening that passed stage 3", Boolean(openingFirst) && shots[0]?.visual === openingFirst!.visual && shots[0]?.onScreenText === openingFirst!.onScreenText),
     check("Something new in every 3-second slice", empty.length === 0, empty.length ? `nothing new at ${empty.map((t) => `${t}-${t + SLICE_SECONDS} s`).join(", ")}` : undefined),
@@ -542,7 +548,7 @@ export const SAFE = { top: 220, bottom: 420, right: 140, left: 60 } as const;
 export const END_CARD = 2.2;
 export const CTA = /\b(follow|link in (the )?bio|comment|save this|share this|send this|tap|visit|try it|watch (the )?next)\b/i;
 
-export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, learned: Check[] = []): GateResult {
+export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, learned: Check[] = [], seconds: readonly [number, number] = [30, 60]): GateResult {
   const outside = boxes.filter((b) => b.y < SAFE.top || b.y + b.h > m.height - SAFE.bottom || b.x < SAFE.left || b.x + b.w > m.width - SAFE.right);
   const firstLine = p.caption.split("\n")[0]!.trim();
   const caption = p.caption.toLowerCase();
@@ -551,7 +557,7 @@ export function gatePrepublish(m: MediaFacts, boxes: TextBox[], p: Packaging, le
     check("1080x1920 (9:16)", m.width === 1080 && m.height === 1920, `${m.width}x${m.height}`),
     check("H.264 video with AAC audio", m.videoCodec === "h264" && m.audioCodec === "aac", `${m.videoCodec} / ${m.audioCodec ?? "no audio"}`),
     check("24 to 60 fps", m.fps >= 23.9 && m.fps <= 60, `${m.fps} fps`),
-    check("30 to 60 seconds, plus the end card", m.seconds >= 30 && m.seconds <= 60 + END_CARD + 0.1, `${m.seconds.toFixed(1)} s`),
+    check(`${seconds[0]} to ${seconds[1]} seconds, plus the end card`, m.seconds >= seconds[0] && m.seconds <= seconds[1] + END_CARD + 0.1, `${m.seconds.toFixed(1)} s`),
     check("Loudness about -14 LUFS (-16 to -12)", m.lufs !== null && m.lufs >= -16 && m.lufs <= -12, m.lufs === null ? "not measured" : `${m.lufs.toFixed(1)} LUFS`),
     check("True peak at or below -1 dBTP", m.truePeak !== null && m.truePeak <= -1, m.truePeak === null ? "not measured" : `${m.truePeak.toFixed(1)} dBTP`),
     check("No text where Instagram's buttons and caption sit", outside.length === 0, outside.length ? outside.map((b) => `"${b.text.slice(0, 30)}"`).join(", ") : undefined),

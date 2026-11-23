@@ -605,13 +605,13 @@ export class Vault {
 
   /** How many Reels the pipeline started since `since` (each Reel's first stage-2 try). */
   /** A series' Reels that passed stage 2: which episode each was and whether it was posted (a "posted" action on it). */
-  async seriesReels(id: string): Promise<{ subject: string; episode: number; posted: boolean }[]> {
+  async seriesReels(id: string): Promise<{ subject: string; episode: number; postedAt: string | null }[]> {
     await this.ensureTables();
     const rs = await this.db.execute({
-      sql: `SELECT s."subject", s."input", EXISTS (SELECT 1 FROM "SocialAction" a WHERE a."target" = s."subject" AND a."kind" = 'posted') AS "posted" FROM "SocialStage" s WHERE s."stage" = 2 AND s."subject" LIKE 'reel:%' AND s."input" LIKE ? AND s."subject" IN (SELECT "subject" FROM "SocialStage" WHERE "stage" = 2 AND "passed" = 1)`,
+      sql: `SELECT s."subject", s."input", (SELECT MIN(a."createdAt") FROM "SocialAction" a WHERE a."target" = s."subject" AND a."kind" = 'posted') AS "postedAt" FROM "SocialStage" s WHERE s."stage" = 2 AND s."subject" LIKE 'reel:%' AND s."input" LIKE ? AND s."subject" IN (SELECT "subject" FROM "SocialStage" WHERE "stage" = 2 AND "passed" = 1)`,
       args: [`%"series":%`],
     });
-    const out: { subject: string; episode: number; posted: boolean }[] = [];
+    const out: { subject: string; episode: number; postedAt: string | null }[] = [];
     for (const r of rs.rows) {
       let input: { series?: { id?: string; episode?: number } } = {};
       try {
@@ -619,7 +619,7 @@ export class Vault {
       } catch {}
       if (input.series?.id !== id || !Number.isInteger(input.series.episode)) continue;
       if (out.some((o) => o.subject === String(r.subject))) continue;
-      out.push({ subject: String(r.subject), episode: input.series.episode!, posted: Boolean(Number(r.posted)) });
+      out.push({ subject: String(r.subject), episode: input.series.episode!, postedAt: r.postedAt == null ? null : iso(r.postedAt) ?? null });
     }
     return out;
   }

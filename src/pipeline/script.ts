@@ -17,6 +17,7 @@ import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText 
 import { researchBrief } from "./research.ts";
 import { parseJson, runStage, stagePrompt, testerPrompt } from "./stages.ts";
 import { spokenText } from "../voice.ts";
+import { OUTRO, SERIES_SECONDS, SERIES_SHOTS } from "./series.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
@@ -211,11 +212,11 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         }),
       gate: async (s) => {
         if (s) lastDraft = s;
-        const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
+        const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold), choice.series ? { seconds: SERIES_SECONDS, allow: OUTRO } : {});
         const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
         const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
         const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
+        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.series ? SERIES_SHOTS : choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
         const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources, story: s?.story, payoff: s?.payoff }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
         const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];

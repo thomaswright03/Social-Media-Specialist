@@ -29,6 +29,14 @@ isn't paused. The quality gates stay; he lifted only his approval. Each Reel pos
 publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. His approved posts count toward the five; one he approves goes out at the next free hour from 6 AM (`nextSlot` in `src/schedule.ts`, same as the Vault's). Keep the tests
 for `mayAutoPost` passing.
 
+## Story series (Thomas, 2026-11-23)
+
+"Let's make a 8 part series with prompts for every part to ensure high quality." Then: "the outro must mention the
+next part like Part 2 tomorrow! ... Each part must be at least one minute long and can be between 1 and 2 minutes."
+Requirements in `pipeline/series/REQUIREMENTS.md`, checks in `src/pipeline/series.ts`: a brief per part, the outro
+names the next part (the only part number allowed), 60 to 120 s, each part still a complete story read cold. Parts go
+out in order, one a day in the fifth slot (`LIVE_SERIES`), retried rather than skipped. Keep the tests passing.
+
 ## The pipeline's gates are code (Thomas, 2026-11-10)
 
 Every stage of the content pipeline has a gate in `src/pipeline/gates.ts`. Don't let a stage pass on Claude's own
