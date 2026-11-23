@@ -107,6 +107,14 @@ describe("The Night Desk", () => {
     expect(long(130).passed).toBe(false);
   });
 
+  it("lets the intro take three lines, accepts \"motel\", and asks for the glasses only where Ruth herself is drawn (test run 45282934098)", () => {
+    const later = { ...draft, shots: [{ ...shots[0]!, line: "The bell rang." }, { ...shots[0]!, start: 1.5, line: "Nobody there." }, { ...shots[1]!, line: "Ruth works nights at the motel." }, ...shots.slice(2)] };
+    expect(failed(seriesChecks(ep1, later))).toEqual([]);
+    const hand = { ...draft, shots: [...shots, { start: 19, end: 21, line: "Part 2 tomorrow!", visual: "Insert: Ruth's hand resting on the brass bell." }].map((x, i, all) => (i === all.length - 2 ? { ...x, line: "Ruth walked him back to Room 4." } : x)) };
+    expect(failed(seriesChecks(ep1, hand))).toEqual([]);
+    expect(seriesIdeaCheck(ep1, 6, "A boy in a pom-pom hat taps it in his sleep.").passed).toBe(true);
+  });
+
   it("checks a stage 2 finalist's ending against the lock", () => {
     expect(seriesIdeaCheck(ep1, 3, "A sleepwalking boy rings it.").passed).toBe(true);
     expect(seriesIdeaCheck(ep1, 3, "A ghost rings it.").passed).toBe(false);

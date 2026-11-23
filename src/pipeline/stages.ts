@@ -94,7 +94,11 @@ export async function runStage<T>(opts: {
   const name = STAGES.find((s) => s.n === opts.stage)?.name ?? `Stage ${opts.stage}`;
   let last: StageRun<T> | null = null;
   for (let attempt = 1; attempt <= (opts.tries ?? MAX_TRIES); attempt++) {
-    const answer = await opts.ask(opts.prompt(failuresText(last?.gate ?? null)));
+    // A call that fails or runs out of time (a series part's long script, test run 45282934098) is a failed try, not the end of the run.
+    const answer: string = await opts.ask(opts.prompt(failuresText(last?.gate ?? null))).catch((err: unknown) => {
+      opts.log?.(`${name}, try ${attempt}: Claude didn't answer (${err instanceof Error ? err.message : err}).`);
+      return "";
+    });
     const output = parseJson<T>(answer);
     const g = await opts.gate(output);
     const recordId = await opts.vault.saveStage({ stage: opts.stage, subject: opts.subject, attempt, passed: g.passed, output: output ?? { unparsed: answer.slice(0, 2000) }, gate: g, input: attempt === 1 ? opts.input : undefined }, now());

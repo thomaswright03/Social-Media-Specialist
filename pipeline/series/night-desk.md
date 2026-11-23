@@ -23,7 +23,7 @@ This Reel is one story in our recurring series, The Night Desk. The story format
 The series is a recurring character in a recurring place, never a continuing plot. Each video is a complete story: a viewer who has never seen another one follows it on one watch, and a viewer who has seen them all gets nothing extra they need. So:
 
 - Never mention another video's story, or anything that happened at the motel "before" this story. No "episode", "last time", "another strange night", and no part number anywhere except the outro below. The only things that carry over are Ruth, the motel and how it looks.
-- The first spoken line says who Ruth is and where she is, as if for the first time, every time. For example: "Ruth works the night desk at the Starlite Motel, alone, ten till six." Vary the wording from story to story; keep the facts. Make it a full, natural sentence ("Ruth works nights at the Starlite Motel"), never clipped ("Ruth clerks nights at Starlite").
+- Within the first three spoken lines, say who Ruth is and where she is (her name and the Starlite Motel), as if for the first time, every time. Give it its own shot of about 3 seconds, so seven words fit: "Ruth works nights at the Starlite Motel." Vary the wording from story to story; keep the facts. Make it a full, natural sentence, never clipped ("Ruth clerks nights at Starlite", "Ruth works nights here").
 - Ruth is told about in the third person by the one narrator ("Ruth", "she"). She never speaks as a second voice; what she or a guest says is reported.
 
 The lead, the same in every story:

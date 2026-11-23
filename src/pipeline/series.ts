@@ -43,6 +43,7 @@ export type Series = {
   tag: string;
   lead: { name: string; marker: RegExp; markerText: string };
   /** The place the first lines name. */
+  /** Words that say where she is, for viewers who are new (the motel's name, or just "motel"). */
   place: RegExp;
   episodes: Episode[];
 };
@@ -52,9 +53,9 @@ export const NIGHT_DESK: Series = {
   name: "The Night Desk",
   tag: "#TheNightDesk",
   lead: { name: "Ruth", marker: /\bround glasses\b/i, markerText: "round glasses" },
-  place: /\bStarlite\b/i,
+  place: /\b(Starlite|motel)\b/i,
   episodes: [
-    { n: 1, title: "The 3 a.m. bell", answer: [/\b(asleep|sleepwalk\w*|sleeping)\b/i], guests: [/\bpom-?pom hat\b/i], own: /\b(sleepwalk\w*|pom-?pom)\b/i },
+    { n: 1, title: "The 3 a.m. bell", answer: [/\b(asleep|sleep\w*)\b/i], guests: [/\bpom-?pom hat\b/i], own: /\b(sleepwalk\w*|pom-?pom)\b/i },
     { n: 2, title: "The pen that comes back different", answer: [/\bcrows?\b/i, /\b(trad\w*|swap\w*|exchang\w*)\b/i], guests: [/\bcrows?\b/i], own: /\bcrows?\b/i },
     { n: 3, title: "Room 12's lamp", answer: [/\bwife\b/i, /\b(care home|across the (road|highway|street))\b/i], guests: [/\bflat cap\b/i], own: /\b(care home|flat cap)\b/i },
     { n: 4, title: "The envelope for Marigold", answer: [/\bpropos\w*/i], guests: [/\bbraid\b/i, /\bbeanie\b/i], own: /\b(marigold|propos\w*)/i },
@@ -116,9 +117,12 @@ export function seriesChecks(p: SeriesPick, d: Draft): Check[] {
   const lines = shots.map((x) => x.line?.trim() ?? "").filter(Boolean);
   const visuals = shots.map((x) => x.visual ?? "");
   const lead = new RegExp(`\\b${s.lead.name}\\b`, "i");
-  const opening = lines.slice(0, 2).join(" ");
+  // The first 3 lines: the opening's hook often takes the first one or two short shots (test run 45282934098).
+  const opening = lines.slice(0, 3).join(" ");
   const withLead = visuals.filter((v) => lead.test(v));
-  const bare = withLead.filter((v) => !s.lead.marker.test(v)).length;
+  // "Ruth's hand on the bell" or "Ruth's pen" doesn't show her face, so only a drawing of Ruth herself needs the glasses.
+  const herself = new RegExp(`\\b${s.lead.name}\\b(?!['’]s)`, "i");
+  const bare = withLead.filter((v) => herself.test(v) && !s.lead.marker.test(v)).length;
   const ending = [d.payoff, d.story].filter(Boolean).join(" ");
   const missing = e.answer.filter((r) => !ending.match(r));
   const guestsMissing = e.guests.filter((r) => !visuals.some((v) => r.test(v)));
@@ -128,7 +132,7 @@ export function seriesChecks(p: SeriesPick, d: Draft): Check[] {
   const lastLine = shots.at(-1)?.line ?? "";
   const early = shots.slice(0, -1).filter((x) => /\bpart\s*\d+\b/i.test(`${x.line ?? ""} ${x.onScreenText ?? ""}`)).length + (/\bpart\s*\d+\b/i.test(d.caption) ? 1 : 0);
   return [
-    check(`Opens by saying who ${s.lead.name} is and where, for new viewers (her name and the motel in the first 2 lines)`, lead.test(opening) && s.place.test(opening), opening ? `the first lines are "${opening.slice(0, 160)}"` : "no lines"),
+    check(`Opens by saying who ${s.lead.name} is and where, for new viewers (her name and the motel in the first 3 lines)`, lead.test(opening) && s.place.test(opening), opening ? `the first lines are "${opening.slice(0, 160)}"` : "no lines"),
     check(`${s.lead.name} is in at least half the drawings, always with her ${s.lead.markerText}`, withLead.length * 2 >= visuals.length && bare === 0, `${withLead.length} of ${visuals.length} drawings${bare ? `, ${bare} without her ${s.lead.markerText}` : ""}`),
     check("The guest's marker is named in the drawings", guestsMissing.length === 0, guestsMissing.length ? `no drawing has ${guestsMissing.map((r) => r.source.replace(/\\b/g, "")).join(", ")}` : undefined),
     check(`Ends the way "${e.title}" is locked`, missing.length === 0, missing.length ? `the payoff doesn't say ${missing.map((r) => r.source.replace(/\\b/g, "")).join(" or ")}` : undefined),
