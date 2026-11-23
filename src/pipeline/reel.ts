@@ -1,8 +1,9 @@
 // One Reel from idea to Instagram, with no one in the loop. Thomas,
 // 2026-11-21: "I want the AI to post 5 times a day with variety of content.
-// It can start doing so without my approval. I am lifting that gate." Five
-// slots a day (DAILY_SLOTS), each its own format. Stages 2 to 6 run in a row,
-// each behind its own gate; a stage that doesn't pass stops that slot's Reel.
+// It can start doing so without my approval. I am lifting that gate." From
+// 6 AM, one an hour until the day has five (DAILY_MIX, src/schedule.ts). Stages
+// 2 to 6 run in a row, each behind its own gate; a stage that doesn't pass stops
+// that Reel, and the next hour's run makes another.
 // It posts as a normal Reel, then the same video to the Facebook Page (and to
 // YouTube once that's on), only when mayAutoPost says yes (CLAUDE.md). A failed
 // post is logged, never retried. Every step goes on the History, with the
@@ -26,28 +27,16 @@ type Ask = (prompt: string) => Promise<string>;
 export const DAILY_FORMATS = ["explainer", "satisfying", "ad"] as const satisfies readonly Format[];
 
 /**
- * The five posts a day (Thomas, 2026-11-21), at these Arizona hours, mixed so
+ * The day's mix (Thomas, 2026-11-21: five a day "with variety of content"), so
  * no two in a row are the same and one in five is an ad (the 80/20 mix in
- * formats.ts). reels.yml starts one run a few minutes after each hour.
+ * formats.ts). From 6 AM each hourly run makes the next one in turn until the
+ * day has five posts (src/schedule.ts); a Reel that fails a check is followed
+ * by the next format, so one stubborn format can't hold up the day.
  */
-export const DAILY_SLOTS = [
-  { hour: 7, format: "explainer" },
-  { hour: 10, format: "satisfying" },
-  { hour: 13, format: "ad" },
-  { hour: 16, format: "explainer" },
-  { hour: 19, format: "satisfying" },
-] as const satisfies readonly { hour: number; format: Format }[];
+export const DAILY_MIX = ["explainer", "satisfying", "ad", "explainer", "satisfying"] as const satisfies readonly Format[];
 
-/**
- * The slot a scheduled run is for: the latest one that has started in Arizona
- * (UTC-7 all year), so a run GitHub starts late still makes its own slot's
- * format. Before the first slot it's the evening one from the day before.
- */
-export function slotFormat(now: Date): Format {
-  const hour = new Date(now.getTime() - 7 * 3600_000).getUTCHours();
-  const started = DAILY_SLOTS.filter((s) => s.hour <= hour);
-  return (started.at(-1) ?? DAILY_SLOTS.at(-1)!).format;
-}
+/** The format of the day's next Reel, after `tries` started today. */
+export const nextFormat = (tries: number): Format => DAILY_MIX[tries % DAILY_MIX.length]!;
 
 /** A call to action for captions that have none (Instagram's gate wants one). */
 export const CTA_LINE: Record<Format, string> = {
@@ -185,7 +174,7 @@ export async function runReel(d: {
   if (!d.client?.publishReelFile) return done({ subject: ideas.subject, stage: 6, posted: null, problem: "no Instagram token to post with" });
 
   // Post once, as a normal Reel. Instagram's client starts over with a fresh upload when it refuses before
-  // anything went out (the backup plan, 2026-11-23); a refusal after that is logged, and the slot moves on.
+  // anything went out (the backup plan, 2026-11-23); a refusal after that is logged, and the next run makes another.
   let video: Uint8Array;
   let posted: { mediaId: string; permalink: string | null };
   try {
@@ -195,7 +184,7 @@ export async function runReel(d: {
     await d.vault.logAction({ kind: "posted", summary: `Posted a ${name} Reel to Instagram (it passed every check; you lifted the approval step on Nov 21).`, detail: r.permalink ?? r.mediaId, target: ideas.subject, onInstagram: true }, now());
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Reel; Instagram refused it${err instanceof InstagramError && err.notPosted ? ", even after fresh uploads, and nothing went out" : ""}. The next slot makes a new one.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
+    await d.vault.logAction({ kind: "post_failed", summary: `Tried to post a ${name} Reel; Instagram refused it${err instanceof InstagramError && err.notPosted ? ", even after fresh uploads, and nothing went out" : ""}. The next hour's run makes a new one.`, detail: error.slice(0, 500), target: ideas.subject, onInstagram: true, ok: false }, now());
     return done({ subject: ideas.subject, stage: 6, posted: null, problem: `Instagram refused it: ${error}` });
   }
 

@@ -2,7 +2,7 @@
 // Facebook, TikTok, and YouTube Shorts about the status of the pages, if they
 // are connected, and how our account is performing on each of those
 // platforms"). Read only: account info and insights, never a post. The morning
-// run and the Reel slot runs refresh it every few hours into SocialStatus row "platforms", and the
+// run and the hourly Reel runs refresh it every few hours into SocialStatus row "platforms", and the
 // Vault page shows one section per platform (its parsePlatforms must match).
 import { crosspostOn, type FacebookPageClient } from "./facebook.ts";
 import type { InstagramClient } from "./instagram.ts";
@@ -24,7 +24,7 @@ export type Platform = {
 export type PlatformsReport = { checkedAt: string; platforms: Platform[] };
 
 export const PLATFORMS_ROW = "platforms";
-/** How often the runs read the platforms again (the morning run and each Reel slot run check). */
+/** How often the runs read the platforms again (the morning run and each hourly Reel run check). */
 export const PLATFORMS_EVERY_MS = 3 * 3600_000;
 const WEEK_MS = 7 * 86_400_000;
 const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 200);

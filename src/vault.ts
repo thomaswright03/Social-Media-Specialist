@@ -601,6 +601,13 @@ export class Vault {
     return out;
   }
 
+  /** How many Reels the pipeline started since `since` (each Reel's first stage-2 try). */
+  async reelsTriedSince(since: Date): Promise<number> {
+    await this.ensureTables();
+    const rs = await this.db.execute({ sql: `SELECT COUNT(DISTINCT "subject") AS n FROM "SocialStage" WHERE "stage" = 2 AND "subject" LIKE 'reel:%' AND "createdAt" >= ?`, args: [vaultNow(since)] });
+    return Number(rs.rows[0]?.n ?? 0);
+  }
+
   /** The latest result of a stage (passed or not), or the latest that passed. */
   async latestStage(stage: number, opts: { passedOnly?: boolean; subject?: string } = {}): Promise<StageRecord | null> {
     await this.ensureTables();

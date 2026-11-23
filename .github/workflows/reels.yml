@@ -1,12 +1,14 @@
-# Five Reels a day (Thomas, 2026-11-21: "I want the AI to post 5 times a day
+# Five posts a day (Thomas, 2026-11-21: "I want the AI to post 5 times a day
 # with variety of content. It can start doing so without my approval. I am
-# lifting that gate."). Each scheduled run makes the Reel of its slot
-# (DAILY_SLOTS in src/pipeline/reel.ts: 7am explainer, 10am satisfying, 1pm
-# ad, 4pm explainer, 7pm satisfying, Arizona time) with `npx social reel
-# slot`: idea, script, video and the pre-publish checks, each behind its gate.
-# A Reel that passes every check goes out on its own as a normal Reel, then to
-# the Facebook Page (CLAUDE.md). Anything that fails a gate stops that slot's
-# Reel; nothing is retried. Pausing the specialist on the Vault page stops it.
+# lifting that gate."; 2026-11-23: "making content and posting it starting at
+# 6am everyday until there's 5 posts a day"). Every hour from 6 AM to 9 PM
+# Arizona time a run does `npx social reel next`: when today has fewer than
+# five posts on Instagram (his approved ones count), it makes the day's next
+# Reel (DAILY_MIX in src/pipeline/reel.ts): idea, script, video and the
+# pre-publish checks, each behind its gate. A Reel that passes every check goes
+# out on its own as a normal Reel, then to the Facebook Page (CLAUDE.md). One
+# that fails a gate is followed by the next hour's, up to MAX_TRIES a day
+# (src/schedule.ts). Pausing the specialist on the Vault page stops it.
 #
 # Run it by hand from the Actions tab with "post" off to make and check the
 # Reels without posting them.
@@ -14,13 +16,11 @@ name: Daily Reels
 
 on:
   schedule:
-    # A few minutes past 7, 10, 13, 16 and 19 in Arizona (UTC-7 all year), at
-    # :03, away from the other employees' runs. The run takes about half an hour.
-    - cron: "3 14 * * *"
-    - cron: "3 17 * * *"
-    - cron: "3 20 * * *"
-    - cron: "3 23 * * *"
-    - cron: "3 2 * * *"
+    # At :03 past every hour from 6 AM to 9 PM in Arizona (UTC-7 all year), away
+    # from the other employees' runs. A run takes about half an hour, and one
+    # that finds today already has five stops in a minute.
+    - cron: "3 13-23 * * *"
+    - cron: "3 0-4 * * *"
   workflow_dispatch:
     inputs:
       format:
@@ -54,8 +54,8 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        # A scheduled run makes its slot's format; by hand, the one asked for or all three.
-        format: ${{ fromJSON(github.event_name == 'schedule' && '["slot"]' || (inputs.format != 'all' && format('["{0}"]', inputs.format) || '["explainer","satisfying","ad"]')) }}
+        # A scheduled run makes the day's next one if today needs it; by hand, the one asked for or all three.
+        format: ${{ fromJSON(github.event_name == 'schedule' && '["next"]' || (inputs.format != 'all' && format('["{0}"]', inputs.format) || '["explainer","satisfying","ad"]')) }}
     env:
       VAULT_DATABASE_URL: ${{ secrets.VAULT_DATABASE_URL }}
       VAULT_DATABASE_AUTH_TOKEN: ${{ secrets.VAULT_DATABASE_AUTH_TOKEN }}
