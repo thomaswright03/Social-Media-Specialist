@@ -24,7 +24,7 @@ went out only as Trial Reels). `reels.yml` makes five a day (`DAILY_SLOTS` in `s
 formats, one ad), and each goes out on its own as a normal Reel, then to the Facebook Page (and YouTube once it's
 on), only when `mayAutoPost` in `src/pipeline/gates.ts` says yes: every stage-6 check passed and the specialist
 isn't paused. The quality gates stay; he lifted only his approval. Each Reel posts once; only a refusal before the
-publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Keep the tests
+publish step starts over with a fresh upload (the backup plan above). Drafts on the Vault page (feed posts and the videos he adds) keep the approval rule above. Five a day in all (Thomas, 2026-11-23: "5 reels scheduled every day"): a post he approves takes the next open one of the day's five times (`nextSlot` in `src/schedule.ts`, same as the Vault's), and a slot run whose time he already filled makes no Reel (`approvedInSlot`). Keep the tests
 for `mayAutoPost` passing.
 
 ## The pipeline's gates are code (Thomas, 2026-11-10)

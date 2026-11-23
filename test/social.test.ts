@@ -6,7 +6,8 @@ import type { FacebookPageClient } from "../src/facebook.ts";
 import { currentToken, graphHost, InstagramError, instagramClient, notPostedError, type InstagramClient } from "../src/instagram.ts";
 import type { Renderer } from "../src/render.ts";
 import { pickPost, socialAnswerer } from "../src/requests.ts";
-import { nextSlot } from "../src/schedule.ts";
+import { approvedInSlot, currentSlot, nextSlot, SLOT_HOURS } from "../src/schedule.ts";
+import { DAILY_SLOTS } from "../src/pipeline/reel.ts";
 import { publishDue, RETRY_AFTER_MS, runDaily } from "../src/social.ts";
 import { parseSiteProducts, siteProducts } from "../src/site.ts";
 import { call, setRetryMs } from "../src/instagram.ts";
@@ -144,18 +145,38 @@ const siteFetch = (async (url: string | URL, init?: RequestInit) => {
   return new Response("{}", { status: 404 });
 }) as unknown as typeof fetch;
 
-describe("scheduling", () => {
-  const s = { postDays: [1, 3, 5], postTime: "11:30" };
-  it("picks the next posting day at the posting time, Arizona time", () => {
-    // Tuesday -> Wednesday 11:30 Arizona = 18:30 UTC
-    expect(nextSlot(s, [], NOW).toISOString()).toBe("2026-10-28T18:30:00.000Z");
+describe("scheduling: five a day", () => {
+  it("matches the daily Reel slots", () => {
+    expect([...SLOT_HOURS]).toEqual(DAILY_SLOTS.map((s) => s.hour));
   });
-  it("skips days that already have a post", () => {
-    expect(nextSlot(s, ["2026-10-28T18:30:00.000Z"], NOW).toISOString()).toBe("2026-10-30T18:30:00.000Z");
+  it("puts an approved post at the next open one of the day's five times, Arizona time", () => {
+    // Tuesday 8:00 -> 10:20 the same day (17:20 UTC), then 1:20.
+    expect(nextSlot([], NOW).toISOString()).toBe("2026-10-27T17:20:00.000Z");
+    expect(nextSlot(["2026-10-27T17:20:00.000Z"], NOW).toISOString()).toBe("2026-10-27T20:20:00.000Z");
+    // A post the backup plan put back at 11:10 still has the 10 o'clock time.
+    expect(nextSlot(["2026-10-27T18:10:00.000+00:00"], NOW).toISOString()).toBe("2026-10-27T20:20:00.000Z");
   });
-  it("uses today when the time hasn't passed", () => {
-    expect(nextSlot({ postDays: [2], postTime: "11:30" }, [], NOW).toISOString()).toBe("2026-10-27T18:30:00.000Z");
-    expect(nextSlot({ postDays: [2], postTime: "08:05" }, [], NOW).toISOString()).toBe("2026-11-03T15:05:00.000Z");
+  it("goes to tomorrow when today's are taken or too close", () => {
+    const today = ["14:20", "17:20", "20:20", "23:20"].map((t) => `2026-10-27T${t}:00.000Z`).concat("2026-10-28T02:20:00.000Z");
+    expect(nextSlot(today, NOW).toISOString()).toBe("2026-10-28T14:20:00.000Z");
+    expect(nextSlot([], new Date("2026-10-28T02:10:00.000Z")).toISOString()).toBe("2026-10-28T14:20:00.000Z"); // 7:10 PM
+  });
+  it("knows which slot a run is for, even a late one or before 7 AM", () => {
+    expect(currentSlot(new Date("2026-10-27T14:03:00Z")).hour).toBe(7);
+    expect(currentSlot(new Date("2026-10-27T18:40:00Z")).hour).toBe(10);
+    const night = currentSlot(new Date("2026-10-28T11:00:00Z")); // 4 AM
+    expect([night.hour, night.start.toISOString()]).toEqual([19, "2026-10-28T02:00:00.000Z"]);
+  });
+  it("finds a post Thomas approved in the slot, so the specialist makes none there", async () => {
+    const vault = await memoryVault(PRODUCTS);
+    const r = screenDraft(goodAnswer(), { product: PRODUCTS[0]!, idea: null, site: null });
+    if (!r.ok) throw new Error("bad fixture");
+    const p = await vault.addPost(r.post, Buffer.from("jpeg"), NOW);
+    await vault.updatePost(p.id, { state: "approved", scheduledFor: vaultNow(new Date("2026-10-27T17:20:00Z")) });
+    expect((await approvedInSlot(vault, new Date("2026-10-27T17:03:00Z")))?.id).toBe(p.id); // the 10 o'clock run
+    expect(await approvedInSlot(vault, new Date("2026-10-27T20:03:00Z"))).toBeNull(); // 1 PM is open
+    await vault.updatePost(p.id, { state: "draft" });
+    expect(await approvedInSlot(vault, new Date("2026-10-27T17:03:00Z"))).toBeNull(); // a draft doesn't count
   });
 });
 

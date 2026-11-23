@@ -55,6 +55,7 @@ import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/researc
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
 import { DAILY_FORMATS, runReel, slotFormat } from "./pipeline/reel.ts";
+import { approvedInSlot } from "./schedule.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { syncLatestUpdate } from "./latest-update.ts";
@@ -183,6 +184,14 @@ async function main() {
     }
     const vault = connect();
     try {
+      // A Reel Thomas approved has this slot's time: it's one of the day's five, so the specialist makes none.
+      const taken = asked === "slot" ? await approvedInSlot(vault, new Date()).catch(() => null) : null;
+      if (taken) {
+        const summary = `Daily ${format} Reel: skipped, because "${taken.headline}" that you approved has this time. Still five a day.`;
+        log(summary);
+        await vault.logAction({ kind: "stage", summary, target: taken.id }).catch(() => {});
+        return;
+      }
       const products = await siteProducts().catch((err) => {
         log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
         return [];
