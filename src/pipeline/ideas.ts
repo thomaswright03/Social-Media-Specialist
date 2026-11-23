@@ -12,6 +12,7 @@ import { check, gate, gateIdeas, type ColdReads, type GateResult, type Ideas } f
 import { newsList, newsText, type NewsItem } from "./news.ts";
 import { nicheFor, researchBrief } from "./research.ts";
 import { runStage, stagePrompt, testerPrompt } from "./stages.ts";
+import { seriesIdeaCheck, type SeriesPick } from "./series.ts";
 
 export const COLD_READS = 3;
 export const IDEAS_TRIES = 5;
@@ -60,6 +61,7 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
       const named = Boolean(choice.product) && (f.s.toLowerCase().includes(name) || f.answer.toLowerCase().includes(name));
       fmt.push(check(`Finalist ${f.id} is about ${choice.product?.name ?? "the product"}: its sentence or its ending names "${choice.product?.name ?? "the product"}" word for word`, named, named ? undefined : `"${f.s.slice(0, 120)}" / ending: "${f.answer.slice(0, 120)}"`));
     } else {
+      if (choice.series) fmt.push(seriesIdeaCheck(choice.series, f.id, f.answer));
       const g = gateFormat({ format: choice.format, product: null }, { caption: f.s, shots: [] }, products).checks.find((c) => c.name === "Entertainment doesn't sell");
       if (g) fmt.push({ ...g, name: `Finalist ${f.id}: ${g.name.toLowerCase()}` });
     }
@@ -69,12 +71,14 @@ export async function gateIdeasFormat(x: Ideas | null, choice: Choice, products:
 
 export type IdeasResult = { subject: string; choice: Choice; passed: boolean; finalists: string[]; gate: GateResult; tries: number };
 
-export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: string) => Promise<string>; coldAsk?: (p: string) => Promise<string>; log?: (m: string) => void; now?: () => Date; format?: Format; news?: (now: Date) => Promise<NewsItem[]> }): Promise<IdeasResult> {
+export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: string) => Promise<string>; coldAsk?: (p: string) => Promise<string>; log?: (m: string) => void; now?: () => Date; format?: Format; series?: SeriesPick | null; news?: (now: Date) => Promise<NewsItem[]> }): Promise<IdeasResult> {
   const started = await d.vault.reelsStarted();
   const made: Made[] = started.map((r) => ({ format: r.format as Format, productId: r.productId, at: r.at }));
   let choice = nextFormat(made, d.products);
   // A run by hand may ask for a format; an ad still takes its product in turn.
   if (d.format) choice = { format: d.format, product: d.format === "ad" ? nextProduct(made, d.products) : null };
+  // A series episode is always a story.
+  if (d.series) choice = { format: "story", product: null, series: d.series };
   // The explainer picks only from the news code gathered; with none, it doesn't run today.
   let news: NewsItem[] = [];
   if (choice.format === "explainer") {
@@ -85,7 +89,7 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
     }
   }
   const subject = `reel:${randomUUID()}`;
-  d.log?.(`Next Reel: ${choice.format}${choice.product ? ` for ${choice.product.name}` : ""}.`);
+  d.log?.(`Next Reel: ${choice.format}${choice.product ? ` for ${choice.product.name}` : ""}${choice.series ? `, ${choice.series.id} episode ${choice.series.episode}` : ""}.`);
   // What stage 1 found for this format (not one list for every format).
   const patterns = await researchBrief(d.vault, choice.format);
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
@@ -105,7 +109,7 @@ export async function runIdeas(d: { vault: Vault; products: Product[]; ask: (p: 
         GATE_FAILURES: failures,
       }),
     gate: (x) => gateIdeasFormat(x, choice, d.products, (y) => coldReads(y, d.coldAsk ?? d.ask, choice.format === "ad" ? choice.product : null), news),
-    input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null, ...(news.length ? { news } : {}) },
+    input: { format: choice.format, productId: choice.product?.id ?? null, product: choice.product?.name ?? null, ...(news.length ? { news } : {}), ...(choice.series ? { series: choice.series } : {}) },
     // A try is cheap (one call and 9 cold reads) next to a lost day, so 5.
     tries: IDEAS_TRIES,
     log: d.log,

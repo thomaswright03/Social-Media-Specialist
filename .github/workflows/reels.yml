@@ -27,13 +27,17 @@ on:
         description: Which Reel to make (all makes the three daily ones)
         type: choice
         default: all
-        options: [all, explainer, satisfying, ad]
+        options: [all, explainer, satisfying, ad, series]
       post:
         description: Post it when every check passes (off makes and checks it only)
         type: boolean
         default: false
       product:
         description: An ad for this product (its name on the website); empty takes turns
+        type: string
+        default: ""
+      episode:
+        description: With series, the episode to make (1 to 8); empty makes the next one not yet posted
         type: string
         default: ""
 
@@ -78,6 +82,7 @@ jobs:
       RESEARCH_ACCOUNTS: ${{ vars.RESEARCH_ACCOUNTS }}
       REEL_FORMAT: ${{ matrix.format }}
       REEL_PRODUCT: ${{ inputs.product }}
+      REEL_EPISODE: ${{ inputs.episode }}
       # Scheduled runs post; a run by hand posts only when asked.
       REEL_POST: ${{ (github.event_name == 'schedule' || inputs.post) && 'on' || 'off' }}
     steps:

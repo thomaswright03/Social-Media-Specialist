@@ -20,7 +20,8 @@
 //                   that passed stage 2
 //   produce         stage 5: turns the newest passed script into reel/reel.mp4 (voice, drawings,
 //                   captions, our own sound) and grades it on our rubric; posts nothing
-//   reel            one Reel of the format after the command (explainer, satisfying, ad, or next for the
+//   reel            one Reel of the format after the command (explainer, satisfying, ad, series for the
+//                   next episode of the story series, REEL_EPISODE to pick one, or next for the
 //                   day's next one while today has fewer than five posts) from idea to Instagram: stages 2 to 6,
 //                   then posted as a normal Reel, and to the Facebook Page, only when every check passed
 //                   (src/pipeline/reel.ts); REEL_POST=off makes and checks it but posts nothing
@@ -54,7 +55,8 @@ import { MIN_ACCOUNTS, MIN_LOOKED_PER_GROUP } from "./pipeline/gates.ts";
 import { RESEARCH_FORMATS, accountsFor, parseAccounts } from "./pipeline/research-accounts.ts";
 import { runIdeas } from "./pipeline/ideas.ts";
 import { runScript } from "./pipeline/script.ts";
-import { DAILY_FORMATS, nextFormat, runReel } from "./pipeline/reel.ts";
+import { DAILY_FORMATS, LIVE_SERIES, nextFormat, runReel, seriesForSlot } from "./pipeline/reel.ts";
+import { NIGHT_DESK, nextEpisode, SERIES, seriesProgress, type SeriesPick } from "./pipeline/series.ts";
 import { countToday, decideRun, REELS_TODAY_ROW, type DayCount } from "./schedule.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
@@ -178,11 +180,14 @@ async function main() {
     // one only while today has fewer than five posts (src/schedule.ts); "slot" is its old name.
     const asked = (process.argv[3] || process.env.REEL_FORMAT || "").trim().toLowerCase();
     const auto = asked === "next" || asked === "slot";
-    if (!auto && !isFormat(asked)) {
-      console.error(`"${asked}" isn't a format. Use ${DAILY_FORMATS.join(", ")}, next (or story).`);
+    // "series" makes the next episode of LIVE_SERIES (The Night Desk while none is live); REEL_EPISODE picks one.
+    const bySeries = asked === "series";
+    if (!auto && !bySeries && !isFormat(asked)) {
+      console.error(`"${asked}" isn't a format. Use ${DAILY_FORMATS.join(", ")}, series, next (or story).`);
       process.exit(2);
     }
-    let format: Format = auto ? "explainer" : (asked as Format);
+    let format: Format = auto ? "explainer" : bySeries ? "story" : (asked as Format);
+    let series: SeriesPick | null = null;
     const vault = connect();
     let today: DayCount | null = null;
     const saveToday = (why: string, making: Format | null) =>
@@ -205,8 +210,28 @@ async function main() {
           return;
         }
         format = nextFormat(today.tries);
-        log(`This run makes a ${format}.`);
+        const live = seriesForSlot(today.tries);
+        if (live && SERIES[live]) {
+          series = nextEpisode(SERIES[live]!, await seriesProgress(vault, live));
+          if (series) format = "story";
+          else log(`${SERIES[live]!.name} has no episodes left to make, so this slot is a ${format} again.`);
+        }
+        log(series ? `This run makes ${SERIES[series.id]!.name}, episode ${series.episode}.` : `This run makes a ${format}.`);
         await saveToday(decision.why, format);
+      }
+      if (bySeries) {
+        const s = SERIES[LIVE_SERIES ?? ""] ?? NIGHT_DESK;
+        const want = Number(process.env.REEL_EPISODE || "");
+        if (process.env.REEL_EPISODE && !s.episodes.some((e) => e.n === want)) {
+          console.error(`${s.name} has episodes ${s.episodes.map((e) => e.n).join(", ")}; there's no episode "${process.env.REEL_EPISODE}".`);
+          process.exit(2);
+        }
+        series = process.env.REEL_EPISODE ? { id: s.id, episode: want } : nextEpisode(s, await seriesProgress(vault, s.id));
+        if (!series) {
+          log(`${s.name} has no episodes left to make.`);
+          return;
+        }
+        log(`This run makes ${s.name}, episode ${series.episode}.`);
       }
       const products = await siteProducts().catch((err) => {
         log(`Couldn't read the products from the website: ${err instanceof Error ? err.message : err}`);
@@ -223,6 +248,7 @@ async function main() {
       const r = await runReel({
         vault,
         format,
+        series,
         products: chosen,
         ask: askClaude,
         produce: (subject) => produce(vault, subject),

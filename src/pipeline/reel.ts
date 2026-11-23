@@ -18,6 +18,7 @@ import type { Product, Vault } from "../vault.ts";
 import type { Format } from "./formats.ts";
 import { CTA, captionLines, check, contentChecks, gate, gatePrepublish, mayAutoPost, type GateResult, type Packaging } from "./gates.ts";
 import { runIdeas, type IdeasResult } from "./ideas.ts";
+import { SERIES, type SeriesPick } from "./series.ts";
 import type { ProduceResult } from "./produce.ts";
 import { learnedChecks, runScript, type ScriptResult } from "./script.ts";
 
@@ -37,6 +38,19 @@ export const DAILY_MIX = ["explainer", "satisfying", "ad", "explainer", "satisfy
 
 /** The format of the day's next Reel, after `tries` started today. */
 export const nextFormat = (tries: number): Format => DAILY_MIX[tries % DAILY_MIX.length]!;
+
+/**
+ * The series that takes a daily slot (src/pipeline/series.ts), or null. Off
+ * until Thomas chooses how The Night Desk goes out (2026-11-23); when on, the
+ * fifth Reel of the day (SERIES_SLOT, the second satisfying one) is the
+ * series' next episode, and once all its episodes are posted or passed over the
+ * slot goes back to DAILY_MIX.
+ */
+export const LIVE_SERIES: string | null = null;
+export const SERIES_SLOT = 4;
+
+/** The series that the day's next Reel belongs to, if any (`live` is LIVE_SERIES, a parameter for tests). */
+export const seriesForSlot = (tries: number, live: string | null = LIVE_SERIES): string | null => (live && tries % DAILY_MIX.length === SERIES_SLOT ? live : null);
 
 /** A call to action for captions that have none (Instagram's gate wants one). */
 export const CTA_LINE: Record<Format, string> = {
@@ -118,6 +132,8 @@ const failures = (g: GateResult) =>
 export async function runReel(d: {
   vault: Vault;
   format: Format;
+  /** A series episode to make (a story). */
+  series?: SeriesPick | null;
   products: Product[];
   ask: Ask;
   /** Stage 5 for the Reel `subject`: the video and its judgement. */
@@ -139,7 +155,7 @@ export async function runReel(d: {
   const log = d.log ?? (() => {});
   const now = d.now ?? (() => new Date());
   const mark = usageMark();
-  const name = d.format === "ad" ? "ad" : d.format;
+  const name = d.series ? `${SERIES[d.series.id]?.name ?? d.series.id} episode ${d.series.episode}` : d.format;
   const done = async (r: Omit<ReelRun, "usage" | "format">): Promise<ReelRun> => {
     const usage = usageSince(mark);
     const outcome = r.posted ? `posted${r.posted.permalink ? ` (${r.posted.permalink})` : ""}` : `not posted: ${r.problem}`;
@@ -153,7 +169,7 @@ export async function runReel(d: {
   if ((await d.vault.settings()).paused) return done({ subject: null, stage: 0, posted: null, problem: "the specialist is paused" });
 
   // Stage 2: the idea.
-  const ideas: IdeasResult = await (d.ideas ?? runIdeas)({ vault: d.vault, products: d.products, ask: d.ask, log, now, format: d.format });
+  const ideas: IdeasResult = await (d.ideas ?? runIdeas)({ vault: d.vault, products: d.products, ask: d.ask, log, now, format: d.format, series: d.series ?? null });
   if (!ideas.passed) return done({ subject: ideas.subject, stage: 2, posted: null, problem: `the ideas didn't pass their gate: ${failures(ideas.gate)}` });
   if (ideas.choice.format !== d.format) log(`Made a ${ideas.choice.format} instead of a ${d.format} today (see the log above).`);
 

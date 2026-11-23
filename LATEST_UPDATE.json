@@ -1,13 +1,12 @@
 {
   "date": "November 23, 2026",
-  "summary": "No more fixed posting times. From 6 AM Arizona, the specialist makes and posts a Reel every hour until the day has five posts on Instagram, and the posts you approve count toward the five. A Reel that fails a check is simply followed by the next hour's, in the next format, up to 10 tries a day.",
+  "summary": "A new story series, The Night Desk: eight stick-figure stories about Ruth, the night clerk at the Starlite Motel, each with its own locked prompt and code checks so every one stands alone. It isn't in the daily mix yet; it waits for your choice of how it goes out.",
   "frontend": [
-    "Schedule shows today's count (for example 2 of 5 posted), what it's making now or why it stopped, and how many tries it has used, instead of five fixed times.",
-    "Approve puts a post at the next free hour (20 past), from 6 AM to 9 PM."
+    "Nothing changes on the Vault page yet. Once the series is on, its Reels show in History as The Night Desk with their episode number."
   ],
   "other": [
-    "reels.yml runs at :03 past every hour from 6 AM to 9 PM; a run that finds five already posted stops in a minute.",
-    "The mix rotates explainer, satisfying, ad, explainer, satisfying, moving on after a failed one so one format can't hold up the day.",
-    "Hitta's answers know the new schedule."
+    "pipeline/series/night-desk.md holds the series rules, Ruth's and the motel's look, and a brief for each of the 8 stories (locked ending, guest, beats, key drawings, traps, caption vote).",
+    "New checks for every Night Desk Reel: the first lines say who Ruth is and where, she keeps her round glasses in every drawing, the guest's marker is drawn, it ends the way its brief locks it, no other story is mentioned, and the caption has #TheNightDesk. \"Part\" and \"episode\" stay banned.",
+    "reels.yml can make one by hand (format series, with an episode number), posting nothing when post is off. LIVE_SERIES puts it in the fifth daily slot once you choose."
   ]
 }

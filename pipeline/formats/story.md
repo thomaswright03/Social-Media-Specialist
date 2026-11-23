@@ -1,7 +1,9 @@
 # Format: stick-figure story (entertainment)
 
 A standalone animated story told by a narrator, like the stick-figure story
-channels that win in our niche (stage 1). It never sells.
+channels that win in our niche (stage 1). It never sells. A story that is a
+series episode also gets its series' rules and episode brief
+(`pipeline/series/`), added after these.
 
 <!-- ideas -->
 Format: a stick-figure story. It is entertainment: it never names a product or the business, and never asks anyone to buy anything.

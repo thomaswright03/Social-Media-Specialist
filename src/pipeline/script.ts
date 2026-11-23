@@ -185,7 +185,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   if (!reel) return empty("No Reel waiting for a script: run ideas (stage 2) first");
   const product = reel.format === "ad" ? (d.products.find((p) => p.id === reel.productId) ?? null) : null;
   if (reel.format === "ad" && !product) return { ...empty(`The ad's product (${reel.productId}) isn't on the website anymore`), subject: reel.subject };
-  const choice = { format: reel.format, product } as Choice;
+  const choice = { format: reel.format, product, series: reel.series ?? null } as Choice;
   // What stage 1 found for this format (not one list for every format).
   const patterns = await researchBrief(d.vault, choice.format);
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
