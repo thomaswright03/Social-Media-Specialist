@@ -26,7 +26,7 @@ on:
         description: Which command to run
         type: choice
         default: run
-        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, youtube-test, youtube-backfill, hitta-test, voice-test]
+        options: [run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, requests, instagram-test, page-audit, platforms, youtube-test, youtube-backfill, hitta-test, voice-test]
       format:
         description: For ideas, a format to make (ad, story, satisfying, explainer); empty follows the 80/20 mix. For research and accounts-test, the format to study; empty takes all four
         type: string

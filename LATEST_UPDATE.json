@@ -1,13 +1,12 @@
 {
   "date": "November 23, 2026",
-  "summary": "Five Reels a day, every day, on one schedule. The day has five times (7 and 10 AM, 1, 4 and 7 PM Arizona). A post you approve takes the next open one of those times instead of one a day on your posting days, and at the times you haven't filled the specialist makes its own Reel, so it stays five a day.",
+  "summary": "The Vault page now has a Platforms section for Instagram, the Facebook Page, YouTube Shorts and TikTok: whether each is connected, what goes there, and how the account is doing on each. The specialist reads them every few hours, read only.",
   "frontend": [
-    "Schedule shows today's remaining times and the next two days, five each: what you approved for a time, or which Reel the specialist makes there (news explainer, satisfying video, product ad).",
-    "Approve puts a post at the next open time (it goes out about 20 past the hour), often the same day, instead of the next Monday, Wednesday or Friday.",
-    "Settings no longer has posting days and a posting time; it says the five times instead."
+    "Platforms on the Vault page: a card for each platform with Connected, Not connected or Not set up, a sentence on what it posts there (YouTube says it waits for Google's audit; TikTok says what setting it up takes), and its numbers: followers, posts, Reel views and reach, likes, comments and new followers over the last 7 or 28 days, with a link to the account."
   ],
   "other": [
-    "The daily Reel run skips its slot when a post you approved has that time, and says so on the History, which also saves that Reel's cost.",
-    "Hitta's answers know the five times."
+    "New command platforms (social.yml) reads them now; the morning run and each Reel slot run read them again when they're over 3 hours old. Nothing is posted or changed.",
+    "Hitta can answer how each platform is doing.",
+    "YouTube's channel read now includes total views."
   ]
 }

@@ -21,7 +21,7 @@ export const YT_TITLE_MAX = 100;
 /** Science & Technology. */
 export const YT_CATEGORY = "28";
 
-export type YouTubeChannel = { id: string; title: string; handle: string | null; subscribers: number | null; videos: number | null };
+export type YouTubeChannel = { id: string; title: string; handle: string | null; subscribers: number | null; videos: number | null; views?: number | null };
 export type YouTubeUpload = { videoId: string; url: string; privacy: string | null };
 
 export type YouTubeClient = {
@@ -106,11 +106,11 @@ export function youtubeClient(creds: YouTubeCreds, opts: { fetchImpl?: Fetch } =
     async channel() {
       const res = await f(`${YT_API}/channels?part=snippet,statistics&mine=true`, { headers: { Authorization: `Bearer ${await token()}` } });
       if (!res.ok) throw new YouTubeError(`YouTube didn't return the channel: ${await errorText(res)}`, res.status);
-      const json = (await res.json()) as { items?: { id: string; snippet?: { title?: string; customUrl?: string }; statistics?: { subscriberCount?: string; videoCount?: string } }[] };
+      const json = (await res.json()) as { items?: { id: string; snippet?: { title?: string; customUrl?: string }; statistics?: { subscriberCount?: string; videoCount?: string; viewCount?: string } }[] };
       const c = json.items?.[0];
       if (!c) throw new YouTubeError("This Google account has no YouTube channel.", res.status);
       const num = (v?: string) => (v === undefined ? null : Number(v));
-      return { id: c.id, title: c.snippet?.title ?? "", handle: c.snippet?.customUrl ?? null, subscribers: num(c.statistics?.subscriberCount), videos: num(c.statistics?.videoCount) };
+      return { id: c.id, title: c.snippet?.title ?? "", handle: c.snippet?.customUrl ?? null, subscribers: num(c.statistics?.subscriberCount), videos: num(c.statistics?.videoCount), views: num(c.statistics?.viewCount) };
     },
 
     async uploadShort(video, meta) {

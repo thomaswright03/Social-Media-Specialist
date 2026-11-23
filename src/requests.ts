@@ -124,11 +124,13 @@ export function socialAnswerer(opts: { vault: Vault; vaultQueryDb: QueryDb; runN
   return claudeAnswerer({
     role: ROLE,
     facts: async () => {
-      const [latest, posts, settings, ideas] = await Promise.all([vault.latestStatus(), vault.posts(), vault.settings(), vault.openIdeas()]);
+      const [latest, posts, settings, ideas, platforms] = await Promise.all([vault.latestStatus(), vault.posts(), vault.settings(), vault.openIdeas(), vault.statusRow("platforms").catch(() => null)]);
       const brief = (p: Post) => ({ id: p.id, product: p.productName, headline: p.headline, caption: p.caption.slice(0, 160) });
       return {
         lastRun: latest ? { at: latest.snapshot.checkedAt, instagram: latest.snapshot.account ?? latest.snapshot.instagramError ?? null, tokenGoodUntil: latest.snapshot.tokenExpiresAt, notes: latest.snapshot.notes } : "it hasn't run yet",
         settings: { postsPerWeek: settings.postsPerWeek, brief: settings.brief, paused: settings.paused, leftOut: settings.leftOut, postingTimes: "7:20 and 10:20 AM, 1:20, 4:20 and 7:20 PM Arizona, every day" },
+        // Instagram, the Facebook Page, YouTube Shorts and TikTok: connected or not, and their numbers (src/platforms.ts).
+        platforms: platforms ? { readAt: platforms.updatedAt, ...(JSON.parse(platforms.snapshot) as object) } : "not read yet",
         waitingForThomas: posts.filter((p) => p.state === "draft").map(brief),
         scheduled: posts.filter((p) => p.state === "approved").map((p) => ({ ...brief(p), goesOut: az(p.scheduledFor) })),
         failed: posts.filter((p) => p.state === "failed").map((p) => ({ ...brief(p), error: p.error })),
