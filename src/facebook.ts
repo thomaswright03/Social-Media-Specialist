@@ -26,6 +26,22 @@ export type FacebookPageClient = {
   reply(objectId: string, message: string): Promise<{ id: string }>;
   /** Everything an audit of the Page looks at, read only (Thomas, 2026-11-21: "do an audit of the facebook page"). */
   audit?(): Promise<PageAudit>;
+  /** How the Page is doing over the last 28 days, read only, for the Vault page's Facebook section. */
+  performance?(days?: number): Promise<PagePerformance>;
+};
+
+export type PagePerformance = {
+  info: PageInfo;
+  /** Page posts and Reels made in the window. */
+  posts: number;
+  reels: number;
+  /** Plays of those Reels. */
+  reelViews: number | null;
+  reactions: number | null;
+  comments: number | null;
+  /** Facebook's 28-day Page insights; null where it gave none. */
+  reach: number | null;
+  engagements: number | null;
 };
 
 export type PageAudit = {
@@ -121,6 +137,41 @@ export function facebookPageClient(token: string, opts: { fetchImpl?: Fetch; pag
         after = paging.cursors.after;
       }
       return out.slice(0, max);
+    },
+
+    async performance(days = 28) {
+      const page = await id();
+      const info = await this.info();
+      const since = Date.now() - days * 86_400_000;
+      const recent = (await this.posts(50).catch(() => [] as PagePost[])).filter((p) => Date.parse(p.createdAt) >= since);
+      const sum = (xs: (number | null)[]) => (xs.some((x) => x !== null) ? xs.reduce<number>((a, x) => a + (x ?? 0), 0) : null);
+      let reels = 0;
+      const plays: (number | null)[] = [];
+      try {
+        const r = await get(`${page}/video_reels`, { fields: "id,created_time,video_insights.metric(blue_reels_play_count){values}", limit: "50" });
+        for (const v of (r.data as Record<string, unknown>[] | undefined) ?? []) {
+          if (Date.parse(String(v.created_time ?? "")) < since) continue;
+          reels++;
+          plays.push(n((v.video_insights as { data?: { values?: { value?: unknown }[] }[] } | undefined)?.data?.[0]?.values?.[0]?.value));
+        }
+      } catch {
+        // No Reels readable: the counts stay at what the posts say.
+      }
+      const insight = async (metric: string) => {
+        const r = await get(`${page}/insights`, { metric, period: "days_28" }).catch(() => null);
+        const vals = ((r?.data as { values?: { value?: unknown }[] }[] | undefined)?.[0]?.values ?? []).map((x) => n(x.value));
+        return vals.length ? vals[vals.length - 1]! : null;
+      };
+      return {
+        info,
+        posts: recent.length,
+        reels,
+        reelViews: sum(plays),
+        reactions: sum(recent.map((p) => p.reactions)),
+        comments: sum(recent.map((p) => p.comments)),
+        reach: await insight("page_impressions_unique"),
+        engagements: await insight("page_post_engagements"),
+      };
     },
 
     async audit() {

@@ -58,8 +58,8 @@ describe("YouTube Shorts", () => {
   it("reads the channel", async () => {
     const fetchImpl = (async (input: RequestInfo | URL) => {
       if (String(input).startsWith("https://oauth2.googleapis.com/token")) return json({ access_token: "AT" });
-      return json({ items: [{ id: "UC1", snippet: { title: "Wright AI Solutions", customUrl: "@wrightaisolutions" }, statistics: { subscriberCount: "3", videoCount: "0" } }] });
+      return json({ items: [{ id: "UC1", snippet: { title: "Wright AI Solutions", customUrl: "@wrightaisolutions" }, statistics: { subscriberCount: "3", videoCount: "0", viewCount: "12" } }] });
     }) as typeof fetch;
-    expect(await youtubeClient(creds, { fetchImpl }).channel()).toEqual({ id: "UC1", title: "Wright AI Solutions", handle: "@wrightaisolutions", subscribers: 3, videos: 0 });
+    expect(await youtubeClient(creds, { fetchImpl }).channel()).toEqual({ id: "UC1", title: "Wright AI Solutions", handle: "@wrightaisolutions", subscribers: 3, videos: 0, views: 12 });
   });
 });

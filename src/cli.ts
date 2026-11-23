@@ -59,6 +59,7 @@ import { approvedInSlot } from "./schedule.ts";
 import { runProduce } from "./pipeline/produce.ts";
 import { ENTERTAINMENT, isFormat, type Format } from "./pipeline/formats.ts";
 import { syncLatestUpdate } from "./latest-update.ts";
+import { refreshPlatforms } from "./platforms.ts";
 import { Vault } from "./vault.ts";
 import { soundEffect, speak } from "./voice.ts";
 
@@ -228,6 +229,7 @@ async function main() {
       if (!r.posted && process.env.REEL_POST !== "off") process.exitCode = 1;
       if (!r.posted && process.env.REEL_POST === "off" && r.stage < 6) process.exitCode = 1;
     } finally {
+      await updatePlatforms(vault);
       vault.close();
     }
     return;
@@ -344,6 +346,17 @@ async function main() {
       if (/^go\b/i.test(arg)) log(`Uploaded ${r.uploaded.length}, refused ${r.failed.length}${r.stoppedForQuota ? ", the rest wait for YouTube's daily allowance (run it again tomorrow)" : ""}.`);
       else log('Nothing uploaded. Run again with "go" (and any "skip: ...") in the subject box to upload these.');
       if (r.failed.length) process.exitCode = 1;
+    } finally {
+      vault.close();
+    }
+    return;
+  }
+
+  // The Facebook, YouTube Shorts, TikTok and Instagram sections on the Vault page, read again now.
+  if (command === "platforms") {
+    const vault = connect();
+    try {
+      await updatePlatforms(vault, true);
     } finally {
       vault.close();
     }
@@ -537,7 +550,7 @@ async function main() {
   }
 
   if (command !== "run") {
-    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit, youtube-test, youtube-backfill or hitta-test.`);
+    console.error(`Unknown command "${command}". Use requests, run, publish, reel-drafts, preview, diagnose, research, accounts-test, ideas, script, produce, reel, voice-test, instagram-test, page-audit, platforms, youtube-test, youtube-backfill or hitta-test.`);
     process.exit(2);
   }
 
@@ -548,6 +561,7 @@ async function main() {
     // Anything already approved and due goes out now too.
     const r = await publishDue({ vault, hitta: (x) => sendHittaReport(x), log });
     if (!r.skipped) log(`Posted ${r.published.length}, failed ${r.failed.length}.`);
+    await updatePlatforms(vault);
     if (alertError) {
       console.error(`Hitta didn't take the report: ${alertError}`);
       process.exitCode = 1;
@@ -584,6 +598,23 @@ async function produce(vault: Vault, subject?: string) {
 }
 
 // A failed run, once a day at most.
+/** The Instagram, Page and YouTube clients for the platforms report (read only). */
+async function platformDeps(vault: Vault) {
+  let igError: string | null = null;
+  const token = await currentToken(vault, { log }).catch((err) => ((igError = err instanceof Error ? err.message : String(err)), null));
+  const creds = youtubeCreds();
+  return { ig: token ? instagramClient(token.token) : null, igError, page: token ? facebookPageClient(token.token) : null, youtube: creds ? youtubeClient(creds) : null, youtubeOn: youtubeOn() };
+}
+
+/** Refreshes the Vault page's platform sections when they're a few hours old (or now, with force); never stops a run. */
+async function updatePlatforms(vault: Vault, force = false): Promise<void> {
+  try {
+    if (await refreshPlatforms(vault, () => platformDeps(vault), { force })) log("Updated the platform sections on the Vault page.");
+  } catch (err) {
+    log(`Couldn't update the platform sections: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 async function reportFailure(vault: Vault, message: string) {
   const key = `run-failed:${new Date().toISOString().slice(0, 10)}`;
   if (await vault.alreadyReported(key).catch(() => true)) return;

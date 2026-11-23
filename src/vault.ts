@@ -496,6 +496,22 @@ export class Vault {
     return true;
   }
 
+  /** Any SocialStatus row by id (the platforms report and the like), as saved. */
+  async statusRow(id: string): Promise<{ ok: boolean; snapshot: string; updatedAt: string } | null> {
+    await this.ensureTables();
+    const rs = await this.db.execute({ sql: `SELECT "ok","snapshot","updatedAt" FROM "SocialStatus" WHERE "id" = ?`, args: [id] });
+    const r = rs.rows[0];
+    return r ? { ok: Boolean(Number(r.ok)), snapshot: String(r.snapshot), updatedAt: String(r.updatedAt) } : null;
+  }
+
+  async saveStatusRow(id: string, ok: boolean, snapshot: string, now = new Date()): Promise<void> {
+    await this.ensureTables();
+    await this.db.execute({
+      sql: `INSERT INTO "SocialStatus" ("id","ok","snapshot","updatedAt") VALUES (?,?,?,?) ON CONFLICT("id") DO UPDATE SET "ok" = excluded."ok", "snapshot" = excluded."snapshot", "updatedAt" = excluded."updatedAt"`,
+      args: [id, ok ? 1 : 0, snapshot, vaultNow(now)],
+    });
+  }
+
   async latestStatus(): Promise<{ ok: boolean; snapshot: SocialSnapshot; updatedAt: string } | null> {
     await this.ensureTables();
     const rs = await this.db.execute(`SELECT * FROM "SocialStatus" WHERE "id" = 'social'`);
