@@ -17,6 +17,7 @@ import { check, gate, soundChecks } from "./gates.ts";
 import { join } from "node:path";
 import type { Product } from "../vault.ts";
 import { fillPrompt, pipelineFile } from "./stages.ts";
+import { seriesBrief, seriesChecks, type SeriesPick } from "./series.ts";
 
 export const ENTERTAINMENT = ["story", "satisfying", "explainer"] as const;
 export type Format = (typeof ENTERTAINMENT)[number] | "ad";
@@ -37,7 +38,8 @@ export const EXPLAINER_WORDS = [105, 125] as const;
 export const EXPLAINER_SHOTS = [14, 20] as const;
 
 export type Made = { format: Format; productId?: string | null; at: string };
-export type Choice = { format: Format; product: Product | null };
+/** `series`: a story that is one episode of a series (src/pipeline/series.ts). */
+export type Choice = { format: Format; product: Product | null; series?: SeriesPick | null };
 
 /** Characters drawn once and re-posed (the cast sheet) only in formats that have them. */
 export const HAS_CAST: Record<Format, boolean> = { story: true, ad: false, explainer: false, satisfying: false };
@@ -117,7 +119,8 @@ export function formatBrief(c: Choice, block: "ideas" | "script" = "script", fil
       ? `\nThomas set this product's hook. Every pitch's \`sentence\` is his question, in his words: "${h.hook}" The pitches differ only in their \`answer\`: which feature settles it and the everyday moment it shows.`
       : `\nThomas set this product's hook, and the ad opens with it. The first shots ask his question: "${h.hook}" Shorten it only where a shot's time needs it, keeping "healthy" and the cost ("Trying to be healthy?" / "But don't want to pay for an app?"). Then: "${h.then}" Code checks that the first 3 shots' lines say both.`
     : "";
-  return `${fillPrompt(formatPrompt(c.format, block), fill)}${product}${hook}`;
+  const series = c.series ? `\n\n${seriesBrief(c.series, block)}` : "";
+  return `${fillPrompt(formatPrompt(c.format, block), fill)}${product}${hook}${series}`;
 }
 
 /** Everything the viewer reads or hears, from a stage 4 script plus its caption. */
@@ -208,5 +211,6 @@ export function gateFormat(c: Choice, d: FormatDraft, products: Product[], now =
     const last = [...d.shots].sort((a, b) => (a.start ?? 0) - (b.start ?? 0)).at(-1)?.line?.trim() ?? "";
     checks.push(check("Ends on a question to the viewer", /\?["'”’)]*$/.test(last), last ? `the last line is "${last.slice(-80)}"` : "the last shot has no line"));
   }
+  if (c.series) checks.push(...seriesChecks(c.series, d));
   return gate(checks);
 }

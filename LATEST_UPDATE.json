@@ -1,13 +1,12 @@
 {
   "date": "November 23, 2026",
-  "summary": "No more fixed posting times. From 6 AM Arizona, the specialist makes and posts a Reel every hour until the day has five posts on Instagram, and the posts you approve count toward the five. A Reel that fails a check is simply followed by the next hour's, in the next format, up to 10 tries a day.",
+  "summary": "A new story series, The Night Desk: eight stick-figure stories about Ruth, the night clerk at the Starlite Motel, each with its own prompt. Per your requirements, each part runs 1 to 2 minutes and its outro says the next part is coming tomorrow; the requirements are written down in pipeline/series/REQUIREMENTS.md. Once on, the fifth Reel each day is the next part, in order.",
   "frontend": [
-    "Schedule shows today's count (for example 2 of 5 posted), what it's making now or why it stopped, and how many tries it has used, instead of five fixed times.",
-    "Approve puts a post at the next free hour (20 past), from 6 AM to 9 PM."
+    "Nothing new on the Vault page. Each Night Desk Reel shows in History as The Night Desk with its number."
   ],
   "other": [
-    "reels.yml runs at :03 past every hour from 6 AM to 9 PM; a run that finds five already posted stops in a minute.",
-    "The mix rotates explainer, satisfying, ad, explainer, satisfying, moving on after a failed one so one format can't hold up the day.",
-    "Hitta's answers know the new schedule."
+    "pipeline/series/REQUIREMENTS.md lists your requirements and what code checks each one; pipeline/series/night-desk.md has the series rules, the look and a brief per part, with extra middle beats for the longer length.",
+    "Checks for every part: 60 to 120 seconds in 20 to 50 shots, the outro says \"Part N tomorrow\" (the last part names none), no part number anywhere else, Ruth and the motel named in the first lines, her round glasses in every drawing, the locked ending, no other part's story, #TheNightDesk in the caption.",
+    "A part that fails is tried again in the next two hourly runs and the next day, never skipped, since its outro promised it. reels.yml can make one by hand (format series, with a part number)."
   ]
 }

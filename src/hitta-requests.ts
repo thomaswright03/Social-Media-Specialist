@@ -382,7 +382,8 @@ export function claudeAnswerer(opts: ClaudeAnswererOptions): Answerer {
 
 /** One headless Claude turn from an empty folder: it only reads the prompt and answers. */
 export function askClaude(prompt: string): Promise<string> {
-  return runClaude(prompt, { model: process.env.HITTA_CLAUDE_MODEL || "sonnet" });
+  // 8 minutes: a 1 to 2 minute series part's script is 20 to 50 shots, and 3 minutes cut it off (test run 45282934098).
+  return runClaude(prompt, { model: process.env.HITTA_CLAUDE_MODEL || "sonnet", timeoutMs: 8 * 60_000 });
 }
 
 /**

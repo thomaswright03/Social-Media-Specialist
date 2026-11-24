@@ -15,6 +15,7 @@ import { castSheet, drawScene, drawScenes, lookSheet, NO_CAST, type Cast } from 
 import { motionPlan, replanShots, shotMotion, USES_MOTION, type MotionPlan, type ShotMotion } from "./motion.ts";
 import { collisionAudio, physicsPlan, physicsRuntime, physicsStory, USES_PHYSICS } from "./physics.ts";
 import { formatPrompt, HAS_CAST, isFormat, type Format } from "./formats.ts";
+import { SERIES_SECONDS, seriesLook, type SeriesPick } from "./series.ts";
 import { learnedChecks, retellMatchPrompt, verdictYes } from "./script.ts";
 import { parseJson, pipelinePath, runStage, stagePrompt } from "./stages.ts";
 
@@ -77,13 +78,13 @@ export function mismatchedShots(detail: string | undefined, total: number): numb
 export const endQuestionText = (line: string | undefined) => (line ?? "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
 
 /** The newest Reel whose script passed stage 4 and that has no passed stage 5. */
-export async function nextToProduce(vault: Vault, subject?: string): Promise<{ subject: string; format: string; script: ScriptOut } | null> {
+export async function nextToProduce(vault: Vault, subject?: string): Promise<{ subject: string; format: string; series?: SeriesPick | null; script: ScriptOut } | null> {
   for (const r of await vault.reelsStarted()) {
     if (subject && r.subject !== subject) continue;
     const s = await vault.latestStage(4, { subject: r.subject, passedOnly: true });
     if (!s) continue;
     if (!subject && (await vault.latestStage(5, { subject: r.subject, passedOnly: true }))) continue;
-    return { subject: r.subject, format: r.format, script: s.output as ScriptOut };
+    return { subject: r.subject, format: r.format, series: r.series, script: s.output as ScriptOut };
   }
   return null;
 }
@@ -155,6 +156,8 @@ export type ProduceResult = {
   problem: string | null;
   /** The Reel's format and script (stage 6 packages its caption). */
   format?: Format;
+  /** A series part (stage 6 checks its longer length). */
+  series?: SeriesPick | null;
   script?: ScriptOut;
   /** When each shot starts and what it shows in text (stage 6 picks the cover). */
   shots?: { at: number; dur: number; onScreenText?: string }[];
@@ -273,7 +276,7 @@ export async function runProduce(d: {
     }
   }
   if (voiceProblem) return stop(voiceProblem, reel.subject);
-  const t = timeline(shots, voices, { oneTake, minSeconds: reel.format === "explainer" ? EXPLAINER_MIN_SHOTS_SECONDS : MIN_SHOTS_SECONDS });
+  const t = timeline(shots, voices, { oneTake, minSeconds: reel.series ? SERIES_SECONDS[0] - END_CARD + 0.3 : reel.format === "explainer" ? EXPLAINER_MIN_SHOTS_SECONDS : MIN_SHOTS_SECONDS });
   const seconds = totalSeconds(t);
   log(`Voiced ${voiceFiles.filter(Boolean).length} lines; the Reel runs ${seconds.toFixed(1)} s over ${t.length} shots.`);
 
@@ -282,7 +285,8 @@ export async function runProduce(d: {
   // look sheet, the cast drawn once, then every shot drawn in that style.
   const timed = t.map((s) => ({ ...s, start: Math.round(s.at * 10) / 10, end: Math.round((s.at + s.dur) * 10) / 10 }));
   const format: Format = isFormat(reel.format) ? reel.format : "story";
-  const style = formatPrompt(format, "style");
+  // A series episode draws its lead and place the same way every time.
+  const style = [formatPrompt(format, "style"), seriesLook(reel.series)].filter(Boolean).join("\n\n");
   let look = "";
   let svgs: string[] = t.map(() => "");
   let motions: (ShotMotion | null)[] = [];
@@ -500,6 +504,7 @@ export async function runProduce(d: {
     fixFirst: r.output?.fixFirst ?? null,
     problem: null,
     format,
+    series: reel.series ?? null,
     script: reel.script,
     shots: t.map((s) => ({ at: s.at, dur: s.dur, onScreenText: s.onScreenText })),
     assets: reelAssets({ voiced: voiceFiles.filter(Boolean).length, sfx: physics ? 0 : effects.length, physics: Boolean(physics), motion: !physics && motions.some(Boolean) }),

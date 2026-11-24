@@ -54,6 +54,29 @@ passes `gateFormat` with stage 4's gate:
   content to be labelled);
 - an explainer lists at least 2 linked sources dated within the last 14 days.
 
+### Story series (Thomas, 2026-11-23)
+
+A series is a story with a recurring lead and place, never a continuing plot
+(our first series decayed: `avoid.md`). Thomas's requirements are in
+`pipeline/series/REQUIREMENTS.md`: a prompt per part, an outro that names the
+next part ("Part 2 tomorrow!", the only place a part number may appear), and
+60 to 120 seconds a part in 20 to 50 shots. `pipeline/series/<id>.md` holds the
+shared rules, the look, and a locked brief for each episode; `src/pipeline/series.ts`
+holds its checks, which run with the story's: the first 2 lines say who the
+lead is and where, the lead keeps her marker in every drawing, the guest's
+marker is drawn, the payoff is the brief's ending, no other episode's story is
+mentioned, the caption has the series tag, and the outro names the next part.
+"Episode" and "previously" stay banned, a part number anywhere but the outro
+fails, and the cold viewers still see only this part.
+Stage 2 writes 20 openings for the locked story instead of 20 stories.
+
+The Night Desk (8 episodes) is the first. `social reel series` (reels.yml with
+format "series", and `episode` to pick one) makes the next episode not yet
+posted. `LIVE_SERIES` in `src/pipeline/reel.ts` names the series in the daily
+mix: the day's fifth Reel is the next part, tried again in the next two runs if
+it fails (the outro promised it), never skipped, and the slot goes back to
+normal when the series ends.
+
 ## What I added to Thomas's outline (2026-11-10)
 
 He said to fill gaps where I saw them. These are in the gates too:

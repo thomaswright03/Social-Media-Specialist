@@ -77,7 +77,7 @@ The rules below make a script pass; they don't make it good. In formats that tel
 
 Code checks these, and one miss fails the script.
 
-- 10 to 14 shots, 30 to 42 seconds in total, counting the opening (an explainer: 14 to 20 shots, about 45 seconds, as its format says). The first shot starts at 0 and every shot starts exactly where the one before it ends.
+- 10 to 14 shots, 30 to 42 seconds in total, counting the opening (an explainer: 14 to 20 shots, about 45 seconds, as its format says; a story in a series: 20 to 50 shots, 60 to 120 seconds, as its series says). The first shot starts at 0 and every shot starts exactly where the one before it ends.
 - Every shot is 2 to 3 seconds, never longer (the opening's shots keep their own timing). The video is checked in 3-second slices from 0 to the end, and a slice with no new shot, no new on-screen text and no new line is flagged. Each shot is a new beat: something happens, is revealed, or changes. Never fill a slice with a cut or a caption that tells the viewer nothing new.
 - Every shot names its `place` and its `camera`. At most two places in the whole video, spelled the same way every time. At least 3 kinds of camera, never the same one twice in a row, and the same word for the same camera every time.
 - Every shot with a spoken `line` has `onScreen` filled in with how that claim is shown. A shot with no line leaves both empty.

@@ -17,6 +17,7 @@ import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText 
 import { researchBrief } from "./research.ts";
 import { parseJson, runStage, stagePrompt, testerPrompt } from "./stages.ts";
 import { spokenText } from "../voice.ts";
+import { OUTRO, SERIES_SECONDS, SERIES_SHOTS } from "./series.ts";
 
 type Ask = (p: string) => Promise<string>;
 export const SOUND_OFF_READS = 3;
@@ -185,7 +186,7 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
   if (!reel) return empty("No Reel waiting for a script: run ideas (stage 2) first");
   const product = reel.format === "ad" ? (d.products.find((p) => p.id === reel.productId) ?? null) : null;
   if (reel.format === "ad" && !product) return { ...empty(`The ad's product (${reel.productId}) isn't on the website anymore`), subject: reel.subject };
-  const choice = { format: reel.format, product } as Choice;
+  const choice = { format: reel.format, product, series: reel.series ?? null } as Choice;
   // What stage 1 found for this format (not one list for every format).
   const patterns = await researchBrief(d.vault, choice.format);
   const lessons = (await d.vault.lessons()).filter((l) => l.kind !== "pattern");
@@ -211,11 +212,11 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         }),
       gate: async (s) => {
         if (s) lastDraft = s;
-        const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold));
+        const base = gateScript(s, opening, await reviewScript(s, cold), await learnedChecks(d.vault, 4, s, cold), choice.series ? { seconds: SERIES_SECONDS, allow: OUTRO } : {});
         const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
         const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
         const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
+        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.series ? SERIES_SHOTS : choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
         const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources, story: s?.story, payoff: s?.payoff }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
         const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];

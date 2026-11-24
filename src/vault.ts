@@ -338,6 +338,8 @@ export type ReelStarted = {
   picks: { sentence: string; answer: string; news: number[] }[];
   /** The explainer's news list from stage 2. */
   news: { n: number; headline: string; publisher: string; url: string; published: string; summary: string }[];
+  /** A series episode (src/pipeline/series.ts), or null. */
+  series: { id: string; episode: number } | null;
   at: string;
 };
 
@@ -584,7 +586,7 @@ export class Vault {
     for (const r of rs.rows) {
       const subject = String(r.subject);
       const first = await this.db.execute({ sql: `SELECT "input" FROM "SocialStage" WHERE "stage" = 2 AND "subject" = ? AND "input" IS NOT NULL ORDER BY "createdAt" ASC LIMIT 1`, args: [subject] });
-      let input: { format?: string; productId?: string | null; news?: ReelStarted["news"] } = {};
+      let input: { format?: string; productId?: string | null; news?: ReelStarted["news"]; series?: ReelStarted["series"] } = {};
       let output: { pitches?: { id?: number; sentence?: string; answer?: string; news?: number[] }[]; finalists?: number[] } = {};
       try {
         input = JSON.parse(String(first.rows[0]?.input ?? "{}"));
@@ -596,12 +598,32 @@ export class Vault {
         .map((id) => output.pitches?.find((p) => p.id === id))
         .filter((p) => p?.sentence)
         .map((p) => ({ sentence: p!.sentence!, answer: p!.answer ?? "", news: p!.news ?? [] }));
-      out.push({ subject, format: input.format ?? "story", productId: input.productId ?? null, finalists: picks.map((p) => p.sentence), picks, news: input.news ?? [], at: iso(r.createdAt) ?? "" });
+      out.push({ subject, format: input.format ?? "story", productId: input.productId ?? null, finalists: picks.map((p) => p.sentence), picks, news: input.news ?? [], series: input.series?.id && Number.isInteger(input.series.episode) ? { id: input.series.id, episode: input.series.episode } : null, at: iso(r.createdAt) ?? "" });
     }
     return out;
   }
 
   /** How many Reels the pipeline started since `since` (each Reel's first stage-2 try). */
+  /** A series' Reels that passed stage 2: which episode each was and whether it was posted (a "posted" action on it). */
+  async seriesReels(id: string): Promise<{ subject: string; episode: number; postedAt: string | null }[]> {
+    await this.ensureTables();
+    const rs = await this.db.execute({
+      sql: `SELECT s."subject", s."input", (SELECT MIN(a."createdAt") FROM "SocialAction" a WHERE a."target" = s."subject" AND a."kind" = 'posted') AS "postedAt" FROM "SocialStage" s WHERE s."stage" = 2 AND s."subject" LIKE 'reel:%' AND s."input" LIKE ? AND s."subject" IN (SELECT "subject" FROM "SocialStage" WHERE "stage" = 2 AND "passed" = 1)`,
+      args: [`%"series":%`],
+    });
+    const out: { subject: string; episode: number; postedAt: string | null }[] = [];
+    for (const r of rs.rows) {
+      let input: { series?: { id?: string; episode?: number } } = {};
+      try {
+        input = JSON.parse(String(r.input ?? "{}"));
+      } catch {}
+      if (input.series?.id !== id || !Number.isInteger(input.series.episode)) continue;
+      if (out.some((o) => o.subject === String(r.subject))) continue;
+      out.push({ subject: String(r.subject), episode: input.series.episode!, postedAt: r.postedAt == null ? null : iso(r.postedAt) ?? null });
+    }
+    return out;
+  }
+
   async reelsTriedSince(since: Date): Promise<number> {
     await this.ensureTables();
     const rs = await this.db.execute({ sql: `SELECT COUNT(DISTINCT "subject") AS n FROM "SocialStage" WHERE "stage" = 2 AND "subject" LIKE 'reel:%' AND "createdAt" >= ?`, args: [vaultNow(since)] });
