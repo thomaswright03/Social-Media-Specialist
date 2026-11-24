@@ -247,7 +247,7 @@ jobs:
 
       - name: Keep the preview
         if: env.COMMAND == 'preview' && steps.social.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: preview
           path: preview.jpg
@@ -255,7 +255,7 @@ jobs:
       # Stage 1's report for each format studied, even when a gate failed.
       - name: Keep the research
         if: always() && env.COMMAND == 'research' && steps.social.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: research
           path: research/
@@ -265,7 +265,7 @@ jobs:
       # failed, so Thomas can watch it either way.
       - name: Keep the Reel
         if: always() && env.COMMAND == 'produce' && steps.social.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reel
           path: |
@@ -280,7 +280,7 @@ jobs:
 
       - name: Keep the voice test
         if: env.COMMAND == 'voice-test' && steps.social.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: voice-test
           path: voice-test/
