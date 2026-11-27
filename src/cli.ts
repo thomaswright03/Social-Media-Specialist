@@ -12,7 +12,8 @@
 //   page-audit      reads the Facebook Page's profile, posts, Reels and insights for an audit; changes nothing
 //   youtube-test    signs in to YouTube and reads the channel; uploads nothing
 //   youtube-backfill lists the Reels already on Instagram that aren't on YouTube yet; with "go" in the
-//                   subject box it uploads them as Shorts (Thomas asked, 2026-11-21); "skip: <ids or links>" leaves some out
+//                   subject box it uploads them as Shorts (Thomas asked, 2026-11-21); "skip: <ids or links>" leaves some out;
+//                   "test: <id or link>" uploads just that one, even while YOUTUBE_CROSSPOST is off (Thomas, 2026-11-27)
 //   hitta-test      sends Hitta a low-urgency test report
 //   ideas           stage 2: picks the next Reel's format (80% entertainment, 20% ads) and keeps 3 ideas
 //                   (REEL_FORMAT or a format after the command picks one by hand)
@@ -377,6 +378,7 @@ async function main() {
       process.exit(2);
     }
     const arg = (process.argv[3] ?? "").trim();
+    const test = (/^test:\s*(\S+)/i.exec(arg)?.[1] ?? "").replace(/,$/, "");
     if (/^go\b/i.test(arg) && !youtubeOn()) {
       console.error("YouTube is still off: set the variable YOUTUBE_CROSSPOST to on first (README, \"YouTube Shorts\").");
       process.exit(2);
@@ -389,8 +391,8 @@ async function main() {
         console.error("INSTAGRAM_ACCESS_TOKEN isn't set.");
         process.exit(2);
       }
-      const r = await backfillYouTube({ vault, ig: instagramClient(token.token), yt: youtubeClient(creds), log, skip, go: /^go\b/i.test(arg) });
-      if (/^go\b/i.test(arg)) log(`Uploaded ${r.uploaded.length}, refused ${r.failed.length}${r.stoppedForQuota ? ", the rest wait for YouTube's daily allowance (run it again tomorrow)" : ""}.`);
+      const r = await backfillYouTube({ vault, ig: instagramClient(token.token), yt: youtubeClient(creds), log, skip, go: /^go\b/i.test(arg) || Boolean(test), only: test ? [test] : undefined });
+      if (/^go\b/i.test(arg) || test) log(`Uploaded ${r.uploaded.length}, refused ${r.failed.length}${r.stoppedForQuota ? ", the rest wait for YouTube's daily allowance (run it again tomorrow)" : ""}.`);
       else log('Nothing uploaded. Run again with "go" (and any "skip: ...") in the subject box to upload these.');
       if (r.failed.length) process.exitCode = 1;
     } finally {

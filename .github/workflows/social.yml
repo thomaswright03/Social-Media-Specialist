@@ -36,7 +36,7 @@ on:
         type: string
         required: false
       subject:
-        description: 'For script and produce, the subject of a Reel to make again (as the Vault shows it); empty takes the next one waiting. For youtube-backfill, "go" uploads (empty only lists), and "skip: id1, id2" leaves Reels out'
+        description: 'For script and produce, the subject of a Reel to make again (as the Vault shows it); empty takes the next one waiting. For youtube-backfill, "go" uploads (empty only lists), "skip: id1, id2" leaves Reels out, and "test: id" uploads just that one even while YOUTUBE_CROSSPOST is off'
         type: string
         required: false
 
