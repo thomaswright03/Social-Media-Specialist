@@ -1,13 +1,11 @@
 {
   "date": "November 27, 2026",
-  "summary": "Ad scripts are now much simpler. Every ad follows one plain template: a whole question to you, \"Good! We made [product]\", what it is, \"Here's how it works\", three steps, what's easier, and \"Link in bio\". Each line is one short, whole sentence, and each product's opening question is now set word for word, so the AI can't write a cryptic hook.",
+  "summary": "A one-Short YouTube test. Google's reply to our API audit request says public uploads may no longer need the audit, so the YouTube backfill can now upload a single named Reel as a test, even while YouTube cross-posting is still off.",
   "frontend": [
-    "Nothing new on the Vault page. When an ad's wording fails a check, History shows which line and why."
+    "Nothing new on the Vault page. The test upload shows in History, with whether YouTube made it public."
   ],
   "other": [
-    "The opening questions: Free Calorie Counter \"Trying to be healthy, but don't want to pay for an app?\", AI Waste Bot \"Are you losing leads because nobody texts them back fast?\", Room Designer 3D \"Do your customers struggle to picture their new bathroom?\". They live in AD_HOOKS in src/pipeline/formats.ts.",
-    "Code checks on every ad script: the opening is one shot with the whole question; every line starts with a capital and ends with . ! or ?, so no sentence is split across shots; sentences of 10 words at most; 45 to 80 words in all; reading grade 6 or lower; \"Good! We made ...\" right after the question; \"Here's how it works\"; and the on-screen words are taken from what's said in that shot.",
-    "Three cold readers also read the ad's lines and flag any a normal person wouldn't say (fragments, riddles, lines that only make sense with the picture); 2 of 3 must pass it.",
-    "Ads are now 10 to 12 shots and 30 to 40 seconds, about 55 to 70 words, down from up to 14 shots and 84 words."
+    "youtube-backfill takes \"test: <Reel id or link>\" in the subject box: it uploads only that Reel, once, and logs whether YouTube says it is public or private.",
+    "Everything else about YouTube is unchanged: new Reels go there only once the variable YOUTUBE_CROSSPOST is on."
   ]
 }

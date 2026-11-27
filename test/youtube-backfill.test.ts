@@ -87,6 +87,20 @@ describe("past Instagram Reels onto YouTube", () => {
     expect(yt.calls).toHaveLength(2);
   });
 
+  it("a test uploads only the one Reel named, once (Thomas, 2026-11-27)", async () => {
+    const vault = await memoryVault();
+    const yt = fakeYt();
+    const r = await backfillYouTube({ vault, ig: fakeIg(), yt: yt.client, log: () => {}, skip: [], go: true, only: ["CODE3"], fetchImpl: cdn, now: NOW });
+    expect(r.uploaded.map((u) => u.media.id)).toEqual(["3"]);
+    expect(yt.calls).toHaveLength(1);
+    const logged = await vault.actions();
+    expect(logged.map((a) => a.target)).toEqual([igTarget("3")]);
+    expect(logged[0]!.summary).toMatch(/one-Short test/);
+    const again = await backfillYouTube({ vault, ig: fakeIg(), yt: yt.client, log: () => {}, skip: [], go: true, only: ["CODE3"], fetchImpl: cdn, now: NOW });
+    expect(again.planned).toHaveLength(0);
+    expect(yt.calls).toHaveLength(1);
+  });
+
   it("uploads nothing while the specialist is paused (security check, 2026-11-21)", async () => {
     const vault = await memoryVault();
     await vault.saveSettings({ paused: true });

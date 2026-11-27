@@ -17,6 +17,8 @@ until the variable `YOUTUBE_CROSSPOST` is `on`: Thomas chose to wait for Google'
 turn it on and run the backfill.
 The one other way in is `youtube-backfill` (Thomas, 2026-11-21: "all the reels that the ai has posted ... need to
 be uploaded and posted as youtube shorts"): Reels already public on Instagram, only when run with "go", each once. Keep the tests for this passing.
+"test: <id>" uploads just that one Reel even while YouTube is off (Thomas, 2026-11-27, chose "Test one Short now"
+after Google's reply said public uploads may not need the audit any more).
 
 Exception, the pipeline's own Reels (Thomas, 2026-11-21: "I want the AI to post 5 times a day with variety of
 content. It can start doing so without my approval. I am lifting that gate."; before that, since 2026-11-10, they

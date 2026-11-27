@@ -3,7 +3,10 @@
 // instagram need to be uploaded and posted as youtube shorts"). His request is
 // the approval for these. Each Reel goes up once: an upload, or a refusal, is
 // recorded against its Instagram id, and a recorded one is never sent again.
-// Run without "go" it only lists what it would upload.
+// Run without "go" it only lists what it would upload. "test: <id or link>"
+// uploads that one Reel, even while YOUTUBE_CROSSPOST is off (Thomas, 2026-11-27,
+// chose "Test one Short now" after Google said public uploads may no longer need
+// the API audit), so we can see whether YouTube shows it public.
 import { pageText } from "./facebook.ts";
 import type { InstagramClient, Media } from "./instagram.ts";
 import { SITE_URL } from "./site.ts";
@@ -40,7 +43,7 @@ const QUOTA = /quota/i;
 
 export type BackfillResult = { planned: Media[]; uploaded: { media: Media; url: string }[]; failed: { media: Media; error: string }[]; already: number; stoppedForQuota: boolean };
 
-export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt: YouTubeClient; log: (m: string) => void; skip: string[]; go: boolean; fetchImpl?: Fetch; now?: Date }): Promise<BackfillResult> {
+export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt: YouTubeClient; log: (m: string) => void; skip: string[]; go: boolean; only?: string[]; fetchImpl?: Fetch; now?: Date }): Promise<BackfillResult> {
   if (!d.ig.listMedia) throw new Error("This Instagram client can't list the account's posts.");
   const f = d.fetchImpl ?? fetch;
   const reels = reelsOf(await d.ig.listMedia(500));
@@ -55,12 +58,14 @@ export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt
   const result: BackfillResult = { planned: [], uploaded: [], failed: [], already: 0, stoppedForQuota: false };
   for (const m of reels) {
     if (skipped(m, d.skip)) continue;
+    if (d.only?.length && !skipped(m, d.only)) continue;
     if (done(m)) {
       result.already++;
       continue;
     }
     result.planned.push(m);
   }
+  if (d.only?.length) result.planned = result.planned.slice(0, 1);
   d.log(`${reels.length} Reels on Instagram; ${result.planned.length} to upload to YouTube, ${result.already} already there, ${reels.length - result.planned.length - result.already} skipped as asked.`);
   for (const m of result.planned) d.log(`  ${m.timestamp.slice(0, 10)}  ${m.id}  ${m.permalink ?? ""}  "${titleFromCaption(m.caption).slice(0, 70)}"`);
   if (!d.go) return result;
@@ -81,8 +86,9 @@ export async function backfillYouTube(d: { vault: Vault; ig: InstagramClient; yt
       const r = await d.yt.uploadShort(video, { title, description: pageText(m.caption ?? "", SITE_URL()), tags: hashtagsIn(m.caption) });
       result.uploaded.push({ media: m, url: r.url });
       const locked = r.privacy && r.privacy !== "public" ? ` YouTube kept it ${r.privacy} until Google's API audit passes.` : "";
+      if (d.only?.length) d.log(`YouTube says it is ${r.privacy ?? "unknown"}${r.privacy === "public" ? ": public uploads work without the audit." : "."}`);
       d.log(`Uploaded "${title}" to YouTube: ${r.url}.${locked}`);
-      await d.vault.logAction({ kind: "posted", summary: `Posted the Instagram Reel "${title.slice(0, 80)}" to YouTube as a Short (you asked for all past Reels).${locked}`, detail: `${r.url} (from ${m.permalink ?? m.id})`, target: igTarget(m.id), onInstagram: true }, d.now);
+      await d.vault.logAction({ kind: "posted", summary: `Posted the Instagram Reel "${title.slice(0, 80)}" to YouTube as a Short (${d.only?.length ? "a one-Short test you chose" : "you asked for all past Reels"}).${locked}`, detail: `${r.url} (from ${m.permalink ?? m.id})`, target: igTarget(m.id), onInstagram: true }, d.now);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       // Out of YouTube's daily allowance: nothing went up, so the rest wait for the next run.
