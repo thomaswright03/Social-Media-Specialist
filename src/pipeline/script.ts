@@ -10,7 +10,7 @@
 // (formats.ts) run with it. Lessons of kind "check" for a stage are put to a
 // separate call each and become checks too.
 import type { Product, Vault } from "../vault.ts";
-import { EARS_ONLY, EXPLAINER_SHOTS, formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
+import { AD_SHOTS, adOpeningChecks, EARS_ONLY, EXPLAINER_SHOTS, formatBrief, gateFormat, NARRATED, type Choice, type FormatDraft } from "./formats.ts";
 import { check, clarityChecks, gate, gateOpening, gateScript, type Check, type GateResult, type Opening, type RetellReads, type Script, type ScriptReview, type Shot, type SoundOffReads } from "./gates.ts";
 import { isYes } from "./ideas.ts";
 import { sourceChecks, sourcesText, sourceTexts, type NewsItem, type SourceText } from "./news.ts";
@@ -93,6 +93,28 @@ export async function listenReads(shots: Shot[], intended: string, ask: Ask): Pr
       // The whole of what confused them and what they took away, so a revision can fix the exact line.
       out.notes.push(a ? `${wrong.length ? `Got wrong: ${wrong.join(", ")}. ` : ""}${confused ? `Confused by: ${confused.slice(0, 600)}. ` : ""}${story ? `Understood it as: ${story.slice(0, 240)}. ` : ""}${/not said/i.test(people) ? `People: ${people.slice(0, 160)}` : ""}`.trim() : "no answer");
     }
+  }
+  return out;
+}
+
+export const PLAIN_READS = 3;
+/**
+ * Stage 4, ads: do cold readers find every line plainly worded? Code checks
+ * the sentence lengths; this catches what code can't, such as a fragment with
+ * no verb ("Junk removal, hands full.") or a riddle ("Answer none."). Thomas,
+ * 2026-11-27: "we need to make the scripts muuuch simpler for the ads. they are
+ * very poorly worded."
+ */
+export async function plainReads(shots: Shot[], ask: Ask): Promise<boolean[] & { notes?: string[] }> {
+  const out: boolean[] & { notes?: string[] } = [];
+  out.notes = [];
+  const lines = spokenLines(shots);
+  if (!lines) return out;
+  for (let i = 0; i < PLAIN_READS; i++) {
+    const a = (await ask(testerPrompt("plain", { LINES: lines })).catch(() => "")).trim();
+    const ok = /PLAIN:\s*YES\b/i.test(a);
+    out.push(ok);
+    if (!ok) out.notes.push(a.replace(/^[\s\S]*?PLAIN:\s*NO\W*/i, "").replace(/\s+/g, " ").trim().slice(0, 400) || "no answer");
   }
   return out;
 }
@@ -216,11 +238,12 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
         const shots = [...(s?.shots ?? [])].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
         const intended = s?.story?.trim() || `${premise}\nHow it ends: ${s?.payoff ?? ""}`;
         const reads = shots.length ? await retellReads(shots, intended, cold) : null;
-        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.series ? SERIES_SHOTS : choice.format === "explainer" ? EXPLAINER_SHOTS : undefined);
+        const clarity = clarityChecks(shots, reads, reads?.notes ?? [], NARRATED[choice.format], choice.series ? SERIES_SHOTS : choice.format === "explainer" ? EXPLAINER_SHOTS : choice.format === "ad" ? AD_SHOTS : undefined);
         const fmt = gateFormat(choice, { caption: s?.caption ?? "", shots: s?.shots ?? [], sources: s?.sources, story: s?.story, payoff: s?.payoff }, d.products, d.now?.() ?? new Date());
         const sourced = choice.format === "explainer" ? sourceChecks(s ?? {}, supplied) : [];
         const ears = EARS_ONLY[choice.format] ? [earsCheck("Listeners who only hear the voice follow it (2 of 3)", await listenReads(shots, intended, cold))] : [];
-        return gate([...base.checks, ...clarity, ...ears, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
+        const plain = choice.format === "ad" ? [earsCheck("Every line is plainly worded (2 of 3 cold readers)", await plainReads(shots, cold))] : [];
+        return gate([...base.checks, ...clarity, ...ears, ...plain, check("Has a caption", Boolean(s?.caption?.trim())), ...fmt.checks, ...sourced]);
       },
       input: { premise, format: reel.format, product: product?.name ?? null },
       // Each revision fixes what the review found, so the script gets more rounds.
@@ -258,7 +281,9 @@ export async function runScript(d: { vault: Vault; products: Product[]; ask: Ask
       ask: d.ask,
       prompt: (failures) => stagePrompt(3, { PREMISE: `${p}\n\n${thisBrief}`, PATTERNS: patterns, LESSONS: lessonText, GATE_FAILURES: failures }),
       gate: async (o) => {
-        const g = gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold), NARRATED[choice.format]);
+        const g0 = gateOpening(o, await soundOffReads(o, cold), await learnedChecks(d.vault, 3, o, cold), NARRATED[choice.format]);
+        // An ad opens on its whole question, plainly (Thomas, 2026-11-27: "make the scripts muuuch simpler for the ads").
+        const g = choice.format === "ad" ? gate([...g0.checks, ...adOpeningChecks(choice, o)]) : g0;
         if (!EARS_ONLY[choice.format]) return g;
         return gate([...g.checks, earsCheck("The opening's words alone say what the video is about (2 of 3 listeners)", await topicReads(o, pick.sentence, cold))]);
       },

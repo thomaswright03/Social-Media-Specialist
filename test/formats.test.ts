@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENTERTAINMENT, formatBrief, formatPrompt, gateFormat, HAS_CAST, NARRATED, nextFormat, type Format, type Made } from "../src/pipeline/formats.ts";
+import { adOpeningChecks, adWordingChecks, ENTERTAINMENT, formatBrief, formatPrompt, gateFormat, HAS_CAST, NARRATED, nextFormat, readingGrade, sentences, type Format, type Made } from "../src/pipeline/formats.ts";
 import type { Product } from "../src/vault.ts";
 
 const P: Product[] = [
@@ -60,20 +60,70 @@ describe("the content mix", () => {
 
 describe("gateFormat", () => {
   const ad = { format: "ad" as const, product: P[0]! };
-  it("passes an ad for one product that asks for the click", () => {
-    const g = gateFormat(ad, { caption: "Missed leads cost haulers money. Link in bio.", shots: [{ line: "AI Waste Bot texts every new lead back in seconds." }, { onScreenText: "Try it free" }] }, P);
-    expect(g.passed).toBe(true);
+  // The template (Thomas, 2026-11-27: "make the scripts muuuch simpler for the ads").
+  const plain = [
+    ["Leads waiting?", "[curious] Are you losing leads because nobody texts them back fast?"],
+    ["AI Waste Bot", "[excited] Good! We made AI Waste Bot."],
+    ["Texts every lead", "It texts every new lead back for you."],
+    ["How it works", "Here's how it works."],
+    ["A lead texts in", "A new lead texts your number."],
+    ["It answers", "It answers with your prices and rules."],
+    ["Your team takes over", "Your team can jump in anytime."],
+    ["No lead waits", "[excited] Now no lead has to wait for a reply."],
+    ["Every lead answered", "You answer every lead, even at night."],
+    ["Link in bio", "[cheerfully] Try AI Waste Bot. Link in bio."],
+  ].map(([onScreenText, line], i) => ({ start: i === 0 ? 0 : 1 + i * 3, onScreenText, line }));
+  const failing = (shots: { line?: string; onScreenText?: string; start?: number }[], c: typeof ad = ad) => adWordingChecks(c, shots).filter((x) => !x.passed).map((x) => x.name);
+
+  it("passes a plain ad for one product that asks for the click", () => {
+    const g = gateFormat(ad, { caption: "Are you losing leads because nobody texts them back fast?\nAI Waste Bot texts new leads back for you.\nLink in bio", shots: plain }, P);
+    expect(g.checks.filter((c) => !c.passed)).toEqual([]);
   });
 
-  it("pins Thomas's hook for Free Calorie Counter in the brief and checks the ad opens with it (test run 44876401844)", () => {
+  it("fails the wording of the ads it wrote before 2026-11-27", () => {
+    // reels run 46022673347's AI Waste Bot ad
+    const hands = [
+      ["Who gets answered first?", "[curious] Junk removal, hands full."],
+      ["All waiting. All hot.", "Three new leads texted."],
+      ["Pick one.", "[curious] Which one do you answer first?"],
+      ["AI Waste Bot", "[excited] Good! We made AI Waste Bot."],
+      ["For waste and recycling businesses", "Answer none. It texts them back itself."],
+      ["Lead texts, bot answers", "Here's how: a lead texts, it answers."],
+      ["Still carrying", "Meanwhile, you keep carrying that couch!"],
+      ["Link in bio", "Try AI Waste Bot. Link in bio."],
+    ].map(([onScreenText, line], i) => ({ start: i * 3, onScreenText, line }));
+    expect(failing(hands)).toEqual(
+      expect.arrayContaining(["The ad opens with this product's question, word for word", 'Says "Good! We made AI Waste Bot." right after the question', 'Says "Here\'s how it works."', "On-screen words are the words you hear in that shot"]),
+    );
+    // The Room Designer ad split its question over two shots.
+    const room = { format: "ad" as const, product: P[1]! };
+    const split = adWordingChecks(room, [{ start: 0, line: "[curious] Ever finish a bathroom?" }, { start: 1.5, line: "and hear \"different\"" }]).find((x) => x.name.startsWith("Every line is a whole sentence"))!;
+    expect(split.passed).toBe(false);
+    expect(split.detail).toContain('shot 2: "and hear');
+  });
+
+  it("keeps sentences short and words plain", () => {
+    const wordy = plain.map((s, i) => (i === 6 ? { ...s, line: "Your team can jump in anytime and the bot will politely step aside immediately." } : s));
+    expect(failing(wordy)).toEqual(["Short sentences (10 words at most; the opening question 12)"]);
+    expect(readingGrade("It texts every new lead back for you. Here's how it works.")).toBeLessThan(3);
+    expect(readingGrade("Comprehensive automated communication infrastructure revolutionizes operational responsiveness.")).toBeGreaterThan(6);
+    expect(sentences("[excited] Good! We made AI Waste Bot.")).toEqual(["Good!", "We made AI Waste Bot."]);
+  });
+
+  it("opens an ad on one shot with its whole question, word for word", () => {
     const fcc = { id: "site:fcc", name: "Free Calorie Counter", description: "A free calorie tracker.", url: "https://fcc.example/" };
     const c = { format: "ad" as const, product: fcc };
-    expect(formatBrief(c, "ideas")).toMatch(/Every pitch's `sentence` is his question/);
-    expect(formatBrief(c, "script")).toMatch(/don't want to pay for an expensive calorie tracking app/);
-    expect(formatBrief(ad, "script")).not.toMatch(/Thomas set this product's hook/);
-    const hook = (lines: string[]) => gateFormat(c, { caption: "Link in bio", shots: lines.map((line, i) => ({ start: i * 2, line })) }, [fcc]).checks.find((x) => x.name.startsWith("The ad opens with Thomas's hook"))!;
-    expect(hook(["Trying to be healthy?", "But don't want to pay for an app?", "Good! We made Free Calorie Counter."]).passed).toBe(true);
-    expect(hook(["Fifth app, 'allow tracking'?", "Calorie counter needs what?", "Free Calorie Counter."]).passed).toBe(false);
+    expect(formatBrief(c, "ideas")).toContain("Every pitch's `sentence` is exactly: \"Trying to be healthy, but don't want to pay for an app?\"");
+    expect(formatBrief(c, "script")).toContain("Good! We made Free Calorie Counter.");
+    const open = (shots: { start: number; end: number; audio: string }[]) => adOpeningChecks(c, { shots }).filter((x) => !x.passed).map((x) => x.name);
+    expect(open([{ start: 0, end: 4.2, audio: "[curious] Trying to be healthy, but don't want to pay for an app?" }])).toEqual([]);
+    expect(open([
+      { start: 0, end: 1.5, audio: "Trying to be healthy?" },
+      { start: 1.5, end: 3, audio: "But don't want to pay?" },
+    ])).toEqual(["The ad opens on one shot of 3 to 4.5 s", "The opening asks this product's question, word for word"]);
+    // A product with no question set still opens on one whole question.
+    const other = { format: "ad" as const, product: { id: "x", name: "Lead Finder", description: null, url: "https://x.example/" } };
+    expect(adOpeningChecks(other, { shots: [{ start: 0, end: 3, audio: "Lead Finder, hands full." }] }).filter((x) => !x.passed).map((x) => x.name)).toEqual(["The opening says one whole question of 12 words or fewer"]);
   });
 
   it("fails an ad that names two products or offers to build software (Thomas, 2026-11-20)", () => {

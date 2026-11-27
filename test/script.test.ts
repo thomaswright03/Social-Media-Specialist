@@ -156,7 +156,7 @@ describe("the title-card check", () => {
   });
 });
 
-import { earsCheck, listenReads, topicReads } from "../src/pipeline/script.ts";
+import { earsCheck, listenReads, plainReads, topicReads } from "../src/pipeline/script.ts";
 
 describe("ears only (listeners who never see the screen)", () => {
   // An opening (stage 3) carries its words in `audio`, as stage 3's prompt asks.
@@ -186,6 +186,17 @@ describe("ears only (listeners who never see the screen)", () => {
     expect(c.passed).toBe(false);
     expect(c.detail).toContain("Got wrong: what happened, people, followed");
     expect(c.detail).toContain("Alpöge: not said");
+  });
+
+  it("has cold readers flag an ad line nobody would say (Thomas, 2026-11-27: \"very poorly worded\")", async () => {
+    const lines = [{ start: 0, end: 3, line: "[curious] Junk removal, hands full." }, { start: 3, end: 6, line: "Answer none. It texts them back itself." }];
+    const prompts: string[] = [];
+    const reads = await plainReads(lines, async (p) => (prompts.push(p), 'PLAIN: NO "Junk removal, hands full." no verb; "Answer none." a riddle'));
+    const c = earsCheck("Every line is plainly worded (2 of 3 cold readers)", reads);
+    expect(c.passed).toBe(false);
+    expect(c.detail).toContain('"Junk removal, hands full." no verb');
+    expect(prompts[0]).not.toContain("[curious]");
+    expect(earsCheck("x", await plainReads(lines, async () => "PLAIN: YES")).passed).toBe(true);
   });
 
   it("isn't read when there are no words", async () => {

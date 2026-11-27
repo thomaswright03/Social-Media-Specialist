@@ -12,6 +12,9 @@ hook in on-screen text so it works with the sound off.
   on-screen text (no audio, no context) and say why they'd keep watching; at
   least 2 of 3 must give a reason that matches the intended hook. Thomas can
   also show it to real people from the Vault page before it goes further;
+- an ad (Thomas, 2026-11-27, `adOpeningChecks`): one shot of 3 to 4.5 s whose
+  words are one whole question of 12 words or fewer, its product's question
+  word for word when `AD_HOOKS` has one;
 - every learned check for stage 3 (`SocialLesson`).
 
 <!-- prompt -->
@@ -39,11 +42,12 @@ How the opening is tested: three viewers read only your shots' `visual` and `onS
 So:
 - One question. If the opening raises two, the viewers split and it fails. Choose the question first, then build everything to raise it.
 - It is the premise's question. The rest of the Reel has to answer what the opening asks, so never bait with something the Reel won't answer.
-- The picture shows the strange thing, and the text makes it a question. The on-screen hook never describes what the picture already shows. It adds the one fact that makes the picture odd. Picture: a man lowers a bucket into a storm drain. Text: "EVERY NIGHT AT 3 A.M." (An example of the idea. Don't reuse it.)
+- The picture shows the strange thing, and the text makes it a question (an ad is different: its picture plainly shows the problem its question names). The on-screen hook never describes what the picture already shows. It adds the one fact that makes the picture odd. Picture: a man lowers a bucket into a storm drain. Text: "EVERY NIGHT AT 3 A.M." (An example of the idea. Don't reuse it.)
 - Write `intendedHook` the way a viewer would say it, about one thing: "Why is he...?", "What is in...?"
 
 Hard limits (code checks these):
-- The first shot starts at 0. Shots run in order with no gaps, and the last one ends at 3.
+- An ad opens differently, as its format says: ONE shot of 3 to 4.5 seconds, and its `audio` is the whole question as one plain sentence ending with "?" (the product's own question word for word, when one is given). Its words may run past 3 s; everything else below still applies.
+- The first shot starts at 0. Shots run in order with no gaps, and the last one ends at 3 (an ad's: 3 to 4.5).
 - One or two shots, each at least 1 second. A cut inside the first 3 seconds gives the viewer something new.
 - The first frame is the action already under way. No title card, no logo, no black or blank frame, and no shot of an empty place to set the scene. Every shot's `kind` is "action".
 - The first shot's `onScreenText` is the hook: 5 words at most.

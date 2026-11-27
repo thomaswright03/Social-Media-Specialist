@@ -1,12 +1,13 @@
 {
-  "date": "November 23, 2026",
-  "summary": "A new story series, The Night Desk: eight stick-figure stories about Ruth, the night clerk at the Starlite Motel, each with its own prompt. Per your requirements, each part runs 1 to 2 minutes and its outro says the next part is coming tomorrow; the requirements are written down in pipeline/series/REQUIREMENTS.md. Once on, the fifth Reel each day is the next part, in order.",
+  "date": "November 27, 2026",
+  "summary": "Ad scripts are now much simpler. Every ad follows one plain template: a whole question to you, \"Good! We made [product]\", what it is, \"Here's how it works\", three steps, what's easier, and \"Link in bio\". Each line is one short, whole sentence, and each product's opening question is now set word for word, so the AI can't write a cryptic hook.",
   "frontend": [
-    "Nothing new on the Vault page. Each Night Desk Reel shows in History as The Night Desk with its number."
+    "Nothing new on the Vault page. When an ad's wording fails a check, History shows which line and why."
   ],
   "other": [
-    "pipeline/series/REQUIREMENTS.md lists your requirements and what code checks each one; pipeline/series/night-desk.md has the series rules, the look and a brief per part, with extra middle beats for the longer length.",
-    "Checks for every part: 60 to 120 seconds in 20 to 50 shots, the outro says \"Part N tomorrow\" (the last part names none), no part number anywhere else, Ruth and the motel named in the first lines, her round glasses in every drawing, the locked ending, no other part's story, #TheNightDesk in the caption.",
-    "A part that fails is tried again in the next two hourly runs and the next day, never skipped, since its outro promised it. reels.yml can make one by hand (format series, with a part number)."
+    "The opening questions: Free Calorie Counter \"Trying to be healthy, but don't want to pay for an app?\", AI Waste Bot \"Are you losing leads because nobody texts them back fast?\", Room Designer 3D \"Do your customers struggle to picture their new bathroom?\". They live in AD_HOOKS in src/pipeline/formats.ts.",
+    "Code checks on every ad script: the opening is one shot with the whole question; every line starts with a capital and ends with . ! or ?, so no sentence is split across shots; sentences of 10 words at most; 45 to 80 words in all; reading grade 6 or lower; \"Good! We made ...\" right after the question; \"Here's how it works\"; and the on-screen words are taken from what's said in that shot.",
+    "Three cold readers also read the ad's lines and flag any a normal person wouldn't say (fragments, riddles, lines that only make sense with the picture); 2 of 3 must pass it.",
+    "Ads are now 10 to 12 shots and 30 to 40 seconds, about 55 to 70 words, down from up to 14 shots and 84 words."
   ]
 }
